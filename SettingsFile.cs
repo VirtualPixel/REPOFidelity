@@ -1,0 +1,118 @@
+using System;
+using System.IO;
+using UnityEngine;
+
+namespace REPOFidelity;
+
+// simple JSON-backed settings file — keeps us out of BepInEx config (and REPOConfig)
+internal class SettingsFile
+{
+    private readonly string _path;
+    private SettingsData _data;
+    private bool _suppressSave;
+
+    internal SettingsData Data => _data;
+    internal event Action? Changed;
+
+    internal SettingsFile(string path)
+    {
+        _path = path;
+        _data = new SettingsData();
+        Load();
+    }
+
+    internal void Load()
+    {
+        if (!File.Exists(_path)) return;
+        try
+        {
+            string json = File.ReadAllText(_path);
+            var loaded = JsonUtility.FromJson<SettingsData>(json);
+            if (loaded != null) _data = loaded;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.LogWarning($"Failed to load settings: {ex.Message}");
+        }
+    }
+
+    internal void Save()
+    {
+        if (_suppressSave) return;
+        try
+        {
+            string dir = Path.GetDirectoryName(_path)!;
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            File.WriteAllText(_path, JsonUtility.ToJson(_data, true));
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.LogWarning($"Failed to save settings: {ex.Message}");
+        }
+    }
+
+    internal void NotifyChanged()
+    {
+        if (!_suppressSave) Changed?.Invoke();
+    }
+
+    internal void SuppressEvents(Action action)
+    {
+        _suppressSave = true;
+        try { action(); }
+        finally { _suppressSave = false; }
+    }
+}
+
+[Serializable]
+internal class SettingsData
+{
+    // preset
+    public int preset = (int)QualityPreset.High;
+
+    // upscaling
+    public int upscaler = (int)UpscaleMode.Auto;
+    public int renderScale = 67;
+    public float sharpening = 0.5f;
+    public int aaMode = (int)AAMode.Auto;
+    public bool pixelation = false;
+
+    // visuals
+    public int shadowQuality = (int)ShadowQuality.Ultra;
+    public float shadowDistance = 75f;
+    public float lodBias = 3f;
+    public int anisotropicFiltering = 16;
+    public int pixelLightCount = 6;
+    public int textureQuality = (int)TextureRes.Full;
+    public float lightDistance = 30f;
+    public float fogMultiplier = 1f;
+    public float viewDistance = 0f;
+
+    // fixes
+    public bool motionBlur = false;
+    public bool chromaticAberration = false;
+    public bool lensDistortion = false;
+    public bool filmGrain = true;
+    public bool extractionFlickerFix = true;
+
+    // performance — these default to -1 (auto, driven by preset).
+    // 0 = off, 1 = on. only applies when preset is Custom.
+    public int perfExplosionShadows = -1;
+    public int perfItemLightShadows = -1;
+    public int perfAnimatedLightShadows = -1;
+    public int perfParticleShadows = -1;
+    public int perfTinyRendererCulling = -1;
+
+    // bottleneck detection — true = CPU-bound (default assumption),
+    // overwritten by auto-benchmark when it runs
+    public bool cpuBound = true;
+    public int benchResWidth;
+    public int benchResHeight;
+
+    // debug
+    public int toggleKey = (int)KeyCode.F10;
+    public bool debugOverlay = false;
+    public bool benchmark = false;
+    public bool autoConfigured = false;
+    public string autoConfigVersion = "";
+}

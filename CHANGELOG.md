@@ -1,0 +1,24 @@
+## 1.0.0
+
+- **New:** DLSS 4 Super Resolution + DLAA support (NVIDIA RTX, DLL bundled)
+- **New:** FSR Temporal upscaling for any GPU (AMD, Intel, NVIDIA)
+- **New:** CAS sharpening pass
+- **New:** Anti-aliasing options — SMAA and FXAA (removed TAA to avoid temporal conflicts)
+- **New:** Quality presets — Potato, Low, Medium, High, Ultra, Custom
+- **New:** Auto-benchmark on first launch, targets monitor refresh rate
+- **New:** CPU vs GPU bottleneck detection — adjusts the right settings for each
+- **New:** Full graphics settings menu (replaces vanilla Graphics page)
+- **New:** Shadow quality, shadow distance, LOD bias, texture filtering, texture quality
+- **New:** Light distance, fog distance, draw distance controls
+- **New:** Post-processing toggles (motion blur, chromatic aberration, lens distortion, grain)
+- **New:** Per-layer fog culling for GPU savings
+- **New:** CPU performance optimizations — NonAlloc physics, cached components, GC reduction
+- **New:** GPU auto-detection (NVIDIA/AMD/Intel, VRAM, performance tier)
+- **New:** F10 toggle for vanilla comparison (fully reverts all mod changes)
+- **New:** Auto-tune can be triggered from the pause menu
+- **New:** Vanilla display settings (window mode, vsync, fps, gamma) preserved in menu
+- **Fixed:** Extraction point flicker
+- **Fixed:** Black screen when switching presets mid-level
+- **Fixed:** Flashlight shadows not disabling on Potato preset
+- **Fixed:** AA not applying correctly on preset switch
+- **Fixed:** Auto-benchmark running during loading screens and main menu

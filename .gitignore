@@ -1,0 +1,40 @@
+# Build output
+BuildZip/
+bin/
+obj/
+*.pdb
+*.nupkg
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+.idea/
+
+# Unity shader project artifacts
+UnityShaderProject/Library/
+UnityShaderProject/Temp/
+UnityShaderProject/Logs/
+UnityShaderProject/Build/
+UnityShaderProject/UserSettings/
+
+# Native build artifacts (keep source .cpp, ignore compiled)
+Native/*.obj
+Native/*.lib
+Native/*.exp
+Native/*.dll
+
+# NVIDIA proprietary (bundled at build time, not in source control)
+nvngx_dlss.dll
+
+# Generated build info
+BuildInfo.g.cs
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Affinity source / lock files
+*.afphoto
+*~lock~*
