@@ -423,13 +423,13 @@ internal static class Settings
 
     internal static int MinRenderScale(UpscaleMode mode) => mode switch
     {
-        UpscaleMode.DLSS => 33,           // Ultra Performance floor
+        UpscaleMode.DLSS => 33,           // DLSS hardware handles ultra-low scales
         UpscaleMode.DLAA => 100,          // native-res AA by definition
-        UpscaleMode.FSR4 => 33,           // FidelityFX Ultra Performance
-        UpscaleMode.FSR_Temporal => 33,   // temporal accumulation floor
-        UpscaleMode.FSR => 50,            // spatial-only — below 50% EASU breaks down
-        UpscaleMode.Off => 50,            // bilinear only — below 50% is unusable
-        _ => 25                           // Auto / unknown
+        UpscaleMode.FSR4 => 50,           // never below 50% for software upscalers
+        UpscaleMode.FSR_Temporal => 50,   // temporal accumulation needs enough input detail
+        UpscaleMode.FSR => 50,            // spatial-only EASU floor
+        UpscaleMode.Off => 100,           // no upscaler = native only
+        _ => 50                           // Auto / unknown — safe floor
     };
 
     private enum UpscaleTier { Budget, Quality, NativeAA }
@@ -662,6 +662,14 @@ internal static class Settings
                 upscaler = BestUpscaler(UpscaleTier.NativeAA);
                 aa = AAMode.Off;
             }
+        }
+
+        // No upscaler = no reconstruction. Sub-100% scale would be a raw
+        // bilinear blit — blurry AND slower on iGPU due to RT pipeline overhead.
+        if (upscaler == UpscaleMode.Off && scale < 100)
+        {
+            Plugin.Log.LogInfo($"Auto-tune: upscaler Off — forcing native render scale (was {scale}%)");
+            scale = 100;
         }
 
         Plugin.Log.LogInfo($"Auto-tune result: {upscaler} {scale}% AA={aa} shQ={shQ} shD={shD} " +

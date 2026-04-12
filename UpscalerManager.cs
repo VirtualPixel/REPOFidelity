@@ -121,6 +121,14 @@ internal class UpscalerManager : MonoBehaviour
             }
         }
 
+        // Defensive: if we ended up with no upscaler and sub-native scale,
+        // force native — this combination is always a net negative.
+        if (_upscaler == null && Settings.ResolvedRenderScale < 100)
+        {
+            Plugin.Log.LogWarning("No upscaler + sub-native scale — forcing native resolution");
+            Settings.ResolvedRenderScale = 100;
+        }
+
         bool hasScale = Settings.ResolvedRenderScale < 100;
         bool hasCAS = Settings.Sharpening > 0.01f;
         _needsProcessing = _upscaler != null || hasCAS || hasScale;
