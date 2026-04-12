@@ -491,16 +491,21 @@ internal class UpscalerManager : MonoBehaviour
         if (!_repoHdDetected && string.IsNullOrEmpty(_debugText)) return;
         EnsureGUIStyles();
 
+        float s = Screen.height / 1080f;
+        float pad = 10f * s;
+        float sh = 1f * s; // shadow offset
+        float lineH = 25f * s;
+        float wideW = Screen.width * 0.6f;
+
         if (_repoHdDetected)
         {
-            float y = Screen.height - 60f;
-            GUI.Label(new Rect(11, y + 1, 800, 30), "REPO HD detected — remove it, REPO Fidelity replaces it", _guiShadowWarn);
-            GUI.Label(new Rect(10, y, 800, 30), "REPO HD detected — remove it, REPO Fidelity replaces it", _guiStyleWarn);
+            float y = Screen.height - lineH * 2.5f;
+            GUI.Label(new Rect(pad + sh, y + sh, wideW, lineH), "REPO HD detected — remove it, REPO Fidelity replaces it", _guiShadowWarn);
+            GUI.Label(new Rect(pad, y, wideW, lineH), "REPO HD detected — remove it, REPO Fidelity replaces it", _guiStyleWarn);
         }
 
         if (string.IsNullOrEmpty(_debugText)) return;
 
-        // Benchmark overlay (always visible during benchmark)
         if (_benchmarkActive)
         {
             float duration = _autoBenchmark ? AutoBenchmarkDuration : BenchmarkDuration;
@@ -511,25 +516,25 @@ internal class UpscalerManager : MonoBehaviour
                 ? $"{label}... warming up ({remaining:F0}s)"
                 : $"{label}... {remaining:F0}s | {_benchmarkFrameTimes.Count} frames | {_currentFps:F0} FPS";
 
-            GUI.Label(new Rect(11, 41, 900, 35), benchText, _guiShadowLarge);
-            GUI.Label(new Rect(10, 40, 900, 35), benchText, _guiStyleLarge);
+            float by = pad + lineH + pad;
+            GUI.Label(new Rect(pad + sh, by + sh, wideW, lineH * 1.4f), benchText, _guiShadowLarge);
+            GUI.Label(new Rect(pad, by, wideW, lineH * 1.4f), benchText, _guiStyleLarge);
         }
 
-        // Show "MOD OFF" + FPS when disabled
         if (!Settings.ModEnabled)
         {
             string offText = $"REPO FIDELITY OFF ({Settings.ToggleKey}) | {_currentFps:F1} FPS ({_currentFrameTime:F1}ms)";
-            GUI.Label(new Rect(11, 11, 800, 30), offText, _guiShadowMed);
-            GUI.Label(new Rect(10, 10, 800, 30), offText, _guiStyleMed);
+            GUI.Label(new Rect(pad + sh, pad + sh, wideW, lineH), offText, _guiShadowMed);
+            GUI.Label(new Rect(pad, pad, wideW, lineH), offText, _guiStyleMed);
             return;
         }
 
         if (!Settings.DebugOverlay) return;
 
-        GUI.Label(new Rect(11, 11, 1200, 30), _debugText, _guiShadowSmall);
-        GUI.Label(new Rect(10, 10, 1200, 30), _debugText, _guiStyleSmall);
-        GUI.Label(new Rect(11, 31, 1200, 30), _debugText2, _guiShadowSmall);
-        GUI.Label(new Rect(10, 30, 1200, 30), _debugText2, _guiStyleSmall);
+        GUI.Label(new Rect(pad + sh, pad + sh, wideW, lineH), _debugText, _guiShadowSmall);
+        GUI.Label(new Rect(pad, pad, wideW, lineH), _debugText, _guiStyleSmall);
+        GUI.Label(new Rect(pad + sh, pad + lineH + sh, wideW, lineH), _debugText2, _guiShadowSmall);
+        GUI.Label(new Rect(pad, pad + lineH, wideW, lineH), _debugText2, _guiStyleSmall);
     }
 
     private void HandleResolutionChange()
