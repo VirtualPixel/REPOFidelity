@@ -252,7 +252,6 @@ internal static class Settings
         AnimatedLightShadows,
     }
 
-    // resolved values (computed from preset or custom)
     internal static UpscaleMode ResolvedUpscaleMode;
     internal static int ResolvedRenderScale;
     internal static AAMode ResolvedAAMode;
@@ -301,7 +300,6 @@ internal static class Settings
         _file.NotifyChanged();
     }
 
-    // call this when a non-preset setting changes to auto-switch to Custom
     private static void OnSettingTweaked()
     {
         if (!_initComplete) return;
@@ -313,7 +311,6 @@ internal static class Settings
         _file.NotifyChanged();
     }
 
-    // suppress save/notify during batch updates (preset apply, auto-tune, etc.)
     internal static void BatchUpdate(Action action)
     {
         _file.SuppressEvents(action);
@@ -529,7 +526,6 @@ internal static class Settings
         }
     }
 
-    // auto-tune: target refresh rate, adjusts for CPU vs GPU bottleneck
     internal static void AutoSelectPreset(float avgFps, bool cpuBound = false)
     {
         float target = Mathf.Max(Screen.currentResolution.refreshRate, 60f) * 1.05f;
@@ -545,9 +541,8 @@ internal static class Settings
         var tex = TextureRes.Full;
 
         // pick upscaler based on bottleneck
-        // CPU-bound: no temporal upscaling — it adds CPU overhead for zero FPS gain.
-        // use SMAA instead (edge-based, cheap on both sides).
-        // GPU-bound: temporal upscaler helps by reducing fill rate.
+        // CPU-bound: temporal upscaling adds CPU overhead for zero gain, use SMAA.
+        // GPU-bound: temporal upscaler reduces fill rate.
         UpscaleMode upscaler;
         AAMode aa;
 

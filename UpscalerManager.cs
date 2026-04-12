@@ -158,7 +158,7 @@ internal class UpscalerManager : MonoBehaviour
 
 
 
-        Plugin.Log.LogInfo("Passthrough: rendering at native resolution, no processing");
+        Plugin.Log.LogInfo("Passthrough mode");
     }
 
     private void SetupNativeScaling(RenderTextureMain rtMain)
@@ -168,7 +168,7 @@ internal class UpscalerManager : MonoBehaviour
 
 
 
-        Plugin.Log.LogInfo("NativeScaling: game handles RT sizing, CAS via temp RT");
+        Plugin.Log.LogInfo("NativeScaling mode");
     }
 
     private void SetupUpscaler(RenderTextureMain rtMain, Camera camera)
@@ -247,9 +247,7 @@ internal class UpscalerManager : MonoBehaviour
             return;
         }
 
-        // Upscaler tier below this point
-
-        // Ensure camera targets our RT (game may redirect it back to renderTexture)
+        // game may redirect camera back to renderTexture
         if (_camera != null && _outputRT != null && _camera.targetTexture != _outputRT)
             _camera.targetTexture = _outputRT;
 
@@ -355,7 +353,6 @@ internal class UpscalerManager : MonoBehaviour
             }
         }
 
-        // Only track FPS when debug overlay is visible, mod is disabled (shows OFF text), or benchmark is active
         if (Settings.DebugOverlay || !Settings.ModEnabled || _benchmarkActive)
         {
             _fpsTimer += Time.unscaledDeltaTime;
@@ -391,7 +388,6 @@ internal class UpscalerManager : MonoBehaviour
         // Auto-benchmark on first boot — only in actual gameplay levels.
         // Uses RunManager API to distinguish lobby from gameplay (same pattern as SharedUpgradesPlus).
         // Wait 10s after level load for loading screen and asset streaming to finish.
-        // cancel any stale benchmark if we're not in a real level
         if (_benchmarkActive && !IsInGameplayLevel())
         {
             _benchmarkActive = false;
@@ -450,7 +446,7 @@ internal class UpscalerManager : MonoBehaviour
         }
     }
 
-    // Cached GUIStyles — avoid heap allocation every OnGUI frame
+    // cached to avoid alloc in OnGUI
     private GUIStyle? _guiStyleLarge, _guiShadowLarge;
     private GUIStyle? _guiStyleMed, _guiShadowMed;
     private GUIStyle? _guiStyleSmall, _guiShadowSmall;
@@ -661,7 +657,6 @@ internal class UpscalerManager : MonoBehaviour
         }
         finally
         {
-            // Always restore VSync and clean up benchmark state
             QualitySettings.vSyncCount = _benchmarkVsyncPrev;
             if (_autoBenchmark) _autoBenchmark = false;
             _benchmarkActive = false;
