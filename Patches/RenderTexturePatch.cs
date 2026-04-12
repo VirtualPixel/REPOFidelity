@@ -103,8 +103,8 @@ internal static class RenderTexturePatch
             }
             else
             {
-                __instance.textureWidth = Screen.width;
-                __instance.textureHeight = Screen.height;
+                __instance.textureWidth = outW;
+                __instance.textureHeight = outH;
             }
         }
     }

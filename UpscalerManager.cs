@@ -526,13 +526,8 @@ internal class UpscalerManager : MonoBehaviour
 
     private void HandleResolutionChange()
     {
-        // Passthrough: nothing to do
-        if (CurrentTier == RenderTier.Passthrough) return;
+        if (CurrentTier != RenderTier.Upscaler) return;
 
-        // NativeScaling: nothing needed — PrefixUpdate handles game RT sizing
-        if (CurrentTier == RenderTier.NativeScaling) return;
-
-        // Upscaler tier: recalculate input dimensions and recreate RTs
         float scale = RenderTexturePatch.GetRenderScale();
         _inputWidth = Mathf.Max(Mathf.RoundToInt(_outputWidth * scale), 1);
         _inputHeight = Mathf.Max(Mathf.RoundToInt(_outputHeight * scale), 1);

@@ -21,20 +21,16 @@ internal static class Settings
         get => (QualityPreset)D.preset;
         set { D.preset = (int)value; _file.Save(); OnChanged(); }
     }
-    internal static int ResolutionWidth
+    internal static int OutputWidth
     {
         get => D.resWidth > 0 ? D.resWidth : Screen.width;
-        set { D.resWidth = value; _file.Save(); }
+        set { D.resWidth = value; _file.Save(); OnChanged(); }
     }
-    internal static int ResolutionHeight
+    internal static int OutputHeight
     {
         get => D.resHeight > 0 ? D.resHeight : Screen.height;
-        set { D.resHeight = value; _file.Save(); }
+        set { D.resHeight = value; _file.Save(); OnChanged(); }
     }
-
-    // the output resolution everything renders to (selected res or screen native)
-    internal static int OutputWidth => ResolutionWidth;
-    internal static int OutputHeight => ResolutionHeight;
 
     internal static UpscaleMode UpscaleModeSetting
     {
@@ -477,7 +473,10 @@ internal static class Settings
             results.Add(key);
         }
 
-        // sort descending by width
+        string nativeKey = $"{native.width}x{native.height}";
+        if (!seen.Contains(nativeKey))
+            results.Add(nativeKey);
+
         results.Sort((a, b) =>
         {
             int wa = int.Parse(a.Split('x')[0]);
@@ -485,12 +484,6 @@ internal static class Settings
             return wb.CompareTo(wa);
         });
 
-        // make sure native is always included
-        string nativeKey = $"{native.width}x{native.height}";
-        if (!seen.Contains(nativeKey))
-            results.Insert(0, nativeKey);
-
-        // find current selection
         string current = $"{OutputWidth}x{OutputHeight}";
         currentIndex = results.IndexOf(current);
         if (currentIndex < 0) currentIndex = 0;
@@ -504,13 +497,14 @@ internal static class Settings
         if (parts.Length != 2) return;
         int w = int.Parse(parts[0]);
         int h = int.Parse(parts[1]);
-        ResolutionWidth = w;
-        ResolutionHeight = h;
+        D.resWidth = w;
+        D.resHeight = h;
+        _file.Save();
 
-        bool fullscreen = Screen.fullScreen;
-        Screen.SetResolution(w, h, fullscreen);
+        Screen.SetResolution(w, h, Screen.fullScreen);
+        OnChanged();
 
-        Plugin.Log.LogInfo($"Resolution set to {w}x{h} (fullscreen={fullscreen})");
+        Plugin.Log.LogInfo($"Resolution: {w}x{h}");
     }
 
     internal static int MinRenderScale(UpscaleMode mode) => mode switch
