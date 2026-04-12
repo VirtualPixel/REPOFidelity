@@ -82,27 +82,24 @@ internal static class RenderTexturePatch
         if (!Settings.ModEnabled) return;
         if (Settings.Pixelation) return;
 
-        var manager = UpscalerManager.Instance;
-        if (manager != null && manager.CurrentTier == UpscalerManager.RenderTier.Upscaler)
-        {
-            // textureWidthOriginal = display size (UI layout depends on this)
-            // textureWidth = render size (OnScreen() uses this)
-            __instance.textureWidthOriginal = Screen.width;
-            __instance.textureHeightOriginal = Screen.height;
-            var gameRT = __instance.renderTexture;
-            if (gameRT != null)
-            {
-                __instance.textureWidth = gameRT.width;
-                __instance.textureHeight = gameRT.height;
-            }
-            return;
-        }
-
-        // Passthrough and NativeScaling: game RT at native res
         __instance.textureWidthOriginal = Screen.width;
         __instance.textureHeightOriginal = Screen.height;
-        __instance.textureWidth = Screen.width;
-        __instance.textureHeight = Screen.height;
+
+        // textureWidth tracks what the camera actually renders to (for OnScreen() calcs)
+        if (__instance.cameras.Count > 0)
+        {
+            var target = __instance.cameras[0].targetTexture;
+            if (target != null)
+            {
+                __instance.textureWidth = target.width;
+                __instance.textureHeight = target.height;
+            }
+            else
+            {
+                __instance.textureWidth = Screen.width;
+                __instance.textureHeight = Screen.height;
+            }
+        }
     }
 
     internal static void RestoreVanillaCameraSettings()
