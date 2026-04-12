@@ -110,16 +110,16 @@ Surface detail on the vase and sharper edges on the clown figure. Shadows render
 
 ## Presets
 
-All presets adapt to your hardware. CPU-bound machines keep 100% render scale and sharp AA since dropping resolution wouldn't help FPS anyway.
+All presets adapt to your hardware. CPU-bound machines keep 100% render scale since dropping resolution wouldn't help FPS anyway. Potato through Medium use the game's native render system with zero pipeline overhead — upscalers only activate at High and above.
 
-| Preset | What it does |
-|--------|-------------|
-| **Potato** | Strips shadows, lighting, effects. Maximum FPS for struggling hardware |
-| **Low** | Minimal quality with SMAA. Playable on old hardware |
-| **Medium** | Vanilla-equivalent quality with SMAA and medium shadows |
-| **High** | Above vanilla. DLAA on NVIDIA, extended shadows and lighting |
-| **Ultra** | Maximum quality. DLAA, Ultra shadows at 150m, full lighting range |
-| **Custom** | Tweak everything individually. Per-setting performance toggles |
+| Preset | Render Scale | AA | Shadows | Target |
+|--------|-------------|-----|---------|--------|
+| **Potato** | 50% | Off | Low / 10m | Faster than vanilla. Cuts everything for max FPS |
+| **Low** | 50% | SMAA | Low / 20m | Near-vanilla FPS with cleaner image |
+| **Medium** | 75% | SMAA | Med / 30m | Big visual upgrade, no upscaler overhead |
+| **High** | 75–100% | DLSS/FSR | High / 85m | Premium. Upscaler handles AA |
+| **Ultra** | 100% | DLAA/FSR | Ultra / 150m | Maxed everything |
+| **Custom** | Any | Any | Any | Tweak individually. Per-setting perf toggles |
 
 ## Settings
 
@@ -129,13 +129,13 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 |---|---|---|---|
 | Preset | Potato–Custom | Auto | Quality level, auto-detected on first launch |
 | Upscaler | DLSS / FSR / Off | Auto | DLSS on NVIDIA, FSR on AMD/Intel, Off if CPU-bound |
-| Render Scale | 50–100% | 100% | Internal resolution before upscaling |
+| Render Scale | 33–100% | 100% | Internal resolution (50% min for FSR/Off, 33% for DLSS) |
 | Anti-Aliasing | SMAA / FXAA / Off | SMAA | Post-process AA (disabled when upscaler provides AA) |
 | Shadow Quality | Off / Low / Med / High / Ultra | Varies | Shadow map resolution |
 | Shadow Distance | 5–200m | Varies | Max shadow render distance |
 | Pixel Lights | 1–16 | Varies | Per-object dynamic lights |
 | LOD Bias | 0.5–4.0 | Varies | Level of detail distance |
-| Texture Quality | Full / Half / Quarter | Full | Mipmap bias |
+| Texture Quality | Full | Full | Always full (R.E.P.O. textures are too small for lower mips to help) |
 | Anisotropic Filtering | Off / 4x / 8x / 16x | 8x | Texture sharpness at angles |
 | Light Distance | 10–100m | 50m | Max light render range |
 | Fog Distance | 1.0–1.1x | 1.0x | Fog end distance multiplier |
