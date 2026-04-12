@@ -396,7 +396,11 @@ internal static class Settings
     {
         _file.SuppressEvents(() =>
         {
-            D.upscaler = (int)ResolvedUpscaleMode;
+            // Write the user-facing upscaler (not resolved) so DLSS at 100%
+            // doesn't permanently lock to DLAA when the user lowers the slider.
+            var userUpscaler = ResolvedUpscaleMode == UpscaleMode.DLAA
+                ? UpscaleMode.DLSS : ResolvedUpscaleMode;
+            D.upscaler = (int)userUpscaler;
             D.renderScale = ResolvedRenderScale;
             D.aaMode = (int)ResolvedAAMode;
             D.shadowQuality = (int)ResolvedShadowQuality;
@@ -410,7 +414,7 @@ internal static class Settings
             {
                 QualityPreset.Potato => 0f,
                 QualityPreset.Low => 0f,
-                QualityPreset.Medium => 0.6f,
+                QualityPreset.Medium => 0f,  // no upscaler at Medium, CAS not needed
                 QualityPreset.High => 0.5f,
                 QualityPreset.Ultra => 0.3f,
                 _ => D.sharpening
@@ -458,11 +462,10 @@ internal static class Settings
                 ResolvedUpscaleMode = UpscaleMode.Off;
                 ResolvedRenderScale = cpu ? 100 : 50;
                 ResolvedAAMode = AAMode.Off;
-                ResolvedTextureQuality = cpu ? TextureRes.Full : TextureRes.Quarter;
                 ResolvedShadowQuality = ShadowQuality.Low; ResolvedShadowDistance = 10f;
                 ResolvedLODBias = 0.5f; ResolvedPixelLightCount = 2;
                 ResolvedLightDistance = 10f; ResolvedFogMultiplier = 1f; ResolvedViewDistance = 0f;
-                ResolvedAnisotropicFiltering = 2;
+                ResolvedAnisotropicFiltering = 2; ResolvedTextureQuality = TextureRes.Full;
                 break;
             case QualityPreset.Low:
                 // same 50% res as Potato but SMAA + better shadows/LOD/lights.
@@ -470,11 +473,10 @@ internal static class Settings
                 ResolvedUpscaleMode = UpscaleMode.Off;
                 ResolvedRenderScale = cpu ? 100 : 50;
                 ResolvedAAMode = AAMode.SMAA;
-                ResolvedTextureQuality = cpu ? TextureRes.Full : TextureRes.Half;
                 ResolvedShadowQuality = ShadowQuality.Low; ResolvedShadowDistance = 20f;
                 ResolvedLODBias = 1f; ResolvedPixelLightCount = 4;
                 ResolvedLightDistance = 20f; ResolvedFogMultiplier = 1f; ResolvedViewDistance = 0f;
-                ResolvedAnisotropicFiltering = 4;
+                ResolvedAnisotropicFiltering = 4; ResolvedTextureQuality = TextureRes.Full;
                 break;
             case QualityPreset.Medium:
                 // 75% + SMAA. Big visual jump. No upscaler pipeline.
@@ -625,7 +627,7 @@ internal static class Settings
             if (budget < 0.8f)
             {
                 shQ = ShadowQuality.Low; shD = 25f; lights = 4; lDist = 15f;
-                af = 4; lod = 1f; tex = TextureRes.Half;
+                af = 4; lod = 1f;
                 scale = Mathf.Clamp(Mathf.RoundToInt(scale * 0.8f), minScale, 100);
             }
 
@@ -635,7 +637,7 @@ internal static class Settings
                 minScale = MinRenderScale(upscaler);
                 scale = Mathf.Clamp(Mathf.RoundToInt(scale * 0.7f), minScale, 100);
                 shQ = ShadowQuality.Low; shD = 10f; lights = 2; lDist = 10f;
-                af = 2; lod = 0.5f; tex = TextureRes.Quarter;
+                af = 2; lod = 0.5f;
                 aa = AAMode.Off;
                 sharp = 0f;
             }
