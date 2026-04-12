@@ -481,7 +481,7 @@ internal static class Settings
         {
             int wa = int.Parse(a.Split('x')[0]);
             int wb = int.Parse(b.Split('x')[0]);
-            return wb.CompareTo(wa);
+            return wa.CompareTo(wb);
         });
 
         string current = $"{OutputWidth}x{OutputHeight}";
