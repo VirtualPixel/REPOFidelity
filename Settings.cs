@@ -454,36 +454,25 @@ internal static class Settings
         switch (preset)
         {
             case QualityPreset.Potato:
-                if (cpu)
-                {
-                    ResolvedUpscaleMode = UpscaleMode.Off;
-                    ResolvedRenderScale = 100; ResolvedAAMode = AAMode.Off;
-                    ResolvedTextureQuality = TextureRes.Full;
-                }
-                else
-                {
-                    ResolvedUpscaleMode = BestUpscaler(UpscaleTier.Budget);
-                    ResolvedRenderScale = MinRenderScale(ResolvedUpscaleMode); ResolvedAAMode = AAMode.Off;
-                    ResolvedTextureQuality = TextureRes.Quarter;
-                }
+                // CPU and GPU paths converge for Potato — no upscaler, no AA.
+                // iGPU can't benefit from temporal upscaling (shader overhead > fill savings)
+                // and even SMAA costs measurable frames at this tier.
+                ResolvedUpscaleMode = UpscaleMode.Off;
+                ResolvedRenderScale = 100;
+                ResolvedAAMode = AAMode.Off;
+                ResolvedTextureQuality = cpu ? TextureRes.Full : TextureRes.Quarter;
                 ResolvedShadowQuality = ShadowQuality.Low; ResolvedShadowDistance = 10f;
                 ResolvedLODBias = 0.5f; ResolvedPixelLightCount = 2;
                 ResolvedLightDistance = 10f; ResolvedFogMultiplier = 1f; ResolvedViewDistance = 0f;
                 ResolvedAnisotropicFiltering = 2;
                 break;
             case QualityPreset.Low:
-                if (cpu)
-                {
-                    ResolvedUpscaleMode = UpscaleMode.Off;
-                    ResolvedRenderScale = 100; ResolvedAAMode = AAMode.SMAA;
-                    ResolvedTextureQuality = TextureRes.Full;
-                }
-                else
-                {
-                    ResolvedUpscaleMode = BestUpscaler(UpscaleTier.Budget);
-                    ResolvedRenderScale = 50; ResolvedAAMode = AAMode.Off;
-                    ResolvedTextureQuality = TextureRes.Half;
-                }
+                // No upscaler at Low tier — SMAA provides cheap edge AA at native res.
+                // Better visuals than upscaling at sub-native on limited hardware.
+                ResolvedUpscaleMode = UpscaleMode.Off;
+                ResolvedRenderScale = 100;
+                ResolvedAAMode = AAMode.SMAA;
+                ResolvedTextureQuality = cpu ? TextureRes.Full : TextureRes.Half;
                 ResolvedShadowQuality = ShadowQuality.Low; ResolvedShadowDistance = 20f;
                 ResolvedLODBias = 1f; ResolvedPixelLightCount = 3;
                 ResolvedLightDistance = 15f; ResolvedFogMultiplier = 1f; ResolvedViewDistance = 0f;
