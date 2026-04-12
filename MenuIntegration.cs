@@ -124,8 +124,9 @@ internal static class MenuIntegration
 
         // Quality
         AddLabel("Quality");
+        var presetNames = new[] { "Auto", "Potato", "Low", "Medium", "High", "Ultra", "Custom" };
         AddStringSlider("Quality Preset", "Sets all options below",
-            Enum.GetNames(typeof(QualityPreset)), Settings.Preset.ToString(),
+            presetNames, Settings.Preset.ToString(),
             s => { if (!_syncing) Settings.Preset = Enum.Parse<QualityPreset>(s); }, out _presetSlider);
 
         // Upscaling

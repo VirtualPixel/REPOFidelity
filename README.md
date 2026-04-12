@@ -102,11 +102,11 @@ Surface detail on the vase and sharper edges on the clown figure. Shadows render
 - All optimizations scale with preset — Ultra keeps full visual quality
 
 **Smart Auto-Benchmark**
-- Runs on first launch, picks settings for your refresh rate
+- Runs on first launch, stores results in `autotune.json` — separate from your settings
+- Re-runs automatically when the mod updates or your hardware/resolution changes
 - Detects CPU vs GPU bottleneck — won't waste visual quality on settings that can't help
-- CPU-bound machines keep native resolution instead of pointlessly upscaling
-- NVIDIA gets DLSS/DLAA automatically, everyone else gets SMAA
-- Re-run anytime from the settings menu
+- "Auto" preset uses the benchmarked profile. Other presets are never touched by auto-tune.
+- Re-run manually anytime from the settings menu
 
 ## Presets
 
@@ -114,6 +114,7 @@ All presets adapt to your hardware. CPU-bound machines keep 100% render scale si
 
 | Preset | Render Scale | AA | Shadows | Target |
 |--------|-------------|-----|---------|--------|
+| **Auto** | Benchmarked | Benchmarked | Benchmarked | Auto-tuned for your hardware. Re-runs on mod update or hardware change |
 | **Potato** | 50% | Off | Low / 10m | Faster than vanilla. Cuts everything for max FPS |
 | **Low** | 50% | SMAA | Low / 20m | Near-vanilla FPS with cleaner image |
 | **Medium** | 75% | SMAA | Med / 30m | Big visual upgrade, no upscaler overhead |
@@ -127,7 +128,7 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 
 | Setting | Range | Default | Description |
 |---|---|---|---|
-| Preset | Potato–Custom | Auto | Quality level, auto-detected on first launch |
+| Preset | Auto–Custom | Auto | Quality level. Auto uses benchmarked profile |
 | Upscaler | DLSS / FSR / Off | Auto | DLSS on NVIDIA, FSR on AMD/Intel, Off if CPU-bound |
 | Render Scale | 33–100% | 100% | Internal resolution (50% min for FSR/Off, 33% for DLSS) |
 | Anti-Aliasing | SMAA / FXAA / Off | SMAA | Post-process AA (disabled when upscaler provides AA) |

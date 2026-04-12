@@ -395,14 +395,14 @@ internal class UpscalerManager : MonoBehaviour
             QualitySettings.vSyncCount = _benchmarkVsyncPrev;
         }
 
-        if (!Settings.AutoConfigured && !_benchmarkActive && !_autoBenchmark
+        if (Settings.AutoTuneNeedsBenchmark && !_benchmarkActive && !_autoBenchmark
             && _vanillaSaved && IsInGameplayLevel()
             && LevelGenerator.Instance != null && LevelGenerator.Instance.Generated
             && Time.unscaledTime - _lastEnvironmentSetupTime >= 10f)
         {
             _autoBenchmark = true;
             StartBenchmark();
-            Plugin.Log.LogInfo("=== AUTO-BENCHMARK: detecting best preset ===");
+            Plugin.Log.LogInfo("=== AUTO-BENCHMARK: autotune profile stale, re-detecting ===");
         }
 
         // Manual benchmark
@@ -652,7 +652,6 @@ internal class UpscalerManager : MonoBehaviour
             float tuningFps = low1Fps * ThermalSafetyFactor;
             Plugin.Log.LogInfo($"  Tuning target: {tuningFps:F1} FPS (1% low x {ThermalSafetyFactor} thermal safety)");
 
-            Settings.CpuBound = cpuBound;
             Settings.AutoSelectPreset(tuningFps, cpuBound);
         }
         finally

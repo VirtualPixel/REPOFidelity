@@ -65,10 +65,40 @@ internal class SettingsFile
 }
 
 [Serializable]
+internal class AutoTuneData
+{
+    public string version = "";
+    public string gpuName = "";
+    public int resWidth;
+    public int resHeight;
+    public bool cpuBound;
+
+    public int upscaler = (int)UpscaleMode.Auto;
+    public int renderScale = 100;
+    public float sharpening = 0.3f;
+    public int aaMode = (int)AAMode.Off;
+    public int shadowQuality = (int)ShadowQuality.Ultra;
+    public float shadowDistance = 150f;
+    public float lodBias = 4f;
+    public int pixelLightCount = 16;
+    public float lightDistance = 75f;
+    public float fogMultiplier = 1.1f;
+    public float viewDistance = 0f;
+    public int anisotropicFiltering = 16;
+
+    internal bool IsStale()
+    {
+        return version != BuildInfo.Version
+            || gpuName != SystemInfo.graphicsDeviceName
+            || (resWidth > 0 && (resWidth != Screen.width || resHeight != Screen.height));
+    }
+}
+
+[Serializable]
 internal class SettingsData
 {
-    // preset
-    public int preset = (int)QualityPreset.High;
+    // preset — default to Auto so first-time users get auto-tuned
+    public int preset = (int)QualityPreset.Auto;
 
     // upscaling
     public int upscaler = (int)UpscaleMode.Auto;

@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace REPOFidelity;
 
-internal enum QualityPreset { Potato, Low, Medium, High, Ultra, Custom }
+internal enum QualityPreset { Potato, Low, Medium, High, Ultra, Custom, Auto }
 internal enum UpscaleMode { Auto, DLAA, DLSS, FSR4, FSR_Temporal, FSR, Off }
 internal enum AAMode { Auto, TAA, SMAA, FXAA, Off }
 internal enum ShadowQuality { Low, Medium, High, Ultra }
@@ -134,35 +134,16 @@ internal static class Settings
     }
     internal static bool AutoConfigured
     {
-        get => D.autoConfigured
-            && D.autoConfigVersion == BuildInfo.Version
-            && (D.benchResWidth == 0 || (D.benchResWidth == Screen.width && D.benchResHeight == Screen.height));
-        set
-        {
-            D.autoConfigured = value;
-            if (value)
-            {
-                D.autoConfigVersion = BuildInfo.Version;
-                D.benchResWidth = Screen.width;
-                D.benchResHeight = Screen.height;
-            }
-            _file.Save();
-        }
+        get => !_autoTune.IsStale();
+        set { } // staleness is determined by autotune.json, not a flag
     }
 
     internal static bool ModEnabled = true;
 
     internal static bool CpuBound
     {
-        get
-        {
-            // if resolution changed since benchmark, the result is stale —
-            // default to true (CPU-bound is the safe assumption)
-            if (D.benchResWidth > 0 && (D.benchResWidth != Screen.width || D.benchResHeight != Screen.height))
-                return true;
-            return D.cpuBound;
-        }
-        set { D.cpuBound = value; _file.Save(); }
+        get => _autoTune.IsStale() ? true : _autoTune.cpuBound;
+        set { _autoTune.cpuBound = value; }
     }
 
     // per-optimization toggles for Custom preset. -1 = auto (follow preset logic)
@@ -267,16 +248,60 @@ internal static class Settings
 
     internal static event Action? OnSettingsChanged;
 
+    // auto-tune profile — separate from user settings
+    private static AutoTuneData _autoTune = new();
+    private static string _autoTunePath = "";
+
+    internal static bool AutoTuneNeedsBenchmark => _autoTune.IsStale();
+
     internal static void Init()
     {
         string dir = Path.GetDirectoryName(
             System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "";
         _file = new SettingsFile(Path.Combine(dir, "settings.json"));
         _file.Changed += () => { ResolveAutoDefaults(); OnSettingsChanged?.Invoke(); };
-        _initComplete = true;
 
-        // migrate old BepInEx config if it exists and we have no settings yet
+        // load auto-tune profile
+        _autoTunePath = Path.Combine(dir, "autotune.json");
+        LoadAutoTune();
+
+        _initComplete = true;
         MigrateOldConfig(dir);
+    }
+
+    private static void LoadAutoTune()
+    {
+        if (!File.Exists(_autoTunePath)) return;
+        try
+        {
+            var loaded = JsonUtility.FromJson<AutoTuneData>(File.ReadAllText(_autoTunePath));
+            if (loaded != null) _autoTune = loaded;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.LogWarning($"Failed to load autotune: {ex.Message}");
+        }
+    }
+
+    internal static void SaveAutoTune(AutoTuneData data)
+    {
+        _autoTune = data;
+        try
+        {
+            File.WriteAllText(_autoTunePath, JsonUtility.ToJson(data, true));
+            Plugin.Log.LogInfo("Auto-tune profile saved");
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.LogWarning($"Failed to save autotune: {ex.Message}");
+        }
+
+        // if user is on Auto, apply immediately
+        if (Preset == QualityPreset.Auto)
+        {
+            ResolveAutoDefaults();
+            OnSettingsChanged?.Invoke();
+        }
     }
 
     private static void MigrateOldConfig(string pluginDir)
@@ -411,9 +436,10 @@ internal static class Settings
             {
                 QualityPreset.Potato => 0f,
                 QualityPreset.Low => 0f,
-                QualityPreset.Medium => 0f,  // no upscaler at Medium, CAS not needed
+                QualityPreset.Medium => 0f,
                 QualityPreset.High => 0.5f,
                 QualityPreset.Ultra => 0.3f,
+                QualityPreset.Auto => _autoTune.sharpening,
                 _ => D.sharpening
             };
             D.anisotropicFiltering = ResolvedAnisotropicFiltering;
@@ -523,7 +549,35 @@ internal static class Settings
                 ResolvedLightDistance = 75f; ResolvedFogMultiplier = 1.1f; ResolvedViewDistance = 0f;
                 ResolvedAnisotropicFiltering = 16; ResolvedTextureQuality = TextureRes.Full;
                 break;
+            case QualityPreset.Auto:
+                ApplyAutoTune();
+                break;
         }
+    }
+
+    private static void ApplyAutoTune()
+    {
+        if (_autoTune.IsStale())
+        {
+            // no valid autotune yet — fall back to High until benchmark runs
+            Plugin.Log.LogInfo("Auto: no valid autotune profile, using High as fallback");
+            ApplyPreset(QualityPreset.High);
+            return;
+        }
+
+        var at = _autoTune;
+        ResolvedUpscaleMode = (UpscaleMode)at.upscaler;
+        ResolvedRenderScale = at.renderScale;
+        ResolvedAAMode = (AAMode)at.aaMode;
+        ResolvedShadowQuality = (ShadowQuality)at.shadowQuality;
+        ResolvedShadowDistance = at.shadowDistance;
+        ResolvedLODBias = at.lodBias;
+        ResolvedPixelLightCount = at.pixelLightCount;
+        ResolvedLightDistance = at.lightDistance;
+        ResolvedFogMultiplier = at.fogMultiplier;
+        ResolvedViewDistance = at.viewDistance;
+        ResolvedAnisotropicFiltering = at.anisotropicFiltering;
+        ResolvedTextureQuality = TextureRes.Full;
     }
 
     internal static void AutoSelectPreset(float avgFps, bool cpuBound = false)
@@ -647,26 +701,25 @@ internal static class Settings
         Plugin.Log.LogInfo($"Auto-tune result: {upscaler} {scale}% AA={aa} shQ={shQ} shD={shD} " +
             $"lod={lod} lights={lights} lDist={lDist} af={af} tex={tex} fog={fog}");
 
-        BatchUpdate(() =>
+        // write to autotune profile — never touches user settings
+        SaveAutoTune(new AutoTuneData
         {
-            D.upscaler = (int)upscaler;
-            D.renderScale = scale;
-            D.sharpening = sharp;
-            D.shadowQuality = (int)shQ;
-            D.shadowDistance = shD;
-            D.lodBias = lod;
-            D.pixelLightCount = lights;
-            D.lightDistance = lDist;
-            D.anisotropicFiltering = af;
-            D.textureQuality = (int)tex;
-            D.fogMultiplier = fog;
-            D.aaMode = (int)aa;
-            D.cpuBound = cpuBound;
-            D.preset = (int)QualityPreset.Custom;
-            D.autoConfigured = true;
-            D.autoConfigVersion = BuildInfo.Version;
-            D.benchResWidth = Screen.width;
-            D.benchResHeight = Screen.height;
+            version = BuildInfo.Version,
+            gpuName = SystemInfo.graphicsDeviceName ?? "",
+            resWidth = Screen.width,
+            resHeight = Screen.height,
+            cpuBound = cpuBound,
+            upscaler = (int)upscaler,
+            renderScale = scale,
+            sharpening = sharp,
+            aaMode = (int)aa,
+            shadowQuality = (int)shQ,
+            shadowDistance = shD,
+            lodBias = lod,
+            pixelLightCount = lights,
+            lightDistance = lDist,
+            fogMultiplier = fog,
+            anisotropicFiltering = af,
         });
 
         float Rebudget()
