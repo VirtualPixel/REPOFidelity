@@ -40,7 +40,7 @@ internal static class Settings
     internal static int RenderScale
     {
         get => D.renderScale;
-        set { D.renderScale = Mathf.Clamp(value, 15, 100); _file.Save(); OnSettingTweaked(); }
+        set { D.renderScale = Mathf.Clamp(value, 33, 100); _file.Save(); OnSettingTweaked(); }
     }
     internal static float Sharpening
     {

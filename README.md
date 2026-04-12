@@ -137,7 +137,7 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 | Shadow Distance | 5–200m | Varies | Max shadow render distance |
 | Pixel Lights | 1–16 | Varies | Per-object dynamic lights |
 | LOD Bias | 0.5–4.0 | Varies | Level of detail distance |
-| Texture Quality | Full | Full | Always full (R.E.P.O. textures are too small for lower mips to help) |
+| Texture Quality | Full | Full | Locked to full — R.E.P.O.'s textures are too small for mip reduction to matter |
 | Anisotropic Filtering | Off / 4x / 8x / 16x | 8x | Texture sharpness at angles |
 | Light Distance | 10–100m | 50m | Max light render range |
 | Fog Distance | 1.0–1.1x | 1.0x | Fog end distance multiplier |

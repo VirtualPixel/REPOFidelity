@@ -1,15 +1,17 @@
 ## 1.1.0
 
-- **New resolution selector** — filters to your monitor's aspect ratio, sensible options from 720p to native. Render scale upscales to the selected resolution.
-- **New "Auto" preset** — auto-tuned settings stored in a separate `autotune.json` profile. Re-benchmarks automatically on mod update or hardware change. Selecting other presets won't get overwritten by auto-tune anymore.
-- **Reworked presets** — Potato and Low now run at 50% render scale through the game's native RT system (zero pipeline overhead). Potato should be faster than vanilla. Medium bumped to 75% with SMAA. Upscalers (DLSS/FSR) only kick in at High and above.
-- **Fixed iGPU performance** — auto-tune no longer gives broken settings on integrated GPUs. Previously produced upscaler=Off at 50% which ran through the full custom RT pipeline for a blurry bilinear blit. Now routes through the game's own scaling.
-- **Reduced render pipeline overhead** — eliminated two of three custom render textures for the upscaler path. Non-upscaler presets use zero custom RTs.
-- **Depth texture is conditional** — only generated when a temporal upscaler (DLSS/FSR) actually needs it. Saves GPU bandwidth on iGPUs.
-- **FPS counter only runs when visible** — debug overlay off = no per-frame string building.
-- **Fixed DLSS render scale slider** getting stuck at 100% after preset switch. DLSS at 100% auto-promotes to DLAA, but the underlying setting now stays as DLSS so the slider still works.
-- **Textures always Full** — R.E.P.O.'s textures are small enough that Half/Quarter gave no measurable FPS gain. Removed the quality hit.
-- **FSR minimum render scale raised to 50%** — below that the temporal accumulation produces unacceptable quality.
+- Added resolution selector — shows resolutions matching your monitor's aspect ratio, from 720p up to native. Render scale works relative to this.
+- Added "Auto" preset — runs a benchmark and stores results in `autotune.json`, separate from your settings. Other presets are never touched. Re-benchmarks on mod updates or hardware changes.
+- Reworked presets — Potato and Low run at 50% through the game's native scaling (no render pipeline overhead, should beat vanilla FPS). Medium at 75% with SMAA. Upscalers only at High+.
+- Fixed iGPU getting broken auto-tune results (upscaler Off + 50% was running through the full custom pipeline for no reason)
+- Cut the upscaler path from 3 render textures down to 1. Non-upscaler presets use zero.
+- Depth texture only generated when DLSS/FSR needs it — frees up bandwidth on iGPUs
+- Fixed DLSS render scale slider locking to 100% after a preset switch
+- Textures locked to Full — lowering them doesn't help in R.E.P.O., the textures are tiny
+- FSR minimum raised to 50% (below that it falls apart)
+- Debug overlay scales with resolution instead of using fixed pixel sizes
+- Auto-tune button now sets preset to Auto automatically
+- FPS counter skipped when debug overlay is off
 
 ## 1.0.0
 

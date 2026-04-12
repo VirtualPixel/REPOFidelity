@@ -148,7 +148,7 @@ internal static class MenuIntegration
                 ModSet(() => Settings.UpscaleModeSetting = Enum.Parse<UpscaleMode>(enumName));
             }, out _upscalerSlider);
         AddIntSlider("Render Scale", "Resolution % before upscaling",
-            25, 100, Settings.RenderScale, "%",
+            33, 100, Settings.RenderScale, "%",
             v => ModSet(() => Settings.RenderScale = v), out _renderScaleSlider);
         AddFloatSlider("Sharpening", "Post-upscale CAS", 0f, 1f, 2, Settings.Sharpening, "",
             v => ModSet(() => Settings.Sharpening = v), out _sharpeningSlider);

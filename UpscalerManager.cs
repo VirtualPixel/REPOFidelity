@@ -295,10 +295,6 @@ internal class UpscalerManager : MonoBehaviour
 
             if (!Settings.ModEnabled)
             {
-                // Restore overlayRawImage to game's RT before disabling
-        
-
-                // put everything back to vanilla
                 if (_camera != null && _renderTextureMain != null)
                     _camera.targetTexture = _renderTextureMain.renderTexture;
 
