@@ -100,6 +100,10 @@ internal class SettingsData
     // preset — default to Auto so first-time users get auto-tuned
     public int preset = (int)QualityPreset.Auto;
 
+    // display
+    public int resWidth;
+    public int resHeight;
+
     // upscaling
     public int upscaler = (int)UpscaleMode.Auto;
     public int renderScale = 67;

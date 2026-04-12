@@ -21,6 +21,21 @@ internal static class Settings
         get => (QualityPreset)D.preset;
         set { D.preset = (int)value; _file.Save(); OnChanged(); }
     }
+    internal static int ResolutionWidth
+    {
+        get => D.resWidth > 0 ? D.resWidth : Screen.width;
+        set { D.resWidth = value; _file.Save(); }
+    }
+    internal static int ResolutionHeight
+    {
+        get => D.resHeight > 0 ? D.resHeight : Screen.height;
+        set { D.resHeight = value; _file.Save(); }
+    }
+
+    // the output resolution everything renders to (selected res or screen native)
+    internal static int OutputWidth => ResolutionWidth;
+    internal static int OutputHeight => ResolutionHeight;
+
     internal static UpscaleMode UpscaleModeSetting
     {
         get => (UpscaleMode)D.upscaler;
@@ -440,6 +455,62 @@ internal static class Settings
             D.textureQuality = (int)ResolvedTextureQuality;
         });
         _file.Save();
+    }
+
+    internal static string[] GetAvailableResolutions(out int currentIndex)
+    {
+        var native = Screen.currentResolution;
+        float nativeAspect = (float)native.width / native.height;
+        int minHeight = 720;
+
+        var seen = new System.Collections.Generic.HashSet<string>();
+        var results = new System.Collections.Generic.List<string>();
+
+        foreach (var r in Screen.resolutions)
+        {
+            if (r.height < minHeight) continue;
+            float aspect = (float)r.width / r.height;
+            if (Mathf.Abs(aspect - nativeAspect) > 0.02f) continue;
+
+            string key = $"{r.width}x{r.height}";
+            if (!seen.Add(key)) continue;
+            results.Add(key);
+        }
+
+        // sort descending by width
+        results.Sort((a, b) =>
+        {
+            int wa = int.Parse(a.Split('x')[0]);
+            int wb = int.Parse(b.Split('x')[0]);
+            return wb.CompareTo(wa);
+        });
+
+        // make sure native is always included
+        string nativeKey = $"{native.width}x{native.height}";
+        if (!seen.Contains(nativeKey))
+            results.Insert(0, nativeKey);
+
+        // find current selection
+        string current = $"{OutputWidth}x{OutputHeight}";
+        currentIndex = results.IndexOf(current);
+        if (currentIndex < 0) currentIndex = 0;
+
+        return results.ToArray();
+    }
+
+    internal static void SetResolution(string wxh)
+    {
+        var parts = wxh.Split('x');
+        if (parts.Length != 2) return;
+        int w = int.Parse(parts[0]);
+        int h = int.Parse(parts[1]);
+        ResolutionWidth = w;
+        ResolutionHeight = h;
+
+        bool fullscreen = Screen.fullScreen;
+        Screen.SetResolution(w, h, fullscreen);
+
+        Plugin.Log.LogInfo($"Resolution set to {w}x{h} (fullscreen={fullscreen})");
     }
 
     internal static int MinRenderScale(UpscaleMode mode) => mode switch

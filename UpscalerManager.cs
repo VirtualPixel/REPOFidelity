@@ -91,8 +91,8 @@ internal class UpscalerManager : MonoBehaviour
     {
         _renderTextureMain = rtMain;
         _camera = camera;
-        _outputWidth = Screen.width;
-        _outputHeight = Screen.height;
+        _outputWidth = Settings.OutputWidth;
+        _outputHeight = Settings.OutputHeight;
 
         _upscaler = Settings.ResolvedUpscaleMode switch
         {
@@ -228,10 +228,12 @@ internal class UpscalerManager : MonoBehaviour
         if (CurrentTier == RenderTier.Passthrough) return;
 
         // Resolution change detection
-        if (Screen.width != _outputWidth || Screen.height != _outputHeight)
+        int targetW = Settings.OutputWidth;
+        int targetH = Settings.OutputHeight;
+        if (targetW != _outputWidth || targetH != _outputHeight)
         {
-            _outputWidth = Screen.width;
-            _outputHeight = Screen.height;
+            _outputWidth = targetW;
+            _outputHeight = targetH;
             HandleResolutionChange();
         }
 
@@ -322,8 +324,8 @@ internal class UpscalerManager : MonoBehaviour
                 // Restore our render texture to full resolution
                 if (_renderTextureMain != null)
                 {
-                    _renderTextureMain.textureWidthOriginal = Screen.width;
-                    _renderTextureMain.textureHeightOriginal = Screen.height;
+                    _renderTextureMain.textureWidthOriginal = Settings.OutputWidth;
+                    _renderTextureMain.textureHeightOriginal = Settings.OutputHeight;
                     var rt = _renderTextureMain.renderTexture;
                     if (rt != null && CurrentTier != RenderTier.Upscaler)
                     {
@@ -718,8 +720,8 @@ internal class UpscalerManager : MonoBehaviour
         // This gives a clean native vs upscaled comparison.
         if (_renderTextureMain != null)
         {
-            _renderTextureMain.textureWidthOriginal = Screen.width;
-            _renderTextureMain.textureHeightOriginal = Screen.height;
+            _renderTextureMain.textureWidthOriginal = Settings.OutputWidth;
+            _renderTextureMain.textureHeightOriginal = Settings.OutputHeight;
         }
 
         Plugin.Log.LogInfo("Vanilla settings restored (native res, no effects)");

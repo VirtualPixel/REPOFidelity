@@ -130,7 +130,8 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 |---|---|---|---|
 | Preset | Auto–Custom | Auto | Quality level. Auto uses benchmarked profile |
 | Upscaler | DLSS / FSR / Off | Auto | DLSS on NVIDIA, FSR on AMD/Intel, Off if CPU-bound |
-| Render Scale | 33–100% | 100% | Internal resolution (50% min for FSR/Off, 33% for DLSS) |
+| Resolution | Monitor-specific | Native | Output resolution. Filtered to your aspect ratio |
+| Render Scale | 33–100% | 100% | Internal resolution before upscaling to selected resolution |
 | Anti-Aliasing | SMAA / FXAA / Off | SMAA | Post-process AA (disabled when upscaler provides AA) |
 | Shadow Quality | Off / Low / Med / High / Ultra | Varies | Shadow map resolution |
 | Shadow Distance | 5–200m | Varies | Max shadow render distance |

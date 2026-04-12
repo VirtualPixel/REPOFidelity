@@ -23,7 +23,7 @@ internal static class MenuIntegration
     private static REPOSlider? _fogSlider, _viewDistSlider;
     private static REPOToggle? _motionBlurToggle, _caToggle, _lensToggle, _grainToggle;
     private static REPOToggle? _flickerToggle, _overlayToggle;
-    private static REPOSlider? _windowModeSlider, _fpsSlider, _gammaSlider;
+    private static REPOSlider? _windowModeSlider, _resolutionSlider, _fpsSlider, _gammaSlider;
     private static REPOToggle? _vsyncToggle, _bloomToggle, _glitchToggle;
     private static REPOSlider? _perfExplosionSlider, _perfItemLightSlider;
     private static REPOSlider? _perfAnimLightSlider, _perfParticleSlider, _perfTinySlider;
@@ -109,6 +109,9 @@ internal static class MenuIntegration
         AddStringSlider("Window Mode", "", new[] { "Fullscreen", "Windowed" }, "Fullscreen",
             s => GameSet(DataDirector.Setting.WindowMode, s == "Windowed" ? 1 : 0,
                 () => GraphicsManager.instance.UpdateWindowMode(true)), out _windowModeSlider);
+        var resOptions = Settings.GetAvailableResolutions(out int resIdx);
+        AddStringSlider("Resolution", "", resOptions, resOptions[resIdx],
+            s => { if (!_syncing) Settings.SetResolution(s); }, out _resolutionSlider);
         AddModToggle("VSync", false,
             b => GameSet(DataDirector.Setting.Vsync, b ? 1 : 0,
                 () => GraphicsManager.instance.UpdateVsync()), out _vsyncToggle);
@@ -359,6 +362,7 @@ internal static class MenuIntegration
     {
         int wm = DataDirector.instance.SettingValueFetch(DataDirector.Setting.WindowMode);
         SetStr(_windowModeSlider, wm == 1 ? "Windowed" : "Fullscreen");
+        SetStr(_resolutionSlider, $"{Settings.OutputWidth}x{Settings.OutputHeight}");
         _vsyncToggle?.SetState(DataDirector.instance.SettingValueFetch(DataDirector.Setting.Vsync) == 1, false);
 
         int fps = DataDirector.instance.SettingValueFetch(DataDirector.Setting.MaxFPS);

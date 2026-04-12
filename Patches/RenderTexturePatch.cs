@@ -62,11 +62,12 @@ internal static class RenderTexturePatch
         }
 
         // force native res RT so overlayRawImage stays crisp
-        __instance.textureWidthOriginal = Screen.width;
-        __instance.textureHeightOriginal = Screen.height;
-        // sync textureWidth too or OnScreen() breaks (price labels etc)
-        __instance.textureWidth = Screen.width;
-        __instance.textureHeight = Screen.height;
+        int outW = Settings.OutputWidth;
+        int outH = Settings.OutputHeight;
+        __instance.textureWidthOriginal = outW;
+        __instance.textureHeightOriginal = outH;
+        __instance.textureWidth = outW;
+        __instance.textureHeight = outH;
 
         if (mainCam != null)
         {
@@ -86,8 +87,10 @@ internal static class RenderTexturePatch
         float scale = (manager != null && manager.CurrentTier == UpscalerManager.RenderTier.NativeScaling)
             ? GetRenderScale() : 1f;
 
-        __instance.textureWidthOriginal = Mathf.Max(Mathf.RoundToInt(Screen.width * scale), 1);
-        __instance.textureHeightOriginal = Mathf.Max(Mathf.RoundToInt(Screen.height * scale), 1);
+        int outW = Settings.OutputWidth;
+        int outH = Settings.OutputHeight;
+        __instance.textureWidthOriginal = Mathf.Max(Mathf.RoundToInt(outW * scale), 1);
+        __instance.textureHeightOriginal = Mathf.Max(Mathf.RoundToInt(outH * scale), 1);
 
         // sync to camera target for OnScreen() calcs
         if (__instance.cameras.Count > 0)

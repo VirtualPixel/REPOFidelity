@@ -1,5 +1,6 @@
 ## 1.1.0
 
+- **New resolution selector** — filters to your monitor's aspect ratio, sensible options from 720p to native. Render scale upscales to the selected resolution.
 - **New "Auto" preset** — auto-tuned settings stored in a separate `autotune.json` profile. Re-benchmarks automatically on mod update or hardware change. Selecting other presets won't get overwritten by auto-tune anymore.
 - **Reworked presets** — Potato and Low now run at 50% render scale through the game's native RT system (zero pipeline overhead). Potato should be faster than vanilla. Medium bumped to 75% with SMAA. Upscalers (DLSS/FSR) only kick in at High and above.
 - **Fixed iGPU performance** — auto-tune no longer gives broken settings on integrated GPUs. Previously produced upscaler=Off at 50% which ran through the full custom RT pipeline for a blurry bilinear blit. Now routes through the game's own scaling.
