@@ -206,7 +206,11 @@ internal class UpscalerManager : MonoBehaviour
         if (_overlayRawImage != null)
         {
             // Primary path: swap overlayRawImage to our output RT
-            // Resize game's RT to input dimensions (camera renders to it at low-res)
+            // Clear camera target before resizing (Unity errors on releasing a targeted RT)
+            if (_camera != null)
+                _camera.targetTexture = null;
+
+            // Resize game's RT to input dimensions
             if (gameRT != null)
             {
                 gameRT.Release();
@@ -215,7 +219,6 @@ internal class UpscalerManager : MonoBehaviour
                 gameRT.Create();
             }
 
-            // Camera targets game's RT naturally (no redirect needed)
             if (_camera != null && gameRT != null)
                 _camera.targetTexture = gameRT;
 

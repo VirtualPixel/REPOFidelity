@@ -85,14 +85,13 @@ internal static class RenderTexturePatch
         var manager = UpscalerManager.Instance;
         if (manager != null && manager.CurrentTier == UpscalerManager.RenderTier.Upscaler)
         {
-            // Upscaler tier: game RT is the low-res input.
-            // Don't override dimensions — UpscalerManager.Setup set them.
-            // Just sync textureWidth/textureHeight for game's OnScreen() calculations.
+            // textureWidthOriginal = display size (UI layout depends on this)
+            // textureWidth = render size (OnScreen() uses this)
+            __instance.textureWidthOriginal = Screen.width;
+            __instance.textureHeightOriginal = Screen.height;
             var gameRT = __instance.renderTexture;
             if (gameRT != null)
             {
-                __instance.textureWidthOriginal = gameRT.width;
-                __instance.textureHeightOriginal = gameRT.height;
                 __instance.textureWidth = gameRT.width;
                 __instance.textureHeight = gameRT.height;
             }
