@@ -454,8 +454,7 @@ internal static class Settings
         switch (preset)
         {
             case QualityPreset.Potato:
-                // no upscaler, no AA. GPU-bound renders at 50% via game's native
-                // scaling (same approach as REPO HD / vanilla). CPU-bound stays native.
+                // max perf, faster than vanilla. 50% native + cut everything.
                 ResolvedUpscaleMode = UpscaleMode.Off;
                 ResolvedRenderScale = cpu ? 100 : 50;
                 ResolvedAAMode = AAMode.Off;
@@ -466,34 +465,29 @@ internal static class Settings
                 ResolvedAnisotropicFiltering = 2;
                 break;
             case QualityPreset.Low:
-                // No upscaler at Low tier — SMAA provides cheap edge AA at native res.
-                // Better visuals than upscaling at sub-native on limited hardware.
+                // same 50% res as Potato but SMAA + better shadows/LOD/lights.
+                // should still beat or match vanilla FPS.
                 ResolvedUpscaleMode = UpscaleMode.Off;
-                ResolvedRenderScale = 100;
+                ResolvedRenderScale = cpu ? 100 : 50;
                 ResolvedAAMode = AAMode.SMAA;
                 ResolvedTextureQuality = cpu ? TextureRes.Full : TextureRes.Half;
                 ResolvedShadowQuality = ShadowQuality.Low; ResolvedShadowDistance = 20f;
-                ResolvedLODBias = 1f; ResolvedPixelLightCount = 3;
-                ResolvedLightDistance = 15f; ResolvedFogMultiplier = 1f; ResolvedViewDistance = 0f;
+                ResolvedLODBias = 1f; ResolvedPixelLightCount = 4;
+                ResolvedLightDistance = 20f; ResolvedFogMultiplier = 1f; ResolvedViewDistance = 0f;
                 ResolvedAnisotropicFiltering = 4;
                 break;
             case QualityPreset.Medium:
-                if (cpu)
-                {
-                    ResolvedUpscaleMode = UpscaleMode.Off;
-                    ResolvedRenderScale = 100; ResolvedAAMode = AAMode.SMAA;
-                }
-                else
-                {
-                    ResolvedUpscaleMode = BestUpscaler(UpscaleTier.Quality);
-                    ResolvedRenderScale = 50; ResolvedAAMode = AAMode.Off;
-                }
-                ResolvedShadowQuality = ShadowQuality.Medium; ResolvedShadowDistance = 40f;
-                ResolvedLODBias = 2f; ResolvedPixelLightCount = 4;
+                // 75% + SMAA. Big visual jump. No upscaler pipeline.
+                ResolvedUpscaleMode = UpscaleMode.Off;
+                ResolvedRenderScale = cpu ? 100 : 75;
+                ResolvedAAMode = AAMode.SMAA;
+                ResolvedShadowQuality = ShadowQuality.Medium; ResolvedShadowDistance = 30f;
+                ResolvedLODBias = 1.5f; ResolvedPixelLightCount = 6;
                 ResolvedLightDistance = 25f; ResolvedFogMultiplier = 1f; ResolvedViewDistance = 0f;
                 ResolvedAnisotropicFiltering = 8; ResolvedTextureQuality = TextureRes.Full;
                 break;
             case QualityPreset.High:
+                // 100% native + upscaler AA. Premium look.
                 if (cpu)
                 {
                     ResolvedUpscaleMode = GPUDetector.DlssAvailable ? UpscaleMode.DLAA : UpscaleMode.Off;
@@ -504,7 +498,7 @@ internal static class Settings
                 {
                     ResolvedUpscaleMode = BestUpscaler(UpscaleTier.Quality);
                     ResolvedRenderScale = 75;
-                    ResolvedAAMode = AAMode.Off; // temporal upscaler handles AA
+                    ResolvedAAMode = AAMode.Off;
                 }
                 ResolvedShadowQuality = ShadowQuality.High; ResolvedShadowDistance = 85f;
                 ResolvedLODBias = 3f; ResolvedPixelLightCount = 8;
@@ -512,6 +506,7 @@ internal static class Settings
                 ResolvedAnisotropicFiltering = 16; ResolvedTextureQuality = TextureRes.Full;
                 break;
             case QualityPreset.Ultra:
+                // 100% + best upscaler + maxed everything
                 if (cpu)
                 {
                     ResolvedUpscaleMode = GPUDetector.DlssAvailable ? UpscaleMode.DLAA : UpscaleMode.Off;
