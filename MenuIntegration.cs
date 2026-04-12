@@ -214,11 +214,13 @@ internal static class MenuIntegration
         AddLabel("Performance");
         AddButton("Auto-Tune (Benchmark)", () =>
         {
+            Settings.Preset = QualityPreset.Auto;
             if (SemiFunc.RunIsLevel())
             {
                 _page!.ClosePage(false);
                 if (MenuManager.instance != null)
                     MenuManager.instance.PageCloseAllAddedOnTop();
+                Settings.InvalidateAutoTune();
                 Settings.BenchmarkMode = true;
             }
             else
