@@ -82,8 +82,13 @@ internal static class RenderTexturePatch
         if (!Settings.ModEnabled) return;
         if (Settings.Pixelation) return;
 
-        __instance.textureWidthOriginal = Screen.width;
-        __instance.textureHeightOriginal = Screen.height;
+        var manager = UpscalerManager.Instance;
+        float scale = (manager != null && manager.CurrentTier == UpscalerManager.RenderTier.NativeScaling)
+            ? GetRenderScale() : 1f;
+
+        // textureWidthOriginal controls the game's RT size (and UI layout)
+        __instance.textureWidthOriginal = Mathf.Max(Mathf.RoundToInt(Screen.width * scale), 1);
+        __instance.textureHeightOriginal = Mathf.Max(Mathf.RoundToInt(Screen.height * scale), 1);
 
         // textureWidth tracks what the camera actually renders to (for OnScreen() calcs)
         if (__instance.cameras.Count > 0)

@@ -428,7 +428,7 @@ internal static class Settings
         UpscaleMode.FSR4 => 50,
         UpscaleMode.FSR_Temporal => 50,
         UpscaleMode.FSR => 50,            // EASU floor
-        UpscaleMode.Off => 100,           // native only
+        UpscaleMode.Off => 50,            // game's native scaling
         _ => 50
     };
 
@@ -454,11 +454,10 @@ internal static class Settings
         switch (preset)
         {
             case QualityPreset.Potato:
-                // CPU and GPU paths converge for Potato — no upscaler, no AA.
-                // iGPU can't benefit from temporal upscaling (shader overhead > fill savings)
-                // and even SMAA costs measurable frames at this tier.
+                // no upscaler, no AA. GPU-bound renders at 50% via game's native
+                // scaling (same approach as REPO HD / vanilla). CPU-bound stays native.
                 ResolvedUpscaleMode = UpscaleMode.Off;
-                ResolvedRenderScale = 100;
+                ResolvedRenderScale = cpu ? 100 : 50;
                 ResolvedAAMode = AAMode.Off;
                 ResolvedTextureQuality = cpu ? TextureRes.Full : TextureRes.Quarter;
                 ResolvedShadowQuality = ShadowQuality.Low; ResolvedShadowDistance = 10f;
@@ -651,14 +650,6 @@ internal static class Settings
                 upscaler = BestUpscaler(UpscaleTier.NativeAA);
                 aa = AAMode.Off;
             }
-        }
-
-        // No upscaler = no reconstruction. Sub-100% scale would be a raw
-        // bilinear blit — blurry AND slower on iGPU due to RT pipeline overhead.
-        if (upscaler == UpscaleMode.Off && scale < 100)
-        {
-            Plugin.Log.LogInfo($"Auto-tune: upscaler Off — forcing native render scale (was {scale}%)");
-            scale = 100;
         }
 
         Plugin.Log.LogInfo($"Auto-tune result: {upscaler} {scale}% AA={aa} shQ={shQ} shD={shD} " +

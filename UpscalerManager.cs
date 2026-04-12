@@ -125,17 +125,11 @@ internal class UpscalerManager : MonoBehaviour
             }
         }
 
-        // no upscaler + sub-native = blurry blit for zero benefit
-        if (_upscaler == null && Settings.ResolvedRenderScale < 100)
-        {
-            Plugin.Log.LogWarning("No upscaler + sub-native scale — forcing native resolution");
-            Settings.ResolvedRenderScale = 100;
-        }
-
         bool hasCAS = Settings.Sharpening > 0.01f;
+        bool hasScale = Settings.ResolvedRenderScale < 100;
         if (_upscaler != null)
             CurrentTier = RenderTier.Upscaler;
-        else if (hasCAS)
+        else if (hasCAS || hasScale)
             CurrentTier = RenderTier.NativeScaling;
         else
             CurrentTier = RenderTier.Passthrough;
