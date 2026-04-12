@@ -8,13 +8,23 @@ namespace REPOFidelity;
 
 internal class UpscalerManager : MonoBehaviour
 {
+    internal enum RenderTier
+    {
+        Passthrough,    // No processing — camera renders directly to game RT at native res
+        NativeScaling,  // Game's built-in textureWidthOriginal scaling, optional CAS
+        Upscaler        // DLSS/FSR — game RT is low-res input, output RT for display
+    }
+
+    internal RenderTier CurrentTier { get; private set; }
+
     internal static UpscalerManager? Instance { get; private set; }
 
     private IUpscaler? _upscaler;
     private RenderTextureMain? _renderTextureMain;
     private Camera? _camera;
-    private RenderTexture? _inputRT;
-    private RenderTexture? _intermediateRT;
+    private RenderTexture? _outputRT;
+    private UnityEngine.UI.RawImage? _overlayRawImage;
+    private bool _fallbackCameraRedirect;
     private int _inputWidth;
     private int _inputHeight;
     private int _outputWidth;
@@ -28,6 +38,12 @@ internal class UpscalerManager : MonoBehaviour
     private string _debugText = "";
     private string _debugText2 = "";
     private bool _repoHdDetected;
+
+    // Reflection accessor for overlayRawImage (may not be publicized)
+    private static readonly System.Reflection.FieldInfo? OverlayField =
+        typeof(RenderTextureMain).GetField("overlayRawImage",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Instance);
 
     // Benchmark
     private bool _benchmarkActive;
@@ -64,14 +80,17 @@ internal class UpscalerManager : MonoBehaviour
         _upscaler?.Dispose();
         _upscaler = null;
 
+        // Restore overlayRawImage to the game's RT before releasing our output RT
+        RestoreOverlayRawImage();
+
         // clear camera target before releasing the RT it points at,
         // otherwise Unity errors on "releasing render texture set as targetTexture"
         // and the screen goes black
         if (_camera != null)
             _camera.targetTexture = null;
 
-        ReleaseRT(ref _inputRT);
-        ReleaseRT(ref _intermediateRT);
+        ReleaseRT(ref _outputRT);
+        _fallbackCameraRedirect = false;
         _needsProcessing = false;
         _useCameraCallback = false;
 
@@ -89,6 +108,9 @@ internal class UpscalerManager : MonoBehaviour
         _camera = camera;
         _outputWidth = Screen.width;
         _outputHeight = Screen.height;
+
+        // Grab overlayRawImage reference via reflection
+        _overlayRawImage = OverlayField?.GetValue(rtMain) as UnityEngine.UI.RawImage;
 
         _upscaler = Settings.ResolvedUpscaleMode switch
         {
@@ -129,72 +151,143 @@ internal class UpscalerManager : MonoBehaviour
             Settings.ResolvedRenderScale = 100;
         }
 
-        bool hasScale = Settings.ResolvedRenderScale < 100;
+        // Determine render tier
         bool hasCAS = Settings.Sharpening > 0.01f;
-        _needsProcessing = _upscaler != null || hasCAS || hasScale;
+        if (_upscaler != null)
+            CurrentTier = RenderTier.Upscaler;
+        else if (hasCAS)
+            CurrentTier = RenderTier.NativeScaling;
+        else
+            CurrentTier = RenderTier.Passthrough;
+
+        _needsProcessing = CurrentTier == RenderTier.Upscaler;
 
         // DLSS needs camera-event timing for depth/motion vectors
         _useCameraCallback = _upscaler is DLSSUpscaler;
 
-        if (!_needsProcessing)
+        // Dispatch to tier-specific setup
+        switch (CurrentTier)
         {
-            // point camera back at the game's render texture — we cleared it
-            // during teardown and without this the game's overlay shows nothing
-            if (_camera != null && rtMain.renderTexture != null)
-                _camera.targetTexture = rtMain.renderTexture;
-
-            Plugin.Log.LogInfo("No upscaling or sharpening — rendering at native resolution");
-            return;
+            case RenderTier.Passthrough:
+                SetupPassthrough(rtMain);
+                break;
+            case RenderTier.NativeScaling:
+                SetupNativeScaling(rtMain);
+                break;
+            case RenderTier.Upscaler:
+                SetupUpscaler(rtMain, camera);
+                break;
         }
+    }
 
-        // Calculate the scaled input resolution
+    private void SetupPassthrough(RenderTextureMain rtMain)
+    {
+        // Point camera at game's render texture (restored from any previous state)
+        if (_camera != null && rtMain.renderTexture != null)
+            _camera.targetTexture = rtMain.renderTexture;
+
+        // Restore overlayRawImage to game's RT in case we were previously in Upscaler tier
+        RestoreOverlayRawImage();
+
+        Plugin.Log.LogInfo("Passthrough: rendering at native resolution, no processing");
+    }
+
+    private void SetupNativeScaling(RenderTextureMain rtMain)
+    {
+        // Point camera at game's render texture
+        if (_camera != null && rtMain.renderTexture != null)
+            _camera.targetTexture = rtMain.renderTexture;
+
+        // Restore overlayRawImage to game's RT
+        RestoreOverlayRawImage();
+
+        Plugin.Log.LogInfo("NativeScaling: game handles RT sizing, CAS via temp RT");
+    }
+
+    private void SetupUpscaler(RenderTextureMain rtMain, Camera camera)
+    {
         float scale = RenderTexturePatch.GetRenderScale();
         _inputWidth = Mathf.Max(Mathf.RoundToInt(_outputWidth * scale), 1);
         _inputHeight = Mathf.Max(Mathf.RoundToInt(_outputHeight * scale), 1);
 
-        // Create a separate input RT at scaled resolution for the camera to render to
         var gameRT = rtMain.renderTexture;
-        var format = gameRT != null ? gameRT.format : RenderTextureFormat.DefaultHDR;
-        _inputRT = new RenderTexture(_inputWidth, _inputHeight, 24, format)
+
+        if (_overlayRawImage != null)
         {
-            filterMode = FilterMode.Bilinear
-        };
-        _inputRT.Create();
+            // Primary path: swap overlayRawImage to our output RT
+            // Resize game's RT to input dimensions (camera renders to it at low-res)
+            if (gameRT != null)
+            {
+                gameRT.Release();
+                gameRT.width = _inputWidth;
+                gameRT.height = _inputHeight;
+                gameRT.Create();
+            }
 
-        // Redirect the camera to render to our scaled input RT
-        camera.targetTexture = _inputRT;
+            // Camera targets game's RT naturally (no redirect needed)
+            if (_camera != null && gameRT != null)
+                _camera.targetTexture = gameRT;
 
-        Plugin.Log.LogInfo($"Render resolution: {_inputWidth}x{_inputHeight}");
+            // Create output RT at full resolution for display
+            var format = gameRT != null ? gameRT.format : RenderTextureFormat.DefaultHDR;
+            _outputRT = new RenderTexture(_outputWidth, _outputHeight, 0, format)
+            {
+                filterMode = FilterMode.Bilinear
+            };
+            _outputRT.Create();
 
-        // Ensure the game's render texture is at full screen resolution
-        // so overlayRawImage displays at native res
-        if (gameRT != null)
-        {
-            gameRT.Release();
-            gameRT.width = _outputWidth;
-            gameRT.height = _outputHeight;
-            gameRT.Create();
+            // Swap overlay to display our output RT
+            _overlayRawImage.texture = _outputRT;
+
+            _fallbackCameraRedirect = false;
+
+            Plugin.Log.LogInfo($"Upscaler (primary): {_inputWidth}x{_inputHeight} -> {_outputWidth}x{_outputHeight}");
         }
-
-        // Create intermediate RT for CAS-only path
-        _intermediateRT = new RenderTexture(_outputWidth, _outputHeight, 0, RenderTextureFormat.DefaultHDR)
+        else
         {
-            filterMode = FilterMode.Bilinear
-        };
-        _intermediateRT.Create();
+            // Fallback path: redirect camera to our output RT (low-res), game RT used for display
+            _fallbackCameraRedirect = true;
+
+            var format = gameRT != null ? gameRT.format : RenderTextureFormat.DefaultHDR;
+
+            // Create output RT at INPUT dimensions with depth — this is the camera target
+            _outputRT = new RenderTexture(_inputWidth, _inputHeight, 24, format)
+            {
+                filterMode = FilterMode.Bilinear
+            };
+            _outputRT.Create();
+
+            // Camera renders into our low-res output RT
+            camera.targetTexture = _outputRT;
+
+            // Resize game's RT to full output dimensions (for display)
+            if (gameRT != null)
+            {
+                gameRT.Release();
+                gameRT.width = _outputWidth;
+                gameRT.height = _outputHeight;
+                gameRT.Create();
+            }
+
+            Plugin.Log.LogInfo($"Upscaler (fallback): {_inputWidth}x{_inputHeight} -> {_outputWidth}x{_outputHeight}");
+        }
 
         if (_upscaler != null)
         {
             _upscaler.Initialize(_camera, _inputWidth, _inputHeight, _outputWidth, _outputHeight);
             Plugin.Log.LogInfo($"Upscaler active: {_upscaler.Name}");
         }
-        else
-        {
-            Plugin.Log.LogInfo("CAS sharpening active (no upscaler)");
-        }
 
         if (_useCameraCallback && _camera != null)
             Camera.onPostRender += OnPostRenderCallback;
+    }
+
+    // Restore overlayRawImage back to the game's render texture
+    private void RestoreOverlayRawImage()
+    {
+        if (_overlayRawImage == null || _renderTextureMain == null) return;
+        if (_renderTextureMain.renderTexture != null)
+            _overlayRawImage.texture = _renderTextureMain.renderTexture;
     }
 
     // DLSS needs depth/MV textures which are only valid after the camera renders
@@ -206,7 +299,10 @@ internal class UpscalerManager : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (!Settings.ModEnabled || !_needsProcessing || _renderTextureMain == null) return;
+        if (!Settings.ModEnabled || _renderTextureMain == null) return;
+
+        // Passthrough: nothing to do
+        if (CurrentTier == RenderTier.Passthrough) return;
 
         // Resolution change detection
         if (Screen.width != _outputWidth || Screen.height != _outputHeight)
@@ -216,10 +312,23 @@ internal class UpscalerManager : MonoBehaviour
             HandleResolutionChange();
         }
 
-        // Ensure camera always targets our input RT (game's SetRenderTexture
-        // may redirect it back to renderTexture)
-        if (_camera != null && _inputRT != null && _camera.targetTexture != _inputRT)
-            _camera.targetTexture = _inputRT;
+        if (CurrentTier == RenderTier.NativeScaling)
+        {
+            // Game handles RT sizing via textureWidthOriginal (PrefixUpdate)
+            if (Settings.Sharpening > 0.01f)
+            {
+                var gameRT = _renderTextureMain.renderTexture;
+                if (gameRT != null)
+                    ApplyCAS(gameRT);
+            }
+            return;
+        }
+
+        // Upscaler tier below this point
+
+        // Ensure camera targets the right RT (game's SetRenderTexture may redirect it)
+        if (_fallbackCameraRedirect && _camera != null && _outputRT != null && _camera.targetTexture != _outputRT)
+            _camera.targetTexture = _outputRT;
 
         // DLSS is processed in OnPostRender callback for correct depth/MV timing
         if (_useCameraCallback) return;
@@ -229,30 +338,43 @@ internal class UpscalerManager : MonoBehaviour
 
     private void ProcessFrame()
     {
-        if (_renderTextureMain == null || _inputRT == null || !_inputRT.IsCreated()) return;
+        if (_renderTextureMain == null) return;
 
         var gameRT = _renderTextureMain.renderTexture;
-        if (gameRT == null || !gameRT.IsCreated()) return;
 
-        if (_upscaler != null)
+        if (_fallbackCameraRedirect)
         {
-            // Upscale from our input RT directly into the game's render texture
-            _upscaler.OnRenderImage(_inputRT, gameRT);
+            // Fallback: camera renders to _outputRT (low-res), upscale into gameRT (full-res display)
+            if (_outputRT == null || !_outputRT.IsCreated()) return;
+            if (gameRT == null || !gameRT.IsCreated()) return;
+
+            _upscaler?.OnRenderImage(_outputRT, gameRT);
+
+            // CAS applied to gameRT (skip for DLSS which has built-in sharpening)
+            if (!(_upscaler is DLSSUpscaler) && Settings.Sharpening > 0.01f)
+                ApplyCAS(gameRT);
         }
         else
         {
-            // No upscaler — just blit input to game RT
-            Graphics.Blit(_inputRT, gameRT);
-        }
+            // Primary: gameRT holds low-res input, _outputRT is full-res display target
+            if (gameRT == null || !gameRT.IsCreated()) return;
+            if (_outputRT == null || !_outputRT.IsCreated()) return;
 
-        // Apply standalone CAS when no upscaler handles sharpening
-        if (_upscaler == null && Settings.Sharpening > 0.01f && _intermediateRT != null)
-        {
-            // Blit game RT through CAS to intermediate, then back
-            CASShader.Apply(gameRT, _intermediateRT, Settings.Sharpening);
-            Graphics.Blit(_intermediateRT, gameRT);
-        }
+            _upscaler?.OnRenderImage(gameRT, _outputRT);
 
+            // CAS applied to _outputRT (skip for DLSS which has built-in sharpening)
+            if (!(_upscaler is DLSSUpscaler) && Settings.Sharpening > 0.01f)
+                ApplyCAS(_outputRT);
+        }
+    }
+
+    private static void ApplyCAS(RenderTexture target)
+    {
+        if (target == null || !target.IsCreated()) return;
+        var temp = RenderTexture.GetTemporary(target.width, target.height, 0, target.format);
+        CASShader.Apply(target, temp, Settings.Sharpening);
+        Graphics.Blit(temp, target);
+        RenderTexture.ReleaseTemporary(temp);
     }
 
     private void Update()
@@ -267,6 +389,9 @@ internal class UpscalerManager : MonoBehaviour
 
             if (!Settings.ModEnabled)
             {
+                // Restore overlayRawImage to game's RT before disabling
+                RestoreOverlayRawImage();
+
                 // put everything back to vanilla
                 if (_camera != null && _renderTextureMain != null)
                     _camera.targetTexture = _renderTextureMain.renderTexture;
@@ -283,9 +408,13 @@ internal class UpscalerManager : MonoBehaviour
             }
             else
             {
-                // Re-redirect camera to our scaled input RT
-                if (_camera != null && _inputRT != null)
-                    _camera.targetTexture = _inputRT;
+                // Re-point overlayRawImage back to _outputRT if we're in Upscaler tier
+                if (CurrentTier == RenderTier.Upscaler && _outputRT != null && _overlayRawImage != null)
+                    _overlayRawImage.texture = _outputRT;
+
+                // Re-redirect camera if using fallback path
+                if (_fallbackCameraRedirect && _camera != null && _outputRT != null)
+                    _camera.targetTexture = _outputRT;
 
                 // Re-apply camera depth mode + AA
                 Patches.RenderTexturePatch.ReapplyModCameraSettings();
@@ -296,12 +425,16 @@ internal class UpscalerManager : MonoBehaviour
                     _renderTextureMain.textureWidthOriginal = Screen.width;
                     _renderTextureMain.textureHeightOriginal = Screen.height;
                     var rt = _renderTextureMain.renderTexture;
-                    if (rt != null && (rt.width != _outputWidth || rt.height != _outputHeight))
+                    if (rt != null && CurrentTier != RenderTier.Upscaler)
                     {
-                        rt.Release();
-                        rt.width = _outputWidth;
-                        rt.height = _outputHeight;
-                        rt.Create();
+                        // For non-upscaler tiers, ensure game RT is at native res
+                        if (rt.width != _outputWidth || rt.height != _outputHeight)
+                        {
+                            rt.Release();
+                            rt.width = _outputWidth;
+                            rt.height = _outputHeight;
+                            rt.Create();
+                        }
                     }
                 }
 
@@ -330,8 +463,13 @@ internal class UpscalerManager : MonoBehaviour
             _fpsFrameCount = 0;
             _fpsTimer = 0f;
 
-            string mode = _upscaler != null ? _upscaler.Name : (_needsProcessing ? "CAS Only" : "Off");
-            string input = _inputRT != null ? $"{_inputRT.width}x{_inputRT.height}" : "native";
+            string mode = CurrentTier switch
+            {
+                RenderTier.Upscaler => _upscaler?.Name ?? "Unknown",
+                RenderTier.NativeScaling => "CAS Only",
+                _ => "Off"
+            };
+            string input = CurrentTier == RenderTier.Upscaler ? $"{_inputWidth}x{_inputHeight}" : "native";
             string output = $"{_outputWidth}x{_outputHeight}";
             float scale = RenderTexturePatch.GetRenderScale();
             string preset = Settings.Preset.ToString();
@@ -481,39 +619,64 @@ internal class UpscalerManager : MonoBehaviour
 
     private void HandleResolutionChange()
     {
+        // Passthrough: nothing to do
+        if (CurrentTier == RenderTier.Passthrough) return;
+
+        // NativeScaling: nothing needed — PrefixUpdate handles game RT sizing
+        if (CurrentTier == RenderTier.NativeScaling) return;
+
+        // Upscaler tier: recalculate input dimensions and recreate RTs
         float scale = RenderTexturePatch.GetRenderScale();
         _inputWidth = Mathf.Max(Mathf.RoundToInt(_outputWidth * scale), 1);
         _inputHeight = Mathf.Max(Mathf.RoundToInt(_outputHeight * scale), 1);
 
-        // Recreate input RT at new scaled resolution
-        ReleaseRT(ref _inputRT);
         var gameRT = _renderTextureMain?.renderTexture;
-        var format = gameRT != null ? gameRT.format : RenderTextureFormat.DefaultHDR;
-        _inputRT = new RenderTexture(_inputWidth, _inputHeight, 24, format)
-        {
-            filterMode = FilterMode.Bilinear
-        };
-        _inputRT.Create();
 
-        if (_camera != null)
-            _camera.targetTexture = _inputRT;
-
-        // Resize game's render texture to new screen resolution
-        if (gameRT != null)
+        if (_fallbackCameraRedirect)
         {
-            gameRT.Release();
-            gameRT.width = _outputWidth;
-            gameRT.height = _outputHeight;
-            gameRT.Create();
+            // Fallback: resize _outputRT (low-res camera target) and game RT (full-res display)
+            ReleaseRT(ref _outputRT);
+            var format = gameRT != null ? gameRT.format : RenderTextureFormat.DefaultHDR;
+            _outputRT = new RenderTexture(_inputWidth, _inputHeight, 24, format)
+            {
+                filterMode = FilterMode.Bilinear
+            };
+            _outputRT.Create();
+
+            if (_camera != null)
+                _camera.targetTexture = _outputRT;
+
+            if (gameRT != null)
+            {
+                gameRT.Release();
+                gameRT.width = _outputWidth;
+                gameRT.height = _outputHeight;
+                gameRT.Create();
+            }
         }
-
-        // Recreate intermediate RT
-        ReleaseRT(ref _intermediateRT);
-        _intermediateRT = new RenderTexture(_outputWidth, _outputHeight, 0, RenderTextureFormat.DefaultHDR)
+        else
         {
-            filterMode = FilterMode.Bilinear
-        };
-        _intermediateRT.Create();
+            // Primary: resize game RT (low-res input) and recreate _outputRT (full-res display)
+            if (gameRT != null)
+            {
+                gameRT.Release();
+                gameRT.width = _inputWidth;
+                gameRT.height = _inputHeight;
+                gameRT.Create();
+            }
+
+            ReleaseRT(ref _outputRT);
+            var format = gameRT != null ? gameRT.format : RenderTextureFormat.DefaultHDR;
+            _outputRT = new RenderTexture(_outputWidth, _outputHeight, 0, format)
+            {
+                filterMode = FilterMode.Bilinear
+            };
+            _outputRT.Create();
+
+            // Re-point overlayRawImage to the new output RT
+            if (_overlayRawImage != null)
+                _overlayRawImage.texture = _outputRT;
+        }
 
         if (_upscaler != null)
             _upscaler.OnResolutionChanged(_inputWidth, _inputHeight, _outputWidth, _outputHeight);
@@ -578,7 +741,7 @@ internal class UpscalerManager : MonoBehaviour
 
             string preset = Settings.Preset.ToString();
             string mode = _upscaler != null ? _upscaler.Name : "Off";
-            string res = _inputRT != null ? $"{_inputRT.width}x{_inputRT.height}" : "native";
+            string res = CurrentTier == RenderTier.Upscaler ? $"{_inputWidth}x{_inputHeight}" : "native";
             int discarded = count - filteredCount;
 
             // CPU vs GPU bottleneck detection
@@ -693,12 +856,13 @@ internal class UpscalerManager : MonoBehaviour
 
         _upscaler?.Dispose();
 
-        // Restore camera target to game's render texture
+        // Restore overlayRawImage and camera target to game's render texture
+        RestoreOverlayRawImage();
+
         if (_camera != null && _renderTextureMain != null)
             _camera.targetTexture = _renderTextureMain.renderTexture;
 
-        ReleaseRT(ref _inputRT);
-        ReleaseRT(ref _intermediateRT);
+        ReleaseRT(ref _outputRT);
 
         Instance = null;
     }
