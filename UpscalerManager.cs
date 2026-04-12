@@ -29,7 +29,6 @@ internal class UpscalerManager : MonoBehaviour
     private int _inputHeight;
     private int _outputWidth;
     private int _outputHeight;
-    private bool _needsProcessing;
     private bool _useCameraCallback;
     private float _fpsTimer;
     private int _fpsFrameCount;
@@ -91,7 +90,6 @@ internal class UpscalerManager : MonoBehaviour
 
         ReleaseRT(ref _outputRT);
         _fallbackCameraRedirect = false;
-        _needsProcessing = false;
         _useCameraCallback = false;
 
         // rebuild with new settings
@@ -111,6 +109,8 @@ internal class UpscalerManager : MonoBehaviour
 
         // Grab overlayRawImage reference via reflection
         _overlayRawImage = OverlayField?.GetValue(rtMain) as UnityEngine.UI.RawImage;
+        if (_overlayRawImage == null)
+            Plugin.Log.LogWarning("overlayRawImage not found — upscaler tier will use camera-redirect fallback");
 
         _upscaler = Settings.ResolvedUpscaleMode switch
         {
@@ -159,8 +159,6 @@ internal class UpscalerManager : MonoBehaviour
             CurrentTier = RenderTier.NativeScaling;
         else
             CurrentTier = RenderTier.Passthrough;
-
-        _needsProcessing = CurrentTier == RenderTier.Upscaler;
 
         // DLSS needs camera-event timing for depth/motion vectors
         _useCameraCallback = _upscaler is DLSSUpscaler;
@@ -338,7 +336,7 @@ internal class UpscalerManager : MonoBehaviour
 
     private void ProcessFrame()
     {
-        if (_renderTextureMain == null) return;
+        if (_renderTextureMain == null || _upscaler == null) return;
 
         var gameRT = _renderTextureMain.renderTexture;
 

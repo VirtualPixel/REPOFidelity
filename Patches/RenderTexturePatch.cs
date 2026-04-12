@@ -52,7 +52,7 @@ internal static class RenderTexturePatch
             {
                 ppl.antialiasingMode = Settings.ResolvedAAMode switch
                 {
-                    AAMode.TAA => PostProcessLayer.Antialiasing.TemporalAntialiasing,
+                    AAMode.TAA => PostProcessLayer.Antialiasing.SubpixelMorphologicalAntialiasing,
                     AAMode.SMAA => PostProcessLayer.Antialiasing.SubpixelMorphologicalAntialiasing,
                     AAMode.FXAA => PostProcessLayer.Antialiasing.FastApproximateAntialiasing,
                     AAMode.Off => PostProcessLayer.Antialiasing.None,
