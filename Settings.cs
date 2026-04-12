@@ -210,6 +210,7 @@ internal static class Settings
             QualityPreset.Ultra => 0,
             QualityPreset.High => 1,
             QualityPreset.Medium => 2,
+            QualityPreset.Auto => _autoTune.perfLevel,
             QualityPreset.Custom => ResolvedShadowQuality switch
             {
                 ShadowQuality.Ultra => 0,
@@ -757,8 +758,16 @@ internal static class Settings
             }
         }
 
+        int perfLevel = shQ switch
+        {
+            ShadowQuality.Ultra => 0,
+            ShadowQuality.High => 1,
+            ShadowQuality.Medium => 2,
+            _ => 3,
+        };
+
         Plugin.Log.LogInfo($"Auto-tune result: {upscaler} {scale}% AA={aa} shQ={shQ} shD={shD} " +
-            $"lod={lod} lights={lights} lDist={lDist} af={af} tex={tex} fog={fog}");
+            $"lod={lod} lights={lights} lDist={lDist} af={af} tex={tex} fog={fog} perfLevel={perfLevel}");
 
         SaveAutoTune(new AutoTuneData
         {
@@ -778,6 +787,7 @@ internal static class Settings
             lightDistance = lDist,
             fogMultiplier = fog,
             anisotropicFiltering = af,
+            perfLevel = perfLevel,
         });
 
         float Rebudget()

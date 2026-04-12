@@ -85,6 +85,7 @@ internal class AutoTuneData
     public float fogMultiplier = 1.1f;
     public float viewDistance = 0f;
     public int anisotropicFiltering = 16;
+    public int perfLevel = 0;
 
     internal bool IsStale()
     {

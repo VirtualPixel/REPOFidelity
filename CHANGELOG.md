@@ -1,3 +1,7 @@
+## 1.1.1
+
+- Fixed Auto preset stripping flashlight/explosion/particle shadows on high-end hardware — shadow optimizations now only kick in when the benchmark shows the PC actually needs them
+
 ## 1.1.0
 
 - Added resolution selector — shows resolutions matching your monitor's aspect ratio, from 720p up to native. Render scale works relative to this.
