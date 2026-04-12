@@ -36,12 +36,15 @@ internal static class RenderTexturePatch
             if (i == 0)
             {
                 mainCam = cam;
-                // depth always needed, motion vectors only for temporal upscalers
-                cam.depthTextureMode |= DepthTextureMode.Depth;
-                bool needsMV = Settings.ResolvedUpscaleMode is UpscaleMode.DLSS
+                // Only enable depth texture when a temporal upscaler needs it.
+                // Depth generation has measurable cost on iGPUs with shared memory.
+                bool needsDepth = Settings.ResolvedUpscaleMode is UpscaleMode.DLSS
                     or UpscaleMode.DLAA or UpscaleMode.FSR_Temporal;
-                if (needsMV)
+                if (needsDepth)
+                {
+                    cam.depthTextureMode |= DepthTextureMode.Depth;
                     cam.depthTextureMode |= DepthTextureMode.MotionVectors;
+                }
             }
 
             var ppl = cam.GetComponent<PostProcessLayer>();
@@ -80,24 +83,28 @@ internal static class RenderTexturePatch
         if (!Settings.ModEnabled) return;
         if (Settings.Pixelation) return;
 
+        var manager = UpscalerManager.Instance;
+        if (manager != null && manager.CurrentTier == UpscalerManager.RenderTier.Upscaler)
+        {
+            // Upscaler tier: game RT is the low-res input.
+            // Don't override dimensions — UpscalerManager.Setup set them.
+            // Just sync textureWidth/textureHeight for game's OnScreen() calculations.
+            var gameRT = __instance.renderTexture;
+            if (gameRT != null)
+            {
+                __instance.textureWidthOriginal = gameRT.width;
+                __instance.textureHeightOriginal = gameRT.height;
+                __instance.textureWidth = gameRT.width;
+                __instance.textureHeight = gameRT.height;
+            }
+            return;
+        }
+
+        // Passthrough and NativeScaling: game RT at native res
         __instance.textureWidthOriginal = Screen.width;
         __instance.textureHeightOriginal = Screen.height;
-
-        // keep textureWidth matched to what the camera actually renders to
-        if (__instance.cameras.Count > 0)
-        {
-            var target = __instance.cameras[0].targetTexture;
-            if (target != null)
-            {
-                __instance.textureWidth = target.width;
-                __instance.textureHeight = target.height;
-            }
-            else
-            {
-                __instance.textureWidth = Screen.width;
-                __instance.textureHeight = Screen.height;
-            }
-        }
+        __instance.textureWidth = Screen.width;
+        __instance.textureHeight = Screen.height;
     }
 
     internal static void RestoreVanillaCameraSettings()
@@ -126,11 +133,13 @@ internal static class RenderTexturePatch
 
         if (cameras.Count > 0)
         {
-            cameras[0].depthTextureMode |= DepthTextureMode.Depth;
-            bool needsMV = Settings.ResolvedUpscaleMode is UpscaleMode.DLSS
+            bool needsDepth = Settings.ResolvedUpscaleMode is UpscaleMode.DLSS
                 or UpscaleMode.DLAA or UpscaleMode.FSR_Temporal;
-            if (needsMV)
+            if (needsDepth)
+            {
+                cameras[0].depthTextureMode |= DepthTextureMode.Depth;
                 cameras[0].depthTextureMode |= DepthTextureMode.MotionVectors;
+            }
         }
 
         for (int i = 0; i < cameras.Count; i++)
@@ -140,7 +149,7 @@ internal static class RenderTexturePatch
             {
                 ppl.antialiasingMode = Settings.ResolvedAAMode switch
                 {
-                    AAMode.TAA => PostProcessLayer.Antialiasing.TemporalAntialiasing,
+                    AAMode.TAA => PostProcessLayer.Antialiasing.SubpixelMorphologicalAntialiasing,
                     AAMode.SMAA => PostProcessLayer.Antialiasing.SubpixelMorphologicalAntialiasing,
                     AAMode.FXAA => PostProcessLayer.Antialiasing.FastApproximateAntialiasing,
                     AAMode.Off => PostProcessLayer.Antialiasing.None,

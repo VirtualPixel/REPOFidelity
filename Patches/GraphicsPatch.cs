@@ -9,7 +9,10 @@ internal static class GraphicsPatch
     [HarmonyPatch(nameof(GraphicsManager.UpdateRenderSize))]
     public static bool PrefixUpdateRenderSize()
     {
-        if (!Settings.ModEnabled) return true; // Let game handle when mod off
+        if (!Settings.ModEnabled) return true;
+        // Block the game's pixelated render size unless user wants retro mode.
+        // All three render tiers (Passthrough, NativeScaling, Upscaler) manage
+        // their own dimensions via RenderTexturePatch.PrefixUpdate.
         return Settings.Pixelation;
     }
 }
