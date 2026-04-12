@@ -453,30 +453,37 @@ internal class UpscalerManager : MonoBehaviour
             }
         }
 
-        _fpsTimer += Time.unscaledDeltaTime;
-        _fpsFrameCount++;
-
-        if (_fpsTimer >= 0.5f)
+        // Only track FPS when debug overlay is visible, mod is disabled (shows OFF text), or benchmark is active
+        if (Settings.DebugOverlay || !Settings.ModEnabled || _benchmarkActive)
         {
-            _currentFps = _fpsFrameCount / _fpsTimer;
-            _currentFrameTime = _fpsTimer / _fpsFrameCount * 1000f;
-            _fpsFrameCount = 0;
-            _fpsTimer = 0f;
+            _fpsTimer += Time.unscaledDeltaTime;
+            _fpsFrameCount++;
 
-            string mode = CurrentTier switch
+            if (_fpsTimer >= 0.5f)
             {
-                RenderTier.Upscaler => _upscaler?.Name ?? "Unknown",
-                RenderTier.NativeScaling => "CAS Only",
-                _ => "Off"
-            };
-            string input = CurrentTier == RenderTier.Upscaler ? $"{_inputWidth}x{_inputHeight}" : "native";
-            string output = $"{_outputWidth}x{_outputHeight}";
-            float scale = RenderTexturePatch.GetRenderScale();
-            string preset = Settings.Preset.ToString();
-            string aa = Settings.ResolvedAAMode == AAMode.Off ? "" : $" AA={Settings.ResolvedAAMode}";
-            string vsync = QualitySettings.vSyncCount > 0 ? " VSync" : "";
-            _debugText = $"REPO Fidelity [{preset}] | {mode}{aa} | {input} -> {output} ({scale * 100:F0}%) | {_currentFps:F1} FPS ({_currentFrameTime:F1}ms){vsync}";
-            _debugText2 = $"{GPUDetector.GpuName} | Shadows={Settings.ResolvedShadowQuality}/{Settings.ResolvedShadowDistance:F0}m | Lights={Settings.ResolvedPixelLightCount} LOD={Settings.ResolvedLODBias:F1}x | Sharp={Settings.Sharpening:F1} Fog={Settings.ResolvedFogMultiplier:F2}x";
+                _currentFps = _fpsFrameCount / _fpsTimer;
+                _currentFrameTime = _fpsTimer / _fpsFrameCount * 1000f;
+                _fpsFrameCount = 0;
+                _fpsTimer = 0f;
+
+                if (Settings.DebugOverlay || !Settings.ModEnabled)
+                {
+                    string mode = CurrentTier switch
+                    {
+                        RenderTier.Upscaler => _upscaler?.Name ?? "Unknown",
+                        RenderTier.NativeScaling => "CAS Only",
+                        _ => "Off"
+                    };
+                    string input = CurrentTier == RenderTier.Upscaler ? $"{_inputWidth}x{_inputHeight}" : "native";
+                    string output = $"{_outputWidth}x{_outputHeight}";
+                    float scale = RenderTexturePatch.GetRenderScale();
+                    string preset = Settings.Preset.ToString();
+                    string aa = Settings.ResolvedAAMode == AAMode.Off ? "" : $" AA={Settings.ResolvedAAMode}";
+                    string vsync = QualitySettings.vSyncCount > 0 ? " VSync" : "";
+                    _debugText = $"REPO Fidelity [{preset}] | {mode}{aa} | {input} -> {output} ({scale * 100:F0}%) | {_currentFps:F1} FPS ({_currentFrameTime:F1}ms){vsync}";
+                    _debugText2 = $"{GPUDetector.GpuName} | Shadows={Settings.ResolvedShadowQuality}/{Settings.ResolvedShadowDistance:F0}m | Lights={Settings.ResolvedPixelLightCount} LOD={Settings.ResolvedLODBias:F1}x | Sharp={Settings.Sharpening:F1} Fog={Settings.ResolvedFogMultiplier:F2}x";
+                }
+            }
         }
 
         // Auto-benchmark on first boot — only in actual gameplay levels.
