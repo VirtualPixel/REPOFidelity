@@ -220,7 +220,7 @@ internal static class MenuIntegration
             }
             else
             {
-                Settings.AutoConfigured = false;
+                Settings.InvalidateAutoTune();
                 _benchmarkQueued = true;
                 UpdateBenchHint();
             }

@@ -16,7 +16,6 @@ internal static class Settings
     private static SettingsData D => _file.Data;
     private static bool _initComplete;
 
-    // accessors — read/write to JSON-backed data, save + notify on write
     internal static QualityPreset Preset
     {
         get => (QualityPreset)D.preset;
@@ -132,19 +131,16 @@ internal static class Settings
         get => D.benchmark;
         set { D.benchmark = value; _file.Save(); }
     }
-    internal static bool AutoConfigured
+    internal static bool AutoConfigured => !_autoTune.IsStale();
+
+    internal static void InvalidateAutoTune()
     {
-        get => !_autoTune.IsStale();
-        set { } // staleness is determined by autotune.json, not a flag
+        _autoTune.version = "";
     }
 
     internal static bool ModEnabled = true;
 
-    internal static bool CpuBound
-    {
-        get => _autoTune.IsStale() ? true : _autoTune.cpuBound;
-        set { _autoTune.cpuBound = value; }
-    }
+    internal static bool CpuBound => _autoTune.IsStale() || _autoTune.cpuBound;
 
     // per-optimization toggles for Custom preset. -1 = auto (follow preset logic)
     internal static int PerfExplosionShadows
@@ -248,7 +244,6 @@ internal static class Settings
 
     internal static event Action? OnSettingsChanged;
 
-    // auto-tune profile — separate from user settings
     private static AutoTuneData _autoTune = new();
     private static string _autoTunePath = "";
 
@@ -296,7 +291,6 @@ internal static class Settings
             Plugin.Log.LogWarning($"Failed to save autotune: {ex.Message}");
         }
 
-        // if user is on Auto, apply immediately
         if (Preset == QualityPreset.Auto)
         {
             ResolveAutoDefaults();
@@ -701,7 +695,6 @@ internal static class Settings
         Plugin.Log.LogInfo($"Auto-tune result: {upscaler} {scale}% AA={aa} shQ={shQ} shD={shD} " +
             $"lod={lod} lights={lights} lDist={lDist} af={af} tex={tex} fog={fog}");
 
-        // write to autotune profile — never touches user settings
         SaveAutoTune(new AutoTuneData
         {
             version = BuildInfo.Version,
