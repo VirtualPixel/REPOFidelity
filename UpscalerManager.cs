@@ -448,32 +448,40 @@ internal class UpscalerManager : MonoBehaviour
         }
     }
 
-    // cached to avoid alloc in OnGUI
     private GUIStyle? _guiStyleLarge, _guiShadowLarge;
     private GUIStyle? _guiStyleMed, _guiShadowMed;
     private GUIStyle? _guiStyleSmall, _guiShadowSmall;
     private GUIStyle? _guiStyleWarn, _guiShadowWarn;
+    private int _guiLastHeight;
 
     private void EnsureGUIStyles()
     {
-        if (_guiStyleLarge != null) return;
-        _guiStyleLarge = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold };
+        // rebuild when resolution changes so text scales properly
+        if (_guiStyleLarge != null && _guiLastHeight == Screen.height) return;
+        _guiLastHeight = Screen.height;
+
+        float s = Screen.height / 1080f;
+        int large = Mathf.Max(Mathf.RoundToInt(22 * s), 10);
+        int med = Mathf.Max(Mathf.RoundToInt(20 * s), 9);
+        int small = Mathf.Max(Mathf.RoundToInt(18 * s), 8);
+
+        _guiStyleLarge = new GUIStyle(GUI.skin.label) { fontSize = large, fontStyle = FontStyle.Bold };
         _guiStyleLarge.normal.textColor = Color.red;
         _guiShadowLarge = new GUIStyle(_guiStyleLarge);
         _guiShadowLarge.normal.textColor = Color.black;
 
-        _guiStyleMed = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold };
+        _guiStyleMed = new GUIStyle(GUI.skin.label) { fontSize = med, fontStyle = FontStyle.Bold };
         _guiStyleMed.normal.textColor = Color.red;
         _guiShadowMed = new GUIStyle(_guiStyleMed);
         _guiShadowMed.normal.textColor = Color.black;
 
-        _guiStyleSmall = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold };
+        _guiStyleSmall = new GUIStyle(GUI.skin.label) { fontSize = small, fontStyle = FontStyle.Bold };
         _guiStyleSmall.normal.textColor = Color.yellow;
         _guiShadowSmall = new GUIStyle(_guiStyleSmall);
         _guiShadowSmall.normal.textColor = Color.black;
 
-        _guiStyleWarn = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold };
-        _guiStyleWarn.normal.textColor = new Color(1f, 0.6f, 0f); // orange
+        _guiStyleWarn = new GUIStyle(GUI.skin.label) { fontSize = med, fontStyle = FontStyle.Bold };
+        _guiStyleWarn.normal.textColor = new Color(1f, 0.6f, 0f);
         _guiShadowWarn = new GUIStyle(_guiStyleWarn);
         _guiShadowWarn.normal.textColor = Color.black;
     }
