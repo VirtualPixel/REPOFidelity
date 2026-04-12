@@ -36,8 +36,7 @@ internal static class RenderTexturePatch
             if (i == 0)
             {
                 mainCam = cam;
-                // Only enable depth texture when a temporal upscaler needs it.
-                // Depth generation has measurable cost on iGPUs with shared memory.
+                // depth + MV only for temporal upscalers
                 bool needsDepth = Settings.ResolvedUpscaleMode is UpscaleMode.DLSS
                     or UpscaleMode.DLAA or UpscaleMode.FSR_Temporal;
                 if (needsDepth)

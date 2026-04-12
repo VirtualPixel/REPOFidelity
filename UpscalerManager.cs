@@ -143,15 +143,13 @@ internal class UpscalerManager : MonoBehaviour
             }
         }
 
-        // Defensive: if we ended up with no upscaler and sub-native scale,
-        // force native — this combination is always a net negative.
+        // no upscaler + sub-native = blurry blit for zero benefit
         if (_upscaler == null && Settings.ResolvedRenderScale < 100)
         {
             Plugin.Log.LogWarning("No upscaler + sub-native scale — forcing native resolution");
             Settings.ResolvedRenderScale = 100;
         }
 
-        // Determine render tier
         bool hasCAS = Settings.Sharpening > 0.01f;
         if (_upscaler != null)
             CurrentTier = RenderTier.Upscaler;
@@ -163,7 +161,6 @@ internal class UpscalerManager : MonoBehaviour
         // DLSS needs camera-event timing for depth/motion vectors
         _useCameraCallback = _upscaler is DLSSUpscaler;
 
-        // Dispatch to tier-specific setup
         switch (CurrentTier)
         {
             case RenderTier.Passthrough:
@@ -180,11 +177,9 @@ internal class UpscalerManager : MonoBehaviour
 
     private void SetupPassthrough(RenderTextureMain rtMain)
     {
-        // Point camera at game's render texture (restored from any previous state)
         if (_camera != null && rtMain.renderTexture != null)
             _camera.targetTexture = rtMain.renderTexture;
 
-        // Restore overlayRawImage to game's RT in case we were previously in Upscaler tier
         RestoreOverlayRawImage();
 
         Plugin.Log.LogInfo("Passthrough: rendering at native resolution, no processing");
@@ -192,11 +187,9 @@ internal class UpscalerManager : MonoBehaviour
 
     private void SetupNativeScaling(RenderTextureMain rtMain)
     {
-        // Point camera at game's render texture
         if (_camera != null && rtMain.renderTexture != null)
             _camera.targetTexture = rtMain.renderTexture;
 
-        // Restore overlayRawImage to game's RT
         RestoreOverlayRawImage();
 
         Plugin.Log.LogInfo("NativeScaling: game handles RT sizing, CAS via temp RT");

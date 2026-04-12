@@ -423,13 +423,13 @@ internal static class Settings
 
     internal static int MinRenderScale(UpscaleMode mode) => mode switch
     {
-        UpscaleMode.DLSS => 33,           // DLSS hardware handles ultra-low scales
-        UpscaleMode.DLAA => 100,          // native-res AA by definition
-        UpscaleMode.FSR4 => 50,           // never below 50% for software upscalers
-        UpscaleMode.FSR_Temporal => 50,   // temporal accumulation needs enough input detail
-        UpscaleMode.FSR => 50,            // spatial-only EASU floor
-        UpscaleMode.Off => 100,           // no upscaler = native only
-        _ => 50                           // Auto / unknown — safe floor
+        UpscaleMode.DLSS => 33,           // hardware upscaler handles ultra-low
+        UpscaleMode.DLAA => 100,          // native-res AA
+        UpscaleMode.FSR4 => 50,
+        UpscaleMode.FSR_Temporal => 50,
+        UpscaleMode.FSR => 50,            // EASU floor
+        UpscaleMode.Off => 100,           // native only
+        _ => 50
     };
 
     private enum UpscaleTier { Budget, Quality, NativeAA }
