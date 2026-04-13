@@ -105,6 +105,7 @@ internal class OptimizerBenchmark : MonoBehaviour
             Settings.ModEnabled = false;
             ForceCpu(false);
             Patches.SceneOptimizer.Apply();
+            Glitch();
             Status = $"{pl}: Vanilla (mod OFF)";
             Progress = (float)phase / totalPhases;
             Plugin.Log.LogInfo(Status);
@@ -117,18 +118,20 @@ internal class OptimizerBenchmark : MonoBehaviour
             ForceCpu(false);
             Patches.SceneOptimizer.Apply();
             Patches.QualityPatch.ApplyQualitySettings();
-            Status = $"{pl}: GPU/GC only (CPU patches OFF)";
+            Glitch();
+            Status = $"{pl}: GPU/GC only";
             Progress = (float)phase / totalPhases;
             Plugin.Log.LogInfo(Status);
             yield return Settle();
             r = new Result(); yield return Measure(r);
             gpuGcAccum.Add(r); phase++;
 
-            // 3. Everything on — mod on, CPU patches forced on
+            // 3. Everything on
             Settings.ModEnabled = true;
             ForceCpu(true);
             Patches.SceneOptimizer.Apply();
-            Status = $"{pl}: All ON (GPU/GC + CPU)";
+            Glitch();
+            Status = $"{pl}: All ON";
             Progress = (float)phase / totalPhases;
             Plugin.Log.LogInfo(Status);
             yield return Settle();
@@ -139,6 +142,7 @@ internal class OptimizerBenchmark : MonoBehaviour
         Restore();
         Patches.SceneOptimizer.Apply();
         if (Settings.ModEnabled) Patches.QualityPatch.ApplyQualitySettings();
+        Glitch();
 
         var vanilla = vanillaAccum.Compute();
         var gpuGc = gpuGcAccum.Compute();
@@ -210,6 +214,14 @@ internal class OptimizerBenchmark : MonoBehaviour
         sb.AppendLine();
 
         return sb.ToString();
+    }
+
+    static void Glitch()
+    {
+        var g = CameraGlitch.Instance;
+        if (g == null) return;
+        if (g.ActiveParent != null) g.ActiveParent.SetActive(true);
+        g.PlayShort();
     }
 
     private IEnumerator Settle()

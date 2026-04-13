@@ -53,6 +53,9 @@ internal class UpscalerManager : MonoBehaviour
         }
     }
 
+    // F10 toggle
+    private bool _togglePending;
+
     // Benchmark
     private bool _benchmarkActive;
     private bool _autoBenchmark; // true when running first-boot auto-detection
@@ -304,27 +307,30 @@ internal class UpscalerManager : MonoBehaviour
     private void Update()
     {
         // F12: optimizer benchmark (only in gameplay levels)
-        if (Input.GetKeyDown(KeyCode.F12) && IsInGameplayLevel())
+        if (Input.GetKeyDown(KeyCode.F11) && IsInGameplayLevel())
             OptimizerBenchmark.Launch();
 
-        if (!_benchmarkActive && Input.GetKeyDown(Settings.ToggleKey))
+        if (!_benchmarkActive && !_togglePending && Input.GetKeyDown(Settings.ToggleKey))
         {
-            Settings.ModEnabled = !Settings.ModEnabled;
-            Plugin.Log.LogInfo($"Mod {(Settings.ModEnabled ? "ENABLED" : "DISABLED")}");
+            bool enabling = !Settings.ModEnabled;
 
-            // re-scan scene to apply/undo shadow optimizations
-            Patches.SceneOptimizer.Apply();
+            // fire glitch BEFORE switching so it's already rendering when the swap happens
+            PlayGlitch();
 
-            if (!Settings.ModEnabled)
+            if (!enabling)
             {
-                // dispose upscaler command buffers BEFORE restoring camera depth mode,
-                // otherwise the DLSS MV blit fires with missing motion vectors
+                // disabling is instant — no render texture rebuild needed
+                Settings.ModEnabled = false;
+                Plugin.Log.LogInfo("Mod DISABLED");
+                Patches.SceneOptimizer.Apply();
+
                 _upscaler?.Dispose();
                 _upscaler = null;
 
                 if (_camera != null && _renderTextureMain != null)
                     _camera.targetTexture = _renderTextureMain.renderTexture;
 
+                Patches.RenderTexturePatch.RestoreVanillaResolution();
                 Patches.RenderTexturePatch.RestoreVanillaCameraSettings();
                 RestoreVanillaSettings();
                 Patches.QualityPatch.RestoreVanillaQuality();
@@ -337,47 +343,11 @@ internal class UpscalerManager : MonoBehaviour
             }
             else
             {
-                // Re-create upscaler (was disposed on disable) and reapply everything
-                Reinitialize();
-
-                // Re-apply camera depth mode + AA
-                Patches.RenderTexturePatch.ReapplyModCameraSettings();
-
-                // Restore our render texture to full resolution
-                if (_renderTextureMain != null)
-                {
-                    _renderTextureMain.textureWidthOriginal = Settings.OutputWidth;
-                    _renderTextureMain.textureHeightOriginal = Settings.OutputHeight;
-                    var rt = _renderTextureMain.renderTexture;
-                    if (rt != null && CurrentTier != RenderTier.Upscaler)
-                    {
-                        // For non-upscaler tiers, ensure game RT is at native res
-                        if (rt.width != _outputWidth || rt.height != _outputHeight)
-                        {
-                            rt.Release();
-                            rt.width = _outputWidth;
-                            rt.height = _outputHeight;
-                            rt.Create();
-                        }
-                    }
-                }
-
-                // Re-apply fog extension
-                float fogMult = Settings.ResolvedFogMultiplier;
-                if (_vanillaSaved && fogMult > 1f)
-                {
-                    RenderSettings.fogStartDistance = _vanillaFogStart * fogMult;
-                    RenderSettings.fogEndDistance = _vanillaFogEnd * fogMult;
-                    if (_camera != null)
-                        _camera.farClipPlane = RenderSettings.fogEndDistance + 10f;
-                }
-
-                // Re-apply all quality settings
-                Patches.QualityPatch.ApplyQualitySettings();
+                // enabling: defer by 2 frames so the glitch covers the RT rebuild
+                _togglePending = true;
+                StartCoroutine(DeferredEnable());
             }
         }
-
-        // FPS/debug text rendering moved to Overlay.cs
 
         // cancel benchmark if we left the gameplay level
         if (_benchmarkActive && !IsInGameplayLevel())
@@ -442,7 +412,57 @@ internal class UpscalerManager : MonoBehaviour
         }
     }
 
-    // OnGUI and GUI styles removed — all overlay rendering handled by Overlay.cs (Canvas-based)
+    private static void PlayGlitch()
+    {
+        var glitch = CameraGlitch.Instance;
+        if (glitch == null) return;
+        if (glitch.ActiveParent != null)
+            glitch.ActiveParent.SetActive(true);
+        glitch.PlayShort();
+    }
+
+    private System.Collections.IEnumerator DeferredEnable()
+    {
+        // wait 2 frames so the glitch effect covers the RT rebuild
+        yield return null;
+        yield return null;
+
+        Settings.ModEnabled = true;
+        Plugin.Log.LogInfo("Mod ENABLED");
+
+        Reinitialize();
+        Patches.RenderTexturePatch.ReapplyModCameraSettings();
+
+        if (_renderTextureMain != null)
+        {
+            _renderTextureMain.textureWidthOriginal = Settings.OutputWidth;
+            _renderTextureMain.textureHeightOriginal = Settings.OutputHeight;
+            var rt = _renderTextureMain.renderTexture;
+            if (rt != null && CurrentTier != RenderTier.Upscaler)
+            {
+                if (rt.width != _outputWidth || rt.height != _outputHeight)
+                {
+                    rt.Release();
+                    rt.width = _outputWidth;
+                    rt.height = _outputHeight;
+                    rt.Create();
+                }
+            }
+        }
+
+        float fogMult = Settings.ResolvedFogMultiplier;
+        if (_vanillaSaved && fogMult > 1f)
+        {
+            RenderSettings.fogStartDistance = _vanillaFogStart * fogMult;
+            RenderSettings.fogEndDistance = _vanillaFogEnd * fogMult;
+            if (_camera != null)
+                _camera.farClipPlane = RenderSettings.fogEndDistance + 10f;
+        }
+
+        Patches.SceneOptimizer.Apply();
+        Patches.QualityPatch.ApplyQualitySettings();
+        _togglePending = false;
+    }
 
     private void HandleResolutionChange()
     {
@@ -499,6 +519,7 @@ internal class UpscalerManager : MonoBehaviour
         // phase 0: drop render scale to measure CPU ceiling
         _savedRenderScale = Settings.ResolvedRenderScale;
         ApplyBenchmarkScale(25);
+        PlayGlitch();
     }
 
     private void FinishPhase0()
@@ -519,6 +540,7 @@ internal class UpscalerManager : MonoBehaviour
 
         // transition to phase 1: restore scale, re-warmup, measure real perf
         ApplyBenchmarkScale(_savedRenderScale);
+        PlayGlitch();
         _benchmarkPhase = 1;
         _benchmarkTimer = 0f;
         _benchmarkWarmup = WarmupDuration;
@@ -645,6 +667,9 @@ internal class UpscalerManager : MonoBehaviour
             Plugin.Log.LogInfo($"  Tuning target: {tuningFps:F1} FPS (1% low x {ThermalSafetyFactor} thermal safety)");
 
             Settings.AutoSelectPreset(tuningFps, cpuBound);
+
+            // glitch to cover the settings switch
+            PlayGlitch();
         }
         finally
         {

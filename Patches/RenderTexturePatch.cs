@@ -10,6 +10,8 @@ internal static class RenderTexturePatch
     // Saved vanilla values for F10 restore
     internal static DepthTextureMode OriginalDepthMode;
     internal static PostProcessLayer.Antialiasing[] OriginalAAModes = null!;
+    internal static float VanillaWidthSmall;
+    internal static float VanillaHeightSmall;
 
     [HarmonyPostfix]
     [HarmonyPatch("Start")]
@@ -61,6 +63,10 @@ internal static class RenderTexturePatch
             }
         }
 
+        // save vanilla pixelated resolution before overriding
+        VanillaWidthSmall = __instance.textureWidthSmall;
+        VanillaHeightSmall = __instance.textureHeightSmall;
+
         // force native res RT so overlayRawImage stays crisp
         int outW = Settings.OutputWidth;
         int outH = Settings.OutputHeight;
@@ -107,6 +113,16 @@ internal static class RenderTexturePatch
                 __instance.textureHeight = outH;
             }
         }
+    }
+
+    internal static void RestoreVanillaResolution()
+    {
+        if (RenderTextureMain.instance == null) return;
+        var rt = RenderTextureMain.instance;
+        rt.textureWidthOriginal = VanillaWidthSmall;
+        rt.textureHeightOriginal = VanillaHeightSmall;
+        rt.textureWidth = VanillaWidthSmall;
+        rt.textureHeight = VanillaHeightSmall;
     }
 
     internal static void RestoreVanillaCameraSettings()

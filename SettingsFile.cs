@@ -88,9 +88,14 @@ internal class AutoTuneData
     public int anisotropicFiltering = 16;
     public int perfLevel = 0;
 
+    // bump this when autotune logic changes but version doesn't
+    internal const int AutoTuneRevision = 2;
+    public int revision;
+
     internal bool IsStale()
     {
         return version != BuildInfo.Version
+            || revision < AutoTuneRevision
             || gpuName != SystemInfo.graphicsDeviceName
             || (resWidth > 0 && (resWidth != Screen.width || resHeight != Screen.height));
     }

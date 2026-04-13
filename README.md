@@ -147,7 +147,7 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 
 **F10** (configurable) toggles the entire mod off for vanilla comparison — everything reverts including performance optimizations.
 
-**F12** runs the optimizer benchmark — measures vanilla vs GPU/GC optimizations vs full (GPU/GC + CPU patches). Results saved to `optimizer_benchmark.txt`.
+**F11** runs the optimizer benchmark — measures vanilla vs GPU/GC optimizations vs full (GPU/GC + CPU patches). Results saved to `optimizer_benchmark.txt`.
 
 ## Installation
 

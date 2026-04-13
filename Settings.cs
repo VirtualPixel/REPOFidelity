@@ -183,7 +183,7 @@ internal static class Settings
         _cpuGateFrames++;
         _cpuGateTimer += UnityEngine.Time.unscaledDeltaTime;
 
-        if (_cpuGateTimer >= 0.5f)
+        if (_cpuGateTimer >= 0.5f && _cpuGateFrames > 0)
         {
             float avgMs = (_cpuGateAccum / _cpuGateFrames) * 1000f;
             CpuPatchesActive = avgMs >= CpuGateThresholdMs;
@@ -192,7 +192,6 @@ internal static class Settings
             _cpuGateFrames = 0;
         }
     }
-
 
     // per-optimization toggles for Custom preset. -1 = auto (follow preset logic)
     internal static int PerfExplosionShadows
@@ -556,7 +555,7 @@ internal static class Settings
         UpscaleMode.FSR4 => 50,
         UpscaleMode.FSR_Temporal => 50,
         UpscaleMode.FSR => 50,            // EASU floor
-        UpscaleMode.Off => 50,            // game's native scaling
+        UpscaleMode.Off => 50,            // game's native scaling handles sub-100 via pixelation
         _ => 50
     };
 
@@ -821,6 +820,7 @@ internal static class Settings
         SaveAutoTune(new AutoTuneData
         {
             version = BuildInfo.Version,
+            revision = AutoTuneData.AutoTuneRevision,
             gpuName = SystemInfo.graphicsDeviceName ?? "",
             resWidth = Screen.width,
             resHeight = Screen.height,
