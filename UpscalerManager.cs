@@ -772,16 +772,7 @@ internal class UpscalerManager : MonoBehaviour
                 _camera.farClipPlane = _vanillaFarClip;
         }
 
-        // Keep the render texture at native resolution — don't restore pixelation.
-        // The camera renders directly to the game's RT at full res.
-        // This gives a clean native vs upscaled comparison.
-        if (_renderTextureMain != null)
-        {
-            _renderTextureMain.textureWidthOriginal = Settings.OutputWidth;
-            _renderTextureMain.textureHeightOriginal = Settings.OutputHeight;
-        }
-
-        Plugin.Log.LogInfo("Vanilla settings restored (native res, no effects)");
+        Plugin.Log.LogInfo("Vanilla settings restored");
     }
 
     private void OnDestroy()
