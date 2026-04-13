@@ -504,8 +504,6 @@ internal class UpscalerManager : MonoBehaviour
             GUI.Label(new Rect(pad, y, wideW, lineH), "REPO HD detected — remove it, REPO Fidelity replaces it", _guiStyleWarn);
         }
 
-        if (string.IsNullOrEmpty(_debugText)) return;
-
         if (_benchmarkActive)
         {
             float p0Dur = Phase0Duration;
