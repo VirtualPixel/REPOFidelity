@@ -1,3 +1,10 @@
+## 1.1.2
+
+- Rewrote CPU/GPU bottleneck detection — old method didn't work on D3D11. Now runs a two-phase benchmark: measures FPS at minimal GPU load to find the CPU ceiling, then compares against real performance
+- Fixed DLSS not loading on some NVIDIA systems (driver store folder naming mismatch)
+- Fixed DLSS showing as available on non-RTX GPUs (Quadro P4000, GTX series)
+- Fixed items dropping when pulled from inventory with auto-hold enabled
+
 ## 1.1.1
 
 - Fixed Auto preset stripping flashlight/explosion/particle shadows on high-end hardware — shadow optimizations now only kick in when the benchmark shows the PC actually needs them

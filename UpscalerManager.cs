@@ -42,13 +42,14 @@ internal class UpscalerManager : MonoBehaviour
     private float _benchmarkTimer;
     private float _benchmarkWarmup;
     private readonly System.Collections.Generic.List<float> _benchmarkFrameTimes = new();
-    private readonly System.Collections.Generic.List<float> _benchmarkCpuTimes = new();
-    private readonly System.Collections.Generic.List<float> _benchmarkGpuTimes = new();
-    private readonly FrameTiming[] _ftBuf = new FrameTiming[1];
     private int _benchmarkVsyncPrev;
+    private int _benchmarkPhase; // 0 = low-GPU probe, 1 = real measurement
+    private float _lowGpuFps; // CPU ceiling from phase 0
+    private int _savedRenderScale; // stash original scale during phase 0
     private const float BenchmarkDuration = 15f;
     private const float AutoBenchmarkDuration = 12f;
-    private const float WarmupDuration = 5f;
+    private const float Phase0Duration = 4f;
+    private const float WarmupDuration = 3f;
     private const float ThermalSafetyFactor = 0.90f; // account for GPU thermal throttling
 
     private void Awake()
@@ -388,9 +389,12 @@ internal class UpscalerManager : MonoBehaviour
         // Wait 10s after level load for loading screen and asset streaming to finish.
         if (_benchmarkActive && !IsInGameplayLevel())
         {
+            if (_benchmarkPhase == 0)
+                ApplyBenchmarkScale(_savedRenderScale);
             _benchmarkActive = false;
             _autoBenchmark = false;
             QualitySettings.vSyncCount = _benchmarkVsyncPrev;
+            Settings.BenchmarkMode = false;
         }
 
         if (Settings.AutoTuneNeedsBenchmark && !_benchmarkActive && !_autoBenchmark
@@ -423,23 +427,23 @@ internal class UpscalerManager : MonoBehaviour
             _benchmarkTimer += Time.unscaledDeltaTime;
             float frameTimeMs = Time.unscaledDeltaTime * 1000f;
 
-            // Discard clearly broken frames (loading, GC > 3x typical)
             if (frameTimeMs > 0.01f && frameTimeMs < 500f)
                 _benchmarkFrameTimes.Add(frameTimeMs);
 
-            // capture CPU vs GPU split
-            FrameTimingManager.CaptureFrameTimings();
-            if (FrameTimingManager.GetLatestTimings(1, _ftBuf) > 0)
+            if (_benchmarkPhase == 0)
             {
-                if (_ftBuf[0].cpuFrameTime > 0) _benchmarkCpuTimes.Add((float)_ftBuf[0].cpuFrameTime);
-                if (_ftBuf[0].gpuFrameTime > 0) _benchmarkGpuTimes.Add((float)_ftBuf[0].gpuFrameTime);
+                bool ready = _benchmarkTimer >= Phase0Duration && _benchmarkFrameTimes.Count > 30;
+                bool timeout = _benchmarkTimer >= Phase0Duration * 3f;
+                if (ready || timeout)
+                    FinishPhase0();
             }
-
-            float duration = _autoBenchmark ? AutoBenchmarkDuration : BenchmarkDuration;
-
-            if (_benchmarkTimer >= duration && _benchmarkFrameTimes.Count > 30)
+            else
             {
-                FinishBenchmark();
+                float duration = _autoBenchmark ? AutoBenchmarkDuration : BenchmarkDuration;
+                bool ready = _benchmarkTimer >= duration && _benchmarkFrameTimes.Count > 30;
+                bool timeout = _benchmarkTimer >= duration * 2f;
+                if (ready || timeout)
+                    FinishBenchmark();
             }
         }
     }
@@ -504,13 +508,15 @@ internal class UpscalerManager : MonoBehaviour
 
         if (_benchmarkActive)
         {
-            float duration = _autoBenchmark ? AutoBenchmarkDuration : BenchmarkDuration;
+            float duration = _benchmarkPhase == 0 ? Phase0Duration
+                : (_autoBenchmark ? AutoBenchmarkDuration : BenchmarkDuration);
             float remaining = _benchmarkWarmup > 0 ? _benchmarkWarmup + duration : duration - _benchmarkTimer;
 
             string label = _autoBenchmark ? "AUTO-DETECTING" : "BENCHMARKING";
+            string phase = _benchmarkPhase == 0 ? " (probing CPU)" : "";
             string benchText = _benchmarkWarmup > 0
-                ? $"{label}... warming up ({remaining:F0}s)"
-                : $"{label}... {remaining:F0}s | {_benchmarkFrameTimes.Count} frames | {_currentFps:F0} FPS";
+                ? $"{label}{phase}... warming up ({remaining:F0}s)"
+                : $"{label}{phase}... {remaining:F0}s | {_benchmarkFrameTimes.Count} frames | {_currentFps:F0} FPS";
 
             float by = pad + lineH + pad;
             GUI.Label(new Rect(pad + sh, by + sh, wideW, lineH * 1.4f), benchText, _guiShadowLarge);
@@ -574,26 +580,73 @@ internal class UpscalerManager : MonoBehaviour
         _benchmarkTimer = 0f;
         _benchmarkWarmup = WarmupDuration;
         _benchmarkFrameTimes.Clear();
-        _benchmarkCpuTimes.Clear();
-        _benchmarkGpuTimes.Clear();
+        _benchmarkPhase = 0;
+        _lowGpuFps = 0f;
 
-        // Disable VSync during benchmark so we measure actual GPU capability
         _benchmarkVsyncPrev = QualitySettings.vSyncCount;
         QualitySettings.vSyncCount = 0;
+
+        // phase 0: drop render scale to measure CPU ceiling
+        _savedRenderScale = Settings.ResolvedRenderScale;
+        ApplyBenchmarkScale(25);
+    }
+
+    private void FinishPhase0()
+    {
+        _benchmarkFrameTimes.Sort();
+        int count = _benchmarkFrameTimes.Count;
+        float median = _benchmarkFrameTimes[count / 2];
+        var filtered = _benchmarkFrameTimes.FindAll(t => t <= median * 3f);
+        if (filtered.Count < 10) { _lowGpuFps = 0f; }
+        else
+        {
+            float total = 0f;
+            for (int i = 0; i < filtered.Count; i++) total += filtered[i];
+            _lowGpuFps = 1000f / (total / filtered.Count);
+        }
+
+        Plugin.Log.LogInfo($"Phase 0 (CPU ceiling): {_lowGpuFps:F0} FPS at 25% scale");
+
+        // transition to phase 1: restore scale, re-warmup, measure real perf
+        ApplyBenchmarkScale(_savedRenderScale);
+        _benchmarkPhase = 1;
+        _benchmarkTimer = 0f;
+        _benchmarkWarmup = WarmupDuration;
+        _benchmarkFrameTimes.Clear();
+    }
+
+    private void ApplyBenchmarkScale(int scale)
+    {
+        Settings.ResolvedRenderScale = scale;
+        int w = Mathf.Max(Mathf.RoundToInt(_outputWidth * scale / 100f), 1);
+        int h = Mathf.Max(Mathf.RoundToInt(_outputHeight * scale / 100f), 1);
+        if (w == _inputWidth && h == _inputHeight) return;
+
+        _inputWidth = w;
+        _inputHeight = h;
+
+        if (CurrentTier == RenderTier.Upscaler)
+        {
+            ReleaseRT(ref _outputRT);
+            var gameRT = _renderTextureMain?.renderTexture;
+            var format = gameRT != null ? gameRT.format : RenderTextureFormat.DefaultHDR;
+            _outputRT = new RenderTexture(w, h, 24, format) { filterMode = FilterMode.Bilinear };
+            _outputRT.Create();
+            if (_camera != null) _camera.targetTexture = _outputRT;
+            if (_upscaler != null)
+                _upscaler.OnResolutionChanged(w, h, _outputWidth, _outputHeight);
+        }
     }
 
     private void FinishBenchmark()
     {
         try
         {
-            // Sort frame times for percentile calculations
             _benchmarkFrameTimes.Sort();
             int count = _benchmarkFrameTimes.Count;
 
-            // Filter outliers: discard frames > 3x the median (GC pauses, loading spikes)
             float median = _benchmarkFrameTimes[count / 2];
-            float outlierThreshold = median * 3f;
-            var filtered = _benchmarkFrameTimes.FindAll(t => t <= outlierThreshold);
+            var filtered = _benchmarkFrameTimes.FindAll(t => t <= median * 3f);
             int filteredCount = filtered.Count;
 
             if (filteredCount < 10)
@@ -602,20 +655,17 @@ internal class UpscalerManager : MonoBehaviour
                 return;
             }
 
-            // Average frame time (correct method — NOT arithmetic mean of FPS)
             float totalMs = 0f;
             for (int i = 0; i < filteredCount; i++) totalMs += filtered[i];
             float avgMs = totalMs / filteredCount;
             float avgFps = 1000f / avgMs;
 
-            // 1% low: average of worst 1% of frame times
             int lowCount = Mathf.Max(filteredCount / 100, 1);
             float low1TotalMs = 0f;
             for (int i = filteredCount - lowCount; i < filteredCount; i++) low1TotalMs += filtered[i];
             float low1Ms = low1TotalMs / lowCount;
             float low1Fps = 1000f / low1Ms;
 
-            // 0.1% low (if enough samples)
             float low01Fps = 0f;
             if (filteredCount >= 1000)
             {
@@ -630,20 +680,14 @@ internal class UpscalerManager : MonoBehaviour
             string res = CurrentTier == RenderTier.Upscaler ? $"{_inputWidth}x{_inputHeight}" : "native";
             int discarded = count - filteredCount;
 
-            // CPU vs GPU bottleneck detection
-            float avgCpuMs = 0f, avgGpuMs = 0f;
-            bool cpuBound = false;
-            if (_benchmarkCpuTimes.Count > 30 && _benchmarkGpuTimes.Count > 30)
+            // if real FPS is close to the low-GPU-load ceiling, GPU isn't the bottleneck
+            bool cpuBound = true;
+            if (_lowGpuFps > 0f && avgFps > 0f)
             {
-                float cpuTotal = 0f, gpuTotal = 0f;
-                for (int i = 0; i < _benchmarkCpuTimes.Count; i++) cpuTotal += _benchmarkCpuTimes[i];
-                for (int i = 0; i < _benchmarkGpuTimes.Count; i++) gpuTotal += _benchmarkGpuTimes[i];
-                avgCpuMs = cpuTotal / _benchmarkCpuTimes.Count;
-                avgGpuMs = gpuTotal / _benchmarkGpuTimes.Count;
-                // CPU-bound if CPU takes 20%+ longer than GPU
-                // GPU-bound only when GPU clearly exceeds CPU.
-                // at parity, dropping render scale won't help — treat as CPU-bound.
-                cpuBound = avgGpuMs < avgCpuMs * 1.3f;
+                float ratio = avgFps / _lowGpuFps;
+                cpuBound = ratio >= 0.85f;
+                Plugin.Log.LogInfo($"  Bottleneck: {avgFps:F0} / {_lowGpuFps:F0} ceiling = {ratio:P0} " +
+                    $"-> {(cpuBound ? "CPU-BOUND" : "GPU-bound")}");
             }
 
             Plugin.Log.LogInfo("=== BENCHMARK RESULTS ===");
@@ -652,7 +696,6 @@ internal class UpscalerManager : MonoBehaviour
             Plugin.Log.LogInfo($"  Avg: {avgFps:F1} FPS ({avgMs:F1}ms)");
             Plugin.Log.LogInfo($"  1% Low: {low1Fps:F1} FPS ({low1Ms:F1}ms)");
             if (low01Fps > 0) Plugin.Log.LogInfo($"  0.1% Low: {low01Fps:F1} FPS");
-            if (avgCpuMs > 0) Plugin.Log.LogInfo($"  CPU: {avgCpuMs:F1}ms | GPU: {avgGpuMs:F1}ms | {(cpuBound ? "CPU-BOUND" : "GPU-bound")}");
             Plugin.Log.LogInfo("=========================");
 
             float tuningFps = low1Fps * ThermalSafetyFactor;
