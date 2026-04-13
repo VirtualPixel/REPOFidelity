@@ -99,6 +99,8 @@ Surface detail on the vase and sharper edges on the clown figure. Shadows render
 - GPU instancing on all materials (fewer draw calls)
 - Cached physics queries (less garbage collection pressure)
 - Disables unnecessary shadows on explosions, particle effects, animated lights
+- CPU patches: EnemyDirector loop throttling, NonAlloc physics replacements, SemiFunc result caching, PhysGrabObject iteration fix, LightManager allocation-free cleanup
+- CPU patches auto-enable based on frame time — active when your system needs them, dormant when it doesn't
 - All optimizations scale with preset — Ultra keeps full visual quality
 
 **Smart Auto-Benchmark**
@@ -144,6 +146,8 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 | Mod Toggle Key | F5–F10 | F10 | Disables mod entirely for vanilla comparison |
 
 **F10** (configurable) toggles the entire mod off for vanilla comparison — everything reverts including performance optimizations.
+
+**F12** runs the optimizer benchmark — measures vanilla vs GPU/GC optimizations vs full (GPU/GC + CPU patches). Results saved to `optimizer_benchmark.txt`.
 
 ## Installation
 

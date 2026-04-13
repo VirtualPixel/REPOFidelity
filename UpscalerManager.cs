@@ -28,13 +28,30 @@ internal class UpscalerManager : MonoBehaviour
     private int _outputWidth;
     private int _outputHeight;
     private bool _useCameraCallback;
-    private float _fpsTimer;
-    private int _fpsFrameCount;
-    private float _currentFps;
-    private float _currentFrameTime;
-    private string _debugText = "";
-    private string _debugText2 = "";
     private bool _repoHdDetected;
+
+    // public accessors for overlay
+    internal static bool RepoHdDetected => Instance != null && Instance._repoHdDetected;
+    internal static bool BenchmarkActive => Instance != null && Instance._benchmarkActive;
+    internal static bool AutoBenchmarkRunning => Instance != null && Instance._autoBenchmark;
+    internal static float BenchmarkProgress
+    {
+        get
+        {
+            if (Instance == null || !Instance._benchmarkActive) return 0f;
+            float p0 = Phase0Duration;
+            float p1 = Instance._autoBenchmark ? AutoBenchmarkDuration : BenchmarkDuration;
+            float total = WarmupDuration + p0 + WarmupDuration + p1;
+            float elapsed;
+            if (Instance._benchmarkPhase == 0)
+                elapsed = (WarmupDuration - Instance._benchmarkWarmup) +
+                    (Instance._benchmarkWarmup > 0 ? 0 : Instance._benchmarkTimer);
+            else
+                elapsed = WarmupDuration + p0 + (WarmupDuration - Instance._benchmarkWarmup) +
+                    (Instance._benchmarkWarmup > 0 ? 0 : Instance._benchmarkTimer);
+            return Mathf.Clamp01(elapsed / total);
+        }
+    }
 
     // Benchmark
     private bool _benchmarkActive;
@@ -286,6 +303,10 @@ internal class UpscalerManager : MonoBehaviour
 
     private void Update()
     {
+        // F12: optimizer benchmark (only in gameplay levels)
+        if (Input.GetKeyDown(KeyCode.F12) && IsInGameplayLevel())
+            OptimizerBenchmark.Launch();
+
         if (!_benchmarkActive && Input.GetKeyDown(Settings.ToggleKey))
         {
             Settings.ModEnabled = !Settings.ModEnabled;
@@ -296,6 +317,11 @@ internal class UpscalerManager : MonoBehaviour
 
             if (!Settings.ModEnabled)
             {
+                // dispose upscaler command buffers BEFORE restoring camera depth mode,
+                // otherwise the DLSS MV blit fires with missing motion vectors
+                _upscaler?.Dispose();
+                _upscaler = null;
+
                 if (_camera != null && _renderTextureMain != null)
                     _camera.targetTexture = _renderTextureMain.renderTexture;
 
@@ -311,9 +337,8 @@ internal class UpscalerManager : MonoBehaviour
             }
             else
             {
-                // Re-redirect camera to our scaled RT
-                if (CurrentTier == RenderTier.Upscaler && _camera != null && _outputRT != null)
-                    _camera.targetTexture = _outputRT;
+                // Re-create upscaler (was disposed on disable) and reapply everything
+                Reinitialize();
 
                 // Re-apply camera depth mode + AA
                 Patches.RenderTexturePatch.ReapplyModCameraSettings();
@@ -352,37 +377,7 @@ internal class UpscalerManager : MonoBehaviour
             }
         }
 
-        if (Settings.DebugOverlay || !Settings.ModEnabled || _benchmarkActive)
-        {
-            _fpsTimer += Time.unscaledDeltaTime;
-            _fpsFrameCount++;
-
-            if (_fpsTimer >= 0.5f)
-            {
-                _currentFps = _fpsFrameCount / _fpsTimer;
-                _currentFrameTime = _fpsTimer / _fpsFrameCount * 1000f;
-                _fpsFrameCount = 0;
-                _fpsTimer = 0f;
-
-                if (Settings.DebugOverlay || !Settings.ModEnabled)
-                {
-                    string mode = CurrentTier switch
-                    {
-                        RenderTier.Upscaler => _upscaler?.Name ?? "Unknown",
-                        RenderTier.NativeScaling => "CAS Only",
-                        _ => "Off"
-                    };
-                    string input = CurrentTier == RenderTier.Upscaler ? $"{_inputWidth}x{_inputHeight}" : "native";
-                    string output = $"{_outputWidth}x{_outputHeight}";
-                    float scale = RenderTexturePatch.GetRenderScale();
-                    string preset = Settings.Preset.ToString();
-                    string aa = Settings.ResolvedAAMode == AAMode.Off ? "" : $" AA={Settings.ResolvedAAMode}";
-                    string vsync = QualitySettings.vSyncCount > 0 ? " VSync" : "";
-                    _debugText = $"REPO Fidelity [{preset}] | {mode}{aa} | {input} -> {output} ({scale * 100:F0}%) | {_currentFps:F1} FPS ({_currentFrameTime:F1}ms){vsync}";
-                    _debugText2 = $"{GPUDetector.GpuName} | Shadows={Settings.ResolvedShadowQuality}/{Settings.ResolvedShadowDistance:F0}m | Lights={Settings.ResolvedPixelLightCount} LOD={Settings.ResolvedLODBias:F1}x | Sharp={Settings.Sharpening:F1} Fog={Settings.ResolvedFogMultiplier:F2}x";
-                }
-            }
-        }
+        // FPS/debug text rendering moved to Overlay.cs
 
         // cancel benchmark if we left the gameplay level
         if (_benchmarkActive && !IsInGameplayLevel())
@@ -392,6 +387,7 @@ internal class UpscalerManager : MonoBehaviour
             _benchmarkActive = false;
             _autoBenchmark = false;
             QualitySettings.vSyncCount = _benchmarkVsyncPrev;
+            Application.targetFrameRate = _benchmarkFpsPrev;
             Settings.BenchmarkMode = false;
         }
 
@@ -446,106 +442,7 @@ internal class UpscalerManager : MonoBehaviour
         }
     }
 
-    private GUIStyle? _guiStyleLarge, _guiShadowLarge;
-    private GUIStyle? _guiStyleMed, _guiShadowMed;
-    private GUIStyle? _guiStyleSmall, _guiShadowSmall;
-    private GUIStyle? _guiStyleWarn, _guiShadowWarn;
-    private int _guiLastHeight;
-
-    private void EnsureGUIStyles()
-    {
-        // rebuild when resolution changes so text scales properly
-        if (_guiStyleLarge != null && _guiLastHeight == Screen.height) return;
-        _guiLastHeight = Screen.height;
-
-        float s = Screen.height / 1080f;
-        int large = Mathf.Max(Mathf.RoundToInt(22 * s), 10);
-        int med = Mathf.Max(Mathf.RoundToInt(20 * s), 9);
-        int small = Mathf.Max(Mathf.RoundToInt(18 * s), 8);
-
-        _guiStyleLarge = new GUIStyle(GUI.skin.label) { fontSize = large, fontStyle = FontStyle.Bold };
-        _guiStyleLarge.normal.textColor = Color.red;
-        _guiShadowLarge = new GUIStyle(_guiStyleLarge);
-        _guiShadowLarge.normal.textColor = Color.black;
-
-        _guiStyleMed = new GUIStyle(GUI.skin.label) { fontSize = med, fontStyle = FontStyle.Bold };
-        _guiStyleMed.normal.textColor = Color.red;
-        _guiShadowMed = new GUIStyle(_guiStyleMed);
-        _guiShadowMed.normal.textColor = Color.black;
-
-        _guiStyleSmall = new GUIStyle(GUI.skin.label) { fontSize = small, fontStyle = FontStyle.Bold };
-        _guiStyleSmall.normal.textColor = Color.yellow;
-        _guiShadowSmall = new GUIStyle(_guiStyleSmall);
-        _guiShadowSmall.normal.textColor = Color.black;
-
-        _guiStyleWarn = new GUIStyle(GUI.skin.label) { fontSize = med, fontStyle = FontStyle.Bold };
-        _guiStyleWarn.normal.textColor = new Color(1f, 0.6f, 0f);
-        _guiShadowWarn = new GUIStyle(_guiStyleWarn);
-        _guiShadowWarn.normal.textColor = Color.black;
-    }
-
-    private void OnGUI()
-    {
-        if (!_repoHdDetected && !_benchmarkActive && string.IsNullOrEmpty(_debugText)) return;
-        EnsureGUIStyles();
-
-        float s = Screen.height / 1080f;
-        float pad = 10f * s;
-        float sh = 1f * s; // shadow offset
-        float lineH = 25f * s;
-        float wideW = Screen.width * 0.6f;
-
-        if (_repoHdDetected)
-        {
-            float y = Screen.height - lineH * 2.5f;
-            GUI.Label(new Rect(pad + sh, y + sh, wideW, lineH), "REPO HD detected — remove it, REPO Fidelity replaces it", _guiShadowWarn);
-            GUI.Label(new Rect(pad, y, wideW, lineH), "REPO HD detected — remove it, REPO Fidelity replaces it", _guiStyleWarn);
-        }
-
-        if (_benchmarkActive)
-        {
-            float p0Dur = Phase0Duration;
-            float p1Dur = _autoBenchmark ? AutoBenchmarkDuration : BenchmarkDuration;
-            float totalDur = WarmupDuration + p0Dur + WarmupDuration + p1Dur;
-
-            float elapsed;
-            if (_benchmarkPhase == 0)
-                elapsed = (WarmupDuration - _benchmarkWarmup) + (_benchmarkWarmup > 0 ? 0 : _benchmarkTimer);
-            else
-                elapsed = WarmupDuration + p0Dur + (WarmupDuration - _benchmarkWarmup)
-                    + (_benchmarkWarmup > 0 ? 0 : _benchmarkTimer);
-
-            float pct = Mathf.Clamp01(elapsed / totalDur);
-            string label = _autoBenchmark ? "AUTO-TUNING" : "BENCHMARKING";
-            string benchText = $"{label}... {Mathf.RoundToInt(pct * 100)}% | {_currentFps:F0} FPS";
-
-            float by = pad + lineH + pad;
-            GUI.Label(new Rect(pad + sh, by + sh, wideW, lineH * 1.4f), benchText, _guiShadowLarge);
-            GUI.Label(new Rect(pad, by, wideW, lineH * 1.4f), benchText, _guiStyleLarge);
-
-            // progress bar
-            float barY = by + lineH * 1.5f;
-            float barW = Screen.width * 0.3f;
-            float barH = 6f * s;
-            GUI.DrawTexture(new Rect(pad, barY, barW, barH), Texture2D.whiteTexture, ScaleMode.StretchToFill, false, 0, new Color(0.2f, 0.2f, 0.2f, 0.8f), 0, 0);
-            GUI.DrawTexture(new Rect(pad, barY, barW * pct, barH), Texture2D.whiteTexture, ScaleMode.StretchToFill, false, 0, Color.red, 0, 0);
-        }
-
-        if (!Settings.ModEnabled)
-        {
-            string offText = $"REPO FIDELITY OFF ({Settings.ToggleKey}) | {_currentFps:F1} FPS ({_currentFrameTime:F1}ms)";
-            GUI.Label(new Rect(pad + sh, pad + sh, wideW, lineH), offText, _guiShadowMed);
-            GUI.Label(new Rect(pad, pad, wideW, lineH), offText, _guiStyleMed);
-            return;
-        }
-
-        if (!Settings.DebugOverlay) return;
-
-        GUI.Label(new Rect(pad + sh, pad + sh, wideW, lineH), _debugText, _guiShadowSmall);
-        GUI.Label(new Rect(pad, pad, wideW, lineH), _debugText, _guiStyleSmall);
-        GUI.Label(new Rect(pad + sh, pad + lineH + sh, wideW, lineH), _debugText2, _guiShadowSmall);
-        GUI.Label(new Rect(pad, pad + lineH, wideW, lineH), _debugText2, _guiStyleSmall);
-    }
+    // OnGUI and GUI styles removed — all overlay rendering handled by Overlay.cs (Canvas-based)
 
     private void HandleResolutionChange()
     {
@@ -582,6 +479,8 @@ internal class UpscalerManager : MonoBehaviour
             _upscaler.OnResolutionChanged(_inputWidth, _inputHeight, _outputWidth, _outputHeight);
     }
 
+    private int _benchmarkFpsPrev;
+
     private void StartBenchmark()
     {
         _benchmarkActive = true;
@@ -591,8 +490,11 @@ internal class UpscalerManager : MonoBehaviour
         _benchmarkPhase = 0;
         _lowGpuFps = 0f;
 
+        // unlock framerate for accurate measurement
         _benchmarkVsyncPrev = QualitySettings.vSyncCount;
+        _benchmarkFpsPrev = Application.targetFrameRate;
         QualitySettings.vSyncCount = 0;
+        Application.targetFrameRate = -1;
 
         // phase 0: drop render scale to measure CPU ceiling
         _savedRenderScale = Settings.ResolvedRenderScale;
@@ -688,22 +590,55 @@ internal class UpscalerManager : MonoBehaviour
             string res = CurrentTier == RenderTier.Upscaler ? $"{_inputWidth}x{_inputHeight}" : "native";
             int discarded = count - filteredCount;
 
-            // if real FPS is close to the low-GPU-load ceiling, GPU isn't the bottleneck
+            // if real FPS is close to the low-GPU-load ceiling, GPU isn't the bottleneck.
+            // at high FPS the ratio naturally converges to 1.0 even on GPU-bound systems
+            // (frame time differences shrink), so use a stricter threshold above 120 FPS.
             bool cpuBound = true;
             if (_lowGpuFps > 0f && avgFps > 0f)
             {
                 float ratio = avgFps / _lowGpuFps;
-                cpuBound = ratio >= 0.85f;
+                float threshold = avgFps > 120f ? 0.95f : 0.85f;
+                cpuBound = ratio >= threshold;
+                Plugin.Log.LogInfo($"  Ratio: {ratio:P1}, threshold: {threshold:P0} (fps={avgFps:F0})");
+
+                // Proton/DXVK fix: draw call translation overhead scales with resolution,
+                // so 25% scale also reduces CPU load — making the ratio misleadingly low.
+                // Secondary check: if the CPU ceiling itself is below target, the CPU
+                // can't sustain the target framerate regardless of GPU load.
+                float targetFps = Mathf.Max(Screen.currentResolution.refreshRate, 60f);
+                bool translationLayer = Application.platform == RuntimePlatform.LinuxPlayer
+                    || SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Vulkan;
+
+                if (!cpuBound && _lowGpuFps < targetFps)
+                {
+                    cpuBound = true;
+                    Plugin.Log.LogInfo($"  Bottleneck override: CPU ceiling ({_lowGpuFps:F0}) < target ({targetFps:F0}) " +
+                        $"-> CPU-BOUND (CPU can't sustain target even at minimum GPU load)");
+                }
+                else if (!cpuBound && translationLayer && ratio < 0.95f)
+                {
+                    // on translation layers, the 25% test is unreliable —
+                    // use a tighter threshold since DXVK overhead artificially
+                    // inflates the ceiling
+                    cpuBound = true;
+                    Plugin.Log.LogInfo($"  Bottleneck override: translation layer detected " +
+                        $"({Application.platform}/{SystemInfo.graphicsDeviceType}), " +
+                        $"ratio {ratio:P0} < 95% -> CPU-BOUND");
+                }
+
                 Plugin.Log.LogInfo($"  Bottleneck: {avgFps:F0} / {_lowGpuFps:F0} ceiling = {ratio:P0} " +
                     $"-> {(cpuBound ? "CPU-BOUND" : "GPU-bound")}");
             }
 
             Plugin.Log.LogInfo("=== BENCHMARK RESULTS ===");
             Plugin.Log.LogInfo($"  Preset: {preset} | Upscaler: {mode} | Render: {res} -> {_outputWidth}x{_outputHeight}");
+            Plugin.Log.LogInfo($"  CPU: {SystemInfo.processorType} ({SystemInfo.processorCount} threads)");
+            Plugin.Log.LogInfo($"  RAM: {SystemInfo.systemMemorySize}MB | Platform: {Application.platform} | API: {SystemInfo.graphicsDeviceType}");
             Plugin.Log.LogInfo($"  Frames: {filteredCount} measured, {discarded} outliers discarded");
             Plugin.Log.LogInfo($"  Avg: {avgFps:F1} FPS ({avgMs:F1}ms)");
             Plugin.Log.LogInfo($"  1% Low: {low1Fps:F1} FPS ({low1Ms:F1}ms)");
             if (low01Fps > 0) Plugin.Log.LogInfo($"  0.1% Low: {low01Fps:F1} FPS");
+            Plugin.Log.LogInfo($"  CPU ceiling (25% scale): {_lowGpuFps:F1} FPS | Full scale: {avgFps:F1} FPS | Ratio: {(avgFps / Mathf.Max(_lowGpuFps, 1f)):P0}");
             Plugin.Log.LogInfo("=========================");
 
             float tuningFps = low1Fps * ThermalSafetyFactor;
@@ -714,6 +649,7 @@ internal class UpscalerManager : MonoBehaviour
         finally
         {
             QualitySettings.vSyncCount = _benchmarkVsyncPrev;
+            Application.targetFrameRate = _benchmarkFpsPrev;
             if (_autoBenchmark) _autoBenchmark = false;
             _benchmarkActive = false;
             Settings.BenchmarkMode = false;

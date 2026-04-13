@@ -1,3 +1,18 @@
+## 1.2.0
+
+- Added CPU optimization patches — EnemyDirector throttling, RoomVolumeCheck NonAlloc, SemiFunc nearest-object caching, PhysGrabObject list iteration fix, LightManager allocation-free cleanup
+- CPU patches auto-enable based on frame time — kicks in when needed (>8ms), stays off on fast systems where the overhead would hurt
+- Added F12 optimizer benchmark — measures all optimizations (GPU/GC + CPU) with 2-pass averaging, writes a detailed report to `optimizer_benchmark.txt`
+- Fixed auto-tune misclassifying high-FPS systems as CPU-bound — ratio threshold now scales with framerate (95% above 120 FPS, 85% below)
+- Fixed auto-tune misclassifying Proton/DXVK systems — secondary check detects when the CPU ceiling is below target refresh rate
+- Fixed CPU-bound auto-tune maxing GPU settings on systems with weak GPUs — the stepdown cascade now reduces GPU settings too when the budget is tight
+- CPU-impacting settings (lights, shadow distance, LOD) now step down before pure-GPU settings (fog, AF) in the auto-tune ladder
+- Auto-tune benchmark now unlocks FPS cap during measurement (`Application.targetFrameRate = -1`) alongside VSync disable, then restores both after
+- Fixed DLSS motion vector warning on F10 toggle — upscaler command buffers are now disposed before camera depth mode is restored
+- Rewrote overlay as a proper layout manager — all status text (debug, benchmark, mod-off) stacks cleanly in the bottom-left without overlapping
+- FPS counter in overlay smoothed over 0.5s for readability
+- Added CPU and system info to startup log and benchmark results
+
 ## 1.1.2
 
 - Rewrote CPU/GPU bottleneck detection — old method didn't work on D3D11, so every system was incorrectly tagged as GPU-bound. Now runs a two-phase benchmark to measure the actual bottleneck

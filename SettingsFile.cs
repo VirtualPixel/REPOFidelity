@@ -36,6 +36,7 @@ internal class SettingsFile
         }
     }
 
+
     internal void Save()
     {
         if (_suppressSave) return;
@@ -143,6 +144,9 @@ internal class SettingsData
     public bool cpuBound = true;
     public int benchResWidth;
     public int benchResHeight;
+
+    // cpu optimizations — -1 = auto (enable when frame time > 8ms), 0 = off, 1 = on
+    public int cpuPatchMode = -1;
 
     // debug
     public int toggleKey = (int)KeyCode.F10;

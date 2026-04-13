@@ -153,6 +153,47 @@ internal static class Settings
 
     internal static bool CpuBound => _autoTune.IsStale() || _autoTune.cpuBound;
 
+    // --- CPU optimizations ---
+    // User-facing toggles (saved to file). -1 = auto, 0 = off, 1 = on.
+    // Auto mode: patches activate only when frame time is high enough
+    // that the savings outweigh Harmony overhead (~8ms threshold).
+    internal static int CpuPatchMode
+    {
+        get => D.cpuPatchMode;
+        set { D.cpuPatchMode = value; _file.Save(); }
+    }
+
+    // Runtime gate — updated every 0.5s, true when CPU patches should be active.
+    // When CpuPatchMode is Auto (-1), this tracks rolling frame time.
+    // When forced (0 or 1), returns the forced value.
+    internal static bool CpuPatchesActive { get; private set; } = true;
+
+    private static float _cpuGateTimer;
+    private static float _cpuGateAccum;
+    private static int _cpuGateFrames;
+    private const float CpuGateThresholdMs = 8f; // ~125 FPS — below this, patches cost more than they save
+
+    internal static void UpdateCpuGate()
+    {
+        if (CpuPatchMode == 1) { CpuPatchesActive = true; return; }
+        if (CpuPatchMode == 0) { CpuPatchesActive = false; return; }
+
+        // auto mode: sample frame time over 0.5s windows
+        _cpuGateAccum += UnityEngine.Time.unscaledDeltaTime;
+        _cpuGateFrames++;
+        _cpuGateTimer += UnityEngine.Time.unscaledDeltaTime;
+
+        if (_cpuGateTimer >= 0.5f)
+        {
+            float avgMs = (_cpuGateAccum / _cpuGateFrames) * 1000f;
+            CpuPatchesActive = avgMs >= CpuGateThresholdMs;
+            _cpuGateTimer = 0f;
+            _cpuGateAccum = 0f;
+            _cpuGateFrames = 0;
+        }
+    }
+
+
     // per-optimization toggles for Custom preset. -1 = auto (follow preset logic)
     internal static int PerfExplosionShadows
     {
@@ -638,6 +679,7 @@ internal static class Settings
         ResolvedViewDistance = at.viewDistance;
         ResolvedAnisotropicFiltering = at.anisotropicFiltering;
         ResolvedTextureQuality = TextureRes.Full;
+
     }
 
     internal static void AutoSelectPreset(float avgFps, bool cpuBound = false)
@@ -694,14 +736,27 @@ internal static class Settings
 
         if (cpuBound)
         {
-            // only step down shadow distance and lights — shadow quality is GPU-only.
-            // floor at vanilla (25m shadows, 12 lights)
+            // CPU-bound: don't waste GPU headroom, but also don't exceed it.
+            // Step down GPU settings if the budget is still too tight —
+            // on systems where both CPU and GPU are weak (e.g. RX 6400 + i5-2500),
+            // we can't just max GPU settings because the GPU can't handle them either.
+            // step down CPU-impacting settings first (lights, shadows, LOD have CPU-side costs
+            // like culling and draw calls), keep pure-GPU settings (fog, AF) for last
             if (budget < 1f) { shD = 100f; budget = Rebudget(); }
             if (budget < 1f) { lights = 12; budget = Rebudget(); }
             if (budget < 1f) { shD = 75f; budget = Rebudget(); }
+            if (budget < 1f) { lod = 2f; budget = Rebudget(); }
             if (budget < 1f) { shD = 50f; budget = Rebudget(); }
+            if (budget < 1f) { lDist = 35f; budget = Rebudget(); }
+            if (budget < 1f) { lights = 8; budget = Rebudget(); }
+            if (budget < 1f) { shQ = ShadowQuality.High; budget = Rebudget(); }
+            if (budget < 1f) { shQ = ShadowQuality.Medium; budget = Rebudget(); }
+            if (budget < 1f) { af = 8; budget = Rebudget(); }
+            if (budget < 1f) { shD = 25f; lights = 4; lDist = 15f; af = 4; lod = 1f; budget = Rebudget(); }
+            if (budget < 1f) { shQ = ShadowQuality.Low; budget = Rebudget(); }
+            if (budget < 1f) { fog = 1f; budget = Rebudget(); }
 
-            Plugin.Log.LogInfo($"CPU-bound: budget={budget:F2} shQ={shQ} shD={shD} lights={lights}");
+            Plugin.Log.LogInfo($"CPU-bound: budget={budget:F2} shQ={shQ} shD={shD} lod={lod} lights={lights}");
         }
         else
         {

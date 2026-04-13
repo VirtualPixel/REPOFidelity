@@ -42,6 +42,8 @@ public class Plugin : BaseUnityPlugin
 
         Log.LogInfo($"REPO Fidelity v{BuildInfo.Version} loaded");
         Log.LogInfo($"GPU: {GPUDetector.GpuName} ({GPUDetector.Vendor}, Tier: {GPUDetector.Tier}, VRAM: {GPUDetector.VramMb}MB)");
+        Log.LogInfo($"CPU: {UnityEngine.SystemInfo.processorType} ({UnityEngine.SystemInfo.processorCount} threads)");
+        Log.LogInfo($"RAM: {UnityEngine.SystemInfo.systemMemorySize}MB | Platform: {UnityEngine.Application.platform} | API: {UnityEngine.SystemInfo.graphicsDeviceType}");
         Log.LogInfo($"DLSS Available: {GPUDetector.DlssAvailable}");
 
         if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("nickklmao.menulib"))
@@ -49,5 +51,16 @@ public class Plugin : BaseUnityPlugin
             MenuIntegration.Initialize();
             Log.LogInfo("MenuLib detected — settings added to graphics menu");
         }
+    }
+
+    private void LateUpdate()
+    {
+        Settings.UpdateCpuGate();
+        Overlay.UpdateLines();
+    }
+
+    private void OnGUI()
+    {
+        Overlay.Draw();
     }
 }
