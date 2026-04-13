@@ -1,7 +1,7 @@
 ## 1.1.2
 
 - Rewrote CPU/GPU bottleneck detection — old method didn't work on D3D11, so every system was incorrectly tagged as GPU-bound. Now runs a two-phase benchmark to measure the actual bottleneck
-- Fixed CPU-bound auto-tune trashing shadow quality for no gain — shadow resolution is GPU-only, so the CPU-bound ladder no longer touches it. Only reduces shadow distance and light count (which have real draw-call cost)
+- Fixed CPU-bound auto-tune trashing shadow quality for no gain — shadow resolution is GPU-only, so the CPU-bound ladder no longer touches it. Only reduces shadow distance and light count, and never below vanilla defaults
 - Benchmark now shows a progress bar with percentage instead of raw frame counts
 - Fixed DLSS not loading on some NVIDIA systems (driver store folder naming mismatch)
 - Fixed DLSS showing as available on non-RTX GPUs (Quadro P4000, GTX series)
