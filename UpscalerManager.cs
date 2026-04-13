@@ -384,9 +384,7 @@ internal class UpscalerManager : MonoBehaviour
             }
         }
 
-        // Auto-benchmark on first boot — only in actual gameplay levels.
-        // Uses RunManager API to distinguish lobby from gameplay (same pattern as SharedUpgradesPlus).
-        // Wait 10s after level load for loading screen and asset streaming to finish.
+        // cancel benchmark if we left the gameplay level
         if (_benchmarkActive && !IsInGameplayLevel())
         {
             if (_benchmarkPhase == 0)
@@ -488,7 +486,7 @@ internal class UpscalerManager : MonoBehaviour
 
     private void OnGUI()
     {
-        if (!_repoHdDetected && string.IsNullOrEmpty(_debugText)) return;
+        if (!_repoHdDetected && !_benchmarkActive && string.IsNullOrEmpty(_debugText)) return;
         EnsureGUIStyles();
 
         float s = Screen.height / 1080f;
@@ -763,7 +761,6 @@ internal class UpscalerManager : MonoBehaviour
 
     private void RestoreVanillaSettings()
     {
-        // Restore fog to what the game set before we modified it
         if (_vanillaSaved)
         {
             RenderSettings.fogStartDistance = _vanillaFogStart;

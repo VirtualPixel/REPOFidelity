@@ -694,10 +694,8 @@ internal static class Settings
 
         if (cpuBound)
         {
-            // CPU-bound: shadow quality and render scale are GPU-only — leave them alone.
-            // only reduce shadow distance and lights (draw call submission cost).
-            // stop early if we can't reach target — trashing visuals won't help.
-            // vanilla ships 25m shadows / 12 lights — never go below that
+            // only step down shadow distance and lights — shadow quality is GPU-only.
+            // floor at vanilla (25m shadows, 12 lights)
             if (budget < 1f) { shD = 100f; budget = Rebudget(); }
             if (budget < 1f) { lights = 12; budget = Rebudget(); }
             if (budget < 1f) { shD = 75f; budget = Rebudget(); }
