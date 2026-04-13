@@ -694,18 +694,13 @@ internal static class Settings
 
         if (cpuBound)
         {
-            // start at Ultra, only step down settings with real CPU cost.
-            // render scale, AF, textures stay maxed — they're GPU-only.
-            // shadow distance and lights have CPU cost (draw call submission).
+            // CPU-bound: shadow quality and render scale are GPU-only — leave them alone.
+            // only reduce shadow distance and lights (draw call submission cost).
+            // stop early if we can't reach target — trashing visuals won't help.
             if (budget < 1f) { shD = 100f; budget = Rebudget(); }
             if (budget < 1f) { lights = 12; budget = Rebudget(); }
-            if (budget < 1f) { shD = 75f; budget = Rebudget(); }
-            if (budget < 1f) { shQ = ShadowQuality.High; budget = Rebudget(); }
-            if (budget < 1f) { lights = 8; budget = Rebudget(); }
-            if (budget < 1f) { shD = 50f; budget = Rebudget(); }
-            if (budget < 1f) { shQ = ShadowQuality.Medium; budget = Rebudget(); }
-            if (budget < 1f) { lights = 4; shD = 25f; budget = Rebudget(); }
-            if (budget < 1f) { shQ = ShadowQuality.Low; shD = 10f; lights = 2; }
+            if (budget < 1f) { shD = 75f; lights = 8; budget = Rebudget(); }
+            if (budget < 1f) { shD = 50f; lights = 4; budget = Rebudget(); }
 
             Plugin.Log.LogInfo($"CPU-bound: budget={budget:F2} shQ={shQ} shD={shD} lights={lights}");
         }

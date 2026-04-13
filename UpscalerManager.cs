@@ -508,19 +508,31 @@ internal class UpscalerManager : MonoBehaviour
 
         if (_benchmarkActive)
         {
-            float duration = _benchmarkPhase == 0 ? Phase0Duration
-                : (_autoBenchmark ? AutoBenchmarkDuration : BenchmarkDuration);
-            float remaining = _benchmarkWarmup > 0 ? _benchmarkWarmup + duration : duration - _benchmarkTimer;
+            float p0Dur = Phase0Duration;
+            float p1Dur = _autoBenchmark ? AutoBenchmarkDuration : BenchmarkDuration;
+            float totalDur = WarmupDuration + p0Dur + WarmupDuration + p1Dur;
 
-            string label = _autoBenchmark ? "AUTO-DETECTING" : "BENCHMARKING";
-            string phase = _benchmarkPhase == 0 ? " (probing CPU)" : "";
-            string benchText = _benchmarkWarmup > 0
-                ? $"{label}{phase}... warming up ({remaining:F0}s)"
-                : $"{label}{phase}... {remaining:F0}s | {_benchmarkFrameTimes.Count} frames | {_currentFps:F0} FPS";
+            float elapsed;
+            if (_benchmarkPhase == 0)
+                elapsed = (WarmupDuration - _benchmarkWarmup) + (_benchmarkWarmup > 0 ? 0 : _benchmarkTimer);
+            else
+                elapsed = WarmupDuration + p0Dur + (WarmupDuration - _benchmarkWarmup)
+                    + (_benchmarkWarmup > 0 ? 0 : _benchmarkTimer);
+
+            float pct = Mathf.Clamp01(elapsed / totalDur);
+            string label = _autoBenchmark ? "AUTO-TUNING" : "BENCHMARKING";
+            string benchText = $"{label}... {Mathf.RoundToInt(pct * 100)}% | {_currentFps:F0} FPS";
 
             float by = pad + lineH + pad;
             GUI.Label(new Rect(pad + sh, by + sh, wideW, lineH * 1.4f), benchText, _guiShadowLarge);
             GUI.Label(new Rect(pad, by, wideW, lineH * 1.4f), benchText, _guiStyleLarge);
+
+            // progress bar
+            float barY = by + lineH * 1.5f;
+            float barW = Screen.width * 0.3f;
+            float barH = 6f * s;
+            GUI.DrawTexture(new Rect(pad, barY, barW, barH), Texture2D.whiteTexture, ScaleMode.StretchToFill, false, 0, new Color(0.2f, 0.2f, 0.2f, 0.8f), 0, 0);
+            GUI.DrawTexture(new Rect(pad, barY, barW * pct, barH), Texture2D.whiteTexture, ScaleMode.StretchToFill, false, 0, Color.red, 0, 0);
         }
 
         if (!Settings.ModEnabled)
