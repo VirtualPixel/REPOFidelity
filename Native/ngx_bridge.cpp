@@ -126,7 +126,7 @@ static void Log(const char* fmt, ...) {
 
 static std::wstring FindNGXDll() {
     WIN32_FIND_DATAW fd;
-    const wchar_t* pattern = L"C:\\Windows\\System32\\DriverStore\\FileRepository\\nv_*";
+    const wchar_t* pattern = L"C:\\Windows\\System32\\DriverStore\\FileRepository\\nv*";
     HANDLE hFind = FindFirstFileW(pattern, &fd);
     if (hFind == INVALID_HANDLE_VALUE) return L"";
 

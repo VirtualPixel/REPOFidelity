@@ -129,7 +129,14 @@ static class ForceGrabPatch
             var parent = PhysicsBuffers.Hits[i].collider?.GetComponentInParent<PhysGrabObject>();
             if (parent == _physObject)
             {
+                if (__instance.grabbed)
+                    __instance.ReleaseObject(-1, 0.1f);
                 __instance.StartGrabbingPhysObject(PhysicsBuffers.Hits[i], _physObject);
+                if (__instance.grabbed)
+                {
+                    __instance.toggleGrab = true;
+                    return false;
+                }
                 break;
             }
         }

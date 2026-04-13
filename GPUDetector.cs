@@ -39,7 +39,8 @@ internal static class GPUDetector
         Tier = DetectTier(VramMb);
         IsD3D11 = SystemInfo.graphicsDeviceType == GraphicsDeviceType.Direct3D11;
         IsIntegratedGpu = DetectIntegrated(GpuName, VramMb, Vendor);
-        DlssAvailable = Vendor == GpuVendor.Nvidia && IsD3D11 && !IsIntegratedGpu;
+        DlssAvailable = Vendor == GpuVendor.Nvidia && IsD3D11 && !IsIntegratedGpu
+            && GpuName.ToUpperInvariant().Contains("RTX");
 
         Plugin.Log.LogInfo($"GPU: {GpuName} | Vendor: {Vendor} | VRAM: {VramMb}MB | " +
             $"API: {SystemInfo.graphicsDeviceType} | iGPU: {IsIntegratedGpu} | Tier: {Tier}");
@@ -50,7 +51,7 @@ internal static class GPUDetector
         UpscaleMode.Auto => true,
         UpscaleMode.Off => true,
         // DLSS/DLAA require NVIDIA discrete GPU + D3D11 for NGX
-        UpscaleMode.DLSS or UpscaleMode.DLAA => Vendor == GpuVendor.Nvidia && IsD3D11 && !IsIntegratedGpu,
+        UpscaleMode.DLSS or UpscaleMode.DLAA => DlssAvailable,
         UpscaleMode.FSR_Temporal => true,
         _ => false
     };
