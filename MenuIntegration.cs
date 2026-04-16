@@ -30,7 +30,14 @@ internal static class MenuIntegration
     private static UnityEngine.UI.Text? _benchHintText;
     private static bool _benchmarkQueued;
 
-    // FPS values: game stores -1 for unlimited, slider uses 0 to represent that
+    // FPS: "30"–"360" + "Unlimited", game stores -1 for unlimited
+    private static readonly string[] FpsOptions;
+    static MenuIntegration()
+    {
+        FpsOptions = new string[332]; // 30..360 + Unlimited
+        for (int i = 0; i < 331; i++) FpsOptions[i] = (30 + i).ToString();
+        FpsOptions[331] = "Unlimited";
+    }
     private static readonly string[] PerfOptions = { "Auto", "Keep", "Disable" };
     private static readonly int[] PerfValues = { -1, 0, 1 };
     private static readonly string[] AfOptions = { "Off", "2x", "4x", "8x", "16x" };
@@ -115,13 +122,14 @@ internal static class MenuIntegration
             b => GameSet(DataDirector.Setting.Vsync, b ? 1 : 0,
                 () => GraphicsManager.instance.UpdateVsync()), out _vsyncToggle);
         int curFps = DataDirector.instance.SettingValueFetch(DataDirector.Setting.MaxFPS);
-        AddIntSlider("Max FPS", "0 = unlimited", 0, 360, curFps <= 0 ? 0 : curFps, "",
-            v => {
-                if (_syncing) return;
-                DataDirector.instance.SettingValueSet(DataDirector.Setting.MaxFPS, v <= 0 ? -1 : v);
-                GraphicsManager.instance.UpdateMaxFPS();
-                DataDirector.instance.SaveSettings();
-            }, out _fpsSlider);
+        string curFpsStr = curFps <= 0 ? "Unlimited" : Mathf.Clamp(curFps, 30, 360).ToString();
+        AddStringSlider("Max FPS", "", FpsOptions, curFpsStr, s => {
+            if (_syncing) return;
+            int val = s == "Unlimited" ? -1 : int.Parse(s);
+            DataDirector.instance.SettingValueSet(DataDirector.Setting.MaxFPS, val);
+            GraphicsManager.instance.UpdateMaxFPS();
+            DataDirector.instance.SaveSettings();
+        }, out _fpsSlider);
         AddIntSlider("Gamma", "Brightness", 0, 100, 40, "",
             v => GameSet(DataDirector.Setting.Gamma, v, () => GraphicsManager.instance.UpdateGamma()), out _gammaSlider);
 
@@ -371,7 +379,7 @@ internal static class MenuIntegration
         _vsyncToggle?.SetState(DataDirector.instance.SettingValueFetch(DataDirector.Setting.Vsync) == 1, false);
 
         int fps = DataDirector.instance.SettingValueFetch(DataDirector.Setting.MaxFPS);
-        SetNum(_fpsSlider, fps <= 0 ? 0 : fps);
+        SetStr(_fpsSlider, fps <= 0 ? "Unlimited" : Mathf.Clamp(fps, 30, 360).ToString());
 
         SetNum(_gammaSlider, DataDirector.instance.SettingValueFetch(DataDirector.Setting.Gamma));
         _bloomToggle?.SetState(DataDirector.instance.SettingValueFetch(DataDirector.Setting.Bloom) == 1, false);
