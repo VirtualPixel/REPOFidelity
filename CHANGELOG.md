@@ -6,6 +6,8 @@
 - Disabled shadows on zero-intensity lights — mines and other inactive light sources were generating shadow maps for nothing
 - FSR Temporal now jitters the projection matrix for proper sub-pixel accumulation — sharper edges and better temporal stability
 - Fixed FXAA darkening the image — keepAlpha wasn't set, so luminance was bleeding into the alpha channel during compositing
+- Max FPS is now a smooth slider (0–360, 0 = unlimited) instead of preset options — lets you dial in exact values for adaptive sync
+- Performance toggle labels changed from Off/On to Keep/Disable for clarity
 
 ## 1.2.0
 
