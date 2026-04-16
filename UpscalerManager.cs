@@ -218,7 +218,8 @@ internal class UpscalerManager : MonoBehaviour
         // "Render Texture Overlay" with an internal blit from renderTexture.
         _outputRT = new RenderTexture(_inputWidth, _inputHeight, 24, format)
         {
-            filterMode = FilterMode.Bilinear
+            filterMode = FilterMode.Bilinear,
+            enableRandomWrite = true // DLSS needs UAV access
         };
         _outputRT.Create();
 
@@ -555,7 +556,8 @@ internal class UpscalerManager : MonoBehaviour
         var format = gameRT != null ? gameRT.format : RenderTextureFormat.DefaultHDR;
         _outputRT = new RenderTexture(_inputWidth, _inputHeight, 24, format)
         {
-            filterMode = FilterMode.Bilinear
+            filterMode = FilterMode.Bilinear,
+            enableRandomWrite = true // DLSS needs UAV access
         };
         _outputRT.Create();
 

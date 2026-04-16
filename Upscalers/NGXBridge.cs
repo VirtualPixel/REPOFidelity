@@ -65,6 +65,16 @@ internal static class NGXBridge
     [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NGXBridge_Shutdown();
 
+    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr NGXBridge_ExtractResource(IntPtr unityPtr);
+
+    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NGXBridge_ParamSetVoidPtr(IntPtr p,
+        [MarshalAs(UnmanagedType.LPStr)] string name, IntPtr ptr);
+
+    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr NGXBridge_GetParams();
+
     // --- Managed helpers ---
 
     private static LogCallbackDelegate? _logDelegate;

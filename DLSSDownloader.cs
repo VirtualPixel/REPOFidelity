@@ -5,7 +5,7 @@ namespace REPOFidelity;
 internal static class DLSSDownloader
 {
     private const string DllName = "nvngx_dlss.dll";
-    private const int MinDllSize = 30_000_000; // real DLSS DLLs are 40MB+
+    private const int MinDllSize = 10_000_000; // DLSS 2.x is ~14MB, 3.x is 40MB+
 
     internal static string GetDllPath()
     {
