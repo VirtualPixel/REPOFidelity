@@ -30,16 +30,11 @@ internal class TemporalUpscaler : IUpscaler
     private RenderTexture? _historyRT;
     private int _inputWidth, _inputHeight;
     private int _outputWidth, _outputHeight;
-    private int _jitterIndex;
     private bool _needsReset = true;
 
     // Motion vector capture
     private RenderTexture? _motionVectorRT;
     private CommandBuffer? _mvCopyCmd;
-
-    // Halton sequence for sub-pixel jitter
-    private static readonly float[] HaltonX = GenerateHalton(2, 32);
-    private static readonly float[] HaltonY = GenerateHalton(3, 32);
 
     private static readonly int PrevTexId = Shader.PropertyToID("_PrevTex");
     private static readonly int MotionVectorTexId = Shader.PropertyToID("_MotionVectorTex");
@@ -84,9 +79,6 @@ internal class TemporalUpscaler : IUpscaler
             return;
         }
 
-        // Apply jitter for next frame's rendering
-        ApplyJitter();
-
         // Set shader parameters
         _material.SetTexture(PrevTexId, _historyRT);
         if (_motionVectorRT != null)
@@ -96,8 +88,10 @@ internal class TemporalUpscaler : IUpscaler
         _material.SetVector(InputSizeId, new Vector4(_inputWidth, _inputHeight,
             1f / _inputWidth, 1f / _inputHeight));
 
-        float jx = (HaltonX[_jitterIndex] - 0.5f);
-        float jy = (HaltonY[_jitterIndex] - 0.5f);
+        // jitter in pixel units for the reconstruction shader
+        var mgr = UpscalerManager.Instance;
+        float jx = mgr != null ? mgr.JitterX * _inputWidth : 0f;
+        float jy = mgr != null ? mgr.JitterY * _inputHeight : 0f;
         _material.SetVector(JitterId, new Vector2(jx, jy));
         _material.SetFloat(ResetId, _needsReset ? 1f : 0f);
         _needsReset = false;
@@ -126,14 +120,6 @@ internal class TemporalUpscaler : IUpscaler
             Object.Destroy(_historyRT);
             _historyRT = null;
         }
-    }
-
-    private void ApplyJitter()
-    {
-        _jitterIndex = (_jitterIndex + 1) % HaltonX.Length;
-        // Jitter is passed to the shader via _Jitter uniform only.
-        // We do NOT modify camera.projectionMatrix — that breaks
-        // WorldToViewportPoint used by game UI (prices, labels, etc.)
     }
 
     private void SetupMotionVectorCapture(int width, int height)
@@ -169,16 +155,4 @@ internal class TemporalUpscaler : IUpscaler
         }
     }
 
-    private static float[] GenerateHalton(int baseVal, int count)
-    {
-        var result = new float[count];
-        for (int i = 0; i < count; i++)
-        {
-            float f = 1f, r = 0f;
-            int idx = i + 1;
-            while (idx > 0) { f /= baseVal; r += f * (idx % baseVal); idx /= baseVal; }
-            result[i] = r;
-        }
-        return result;
-    }
 }

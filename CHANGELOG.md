@@ -1,3 +1,9 @@
+## 1.3.1
+
+- FSR Temporal now jitters the projection matrix for proper sub-pixel accumulation — sharper edges and better temporal stability
+- Jitter sequence centralized in UpscalerManager instead of duplicated per upscaler
+- Fixed FXAA darkening the image — keepAlpha wasn't set, so luminance was bleeding into the alpha channel during compositing
+
 ## 1.3.0
 
 - Shadow budget system — caps how many small point lights cast shadows at once, closest to camera get priority. Fades shadow strength in/out for smooth transitions instead of pop-in. Configurable per preset (Potato=5, Ultra=25) or manually via Shadow Limit slider (0=unlimited)

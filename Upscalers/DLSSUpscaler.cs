@@ -33,11 +33,6 @@ internal class DLSSUpscaler : IUpscaler
     private CommandBuffer? _depthCopyCmd;
     private CommandBuffer? _mvCopyCmd;
 
-    // Jitter
-    private int _jitterIndex;
-    private static readonly float[] HaltonX = GenerateHalton(2, 32);
-    private static readonly float[] HaltonY = GenerateHalton(3, 32);
-
     public DLSSUpscaler(bool dlaaMode = false)
     {
         _dlaaMode = dlaaMode;
@@ -154,8 +149,6 @@ internal class DLSSUpscaler : IUpscaler
             return;
         }
 
-        UpdateJitter();
-
         NGXBridge.NGXBridge_ParamSetResource(_evalParams, "Color", source.GetNativeTexturePtr());
         NGXBridge.NGXBridge_ParamSetResource(_evalParams, "Output", destination.GetNativeTexturePtr());
 
@@ -164,12 +157,14 @@ internal class DLSSUpscaler : IUpscaler
         if (_motionVectorRT != null)
             NGXBridge.NGXBridge_ParamSetResource(_evalParams, "MotionVectors", _motionVectorRT.GetNativeTexturePtr());
 
-        float jitterX = (HaltonX[_jitterIndex] - 0.5f) / _inputWidth;
-        float jitterY = (HaltonY[_jitterIndex] - 0.5f) / _inputHeight;
+        var mgr = UpscalerManager.Instance;
+        float jitterX = mgr != null ? mgr.JitterX : 0f;
+        float jitterY = mgr != null ? mgr.JitterY : 0f;
         NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "Jitter.Offset.X", jitterX);
         NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "Jitter.Offset.Y", jitterY);
         NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "MV.Scale.X", -(float)_inputWidth);
         NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "MV.Scale.Y", -(float)_inputHeight);
+
         NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "Sharpness", Settings.Sharpening);
         NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "DLSS.Render.Subrect.Dimensions.Width", (uint)_inputWidth);
         NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "DLSS.Render.Subrect.Dimensions.Height", (uint)_inputHeight);
@@ -240,13 +235,6 @@ internal class DLSSUpscaler : IUpscaler
         if (_motionVectorRT != null) { _motionVectorRT.Release(); UnityEngine.Object.Destroy(_motionVectorRT); _motionVectorRT = null; }
     }
 
-    private void UpdateJitter()
-    {
-        _jitterIndex = (_jitterIndex + 1) % HaltonX.Length;
-        // Jitter is passed to DLSS via parameters only.
-        // We do NOT modify camera.projectionMatrix — that breaks game UI.
-    }
-
     private int GetQualityMode()
     {
         if (_dlaaMode) return NGXBridge.DLSS_DLAA;
@@ -259,16 +247,4 @@ internal class DLSSUpscaler : IUpscaler
         };
     }
 
-    private static float[] GenerateHalton(int baseVal, int count)
-    {
-        var result = new float[count];
-        for (int i = 0; i < count; i++)
-        {
-            float f = 1f, r = 0f;
-            int idx = i + 1;
-            while (idx > 0) { f /= baseVal; r += f * (idx % baseVal); idx /= baseVal; }
-            result[i] = r;
-        }
-        return result;
-    }
 }

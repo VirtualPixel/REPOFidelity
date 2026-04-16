@@ -59,6 +59,7 @@ internal static class RenderTexturePatch
                     AAMode.Off => PostProcessLayer.Antialiasing.None,
                     _ => ppl.antialiasingMode
                 };
+                ppl.fastApproximateAntialiasing.keepAlpha = true;
                 Plugin.Log.LogDebug($"AA on {cam.name}: {ppl.antialiasingMode}");
             }
         }
@@ -173,6 +174,7 @@ internal static class RenderTexturePatch
                     AAMode.Off => PostProcessLayer.Antialiasing.None,
                     _ => ppl.antialiasingMode
                 };
+                ppl.fastApproximateAntialiasing.keepAlpha = true;
             }
         }
     }

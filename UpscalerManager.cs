@@ -53,6 +53,15 @@ internal class UpscalerManager : MonoBehaviour
         }
     }
 
+    // Temporal jitter — shared between DLSS and FSR
+    private int _jitterIndex;
+    private Matrix4x4 _savedProjectionMatrix;
+    private bool _jitterApplied;
+    private static readonly float[] HaltonX = GenerateHalton(2, 32);
+    private static readonly float[] HaltonY = GenerateHalton(3, 32);
+    internal float JitterX { get; private set; }
+    internal float JitterY { get; private set; }
+
     // F10 toggle
     private bool _togglePending;
 
@@ -86,6 +95,8 @@ internal class UpscalerManager : MonoBehaviour
         Plugin.Log.LogInfo("Reinitializing upscaler pipeline...");
 
         // tear down current state
+        Camera.onPreRender -= OnPreRenderJitter;
+        Camera.onPostRender -= OnPostRenderRestore;
         if (_useCameraCallback)
             Camera.onPostRender -= OnPostRenderCallback;
 
@@ -230,15 +241,64 @@ internal class UpscalerManager : MonoBehaviour
             Plugin.Log.LogInfo($"Upscaler active: {_upscaler.Name}");
         }
 
+        // register jitter callbacks for any temporal upscaler
+        if (_upscaler != null && _camera != null)
+        {
+            Camera.onPreRender += OnPreRenderJitter;
+            Camera.onPostRender += OnPostRenderRestore;
+        }
+
         if (_useCameraCallback && _camera != null)
             Camera.onPostRender += OnPostRenderCallback;
     }
 
-    // DLSS needs depth/MV textures which are only valid after the camera renders
+    private void OnPreRenderJitter(Camera cam)
+    {
+        if (cam != _camera || _upscaler == null || !Settings.ModEnabled) return;
+        if (_inputWidth <= 0 || _inputHeight <= 0) return;
+
+        _jitterIndex = (_jitterIndex + 1) % HaltonX.Length;
+        JitterX = (HaltonX[_jitterIndex] - 0.5f) / _inputWidth;
+        JitterY = (HaltonY[_jitterIndex] - 0.5f) / _inputHeight;
+
+        // DLSS can't compensate for projection jitter through ngx_bridge
+        if (_upscaler is DLSSUpscaler) return;
+
+        cam.ResetProjectionMatrix();
+        _savedProjectionMatrix = cam.projectionMatrix;
+        cam.nonJitteredProjectionMatrix = _savedProjectionMatrix;
+
+        var jittered = _savedProjectionMatrix;
+        jittered.m02 += JitterX * 2f;
+        jittered.m12 += JitterY * 2f;
+        cam.projectionMatrix = jittered;
+        _jitterApplied = true;
+    }
+
+    private void OnPostRenderRestore(Camera cam)
+    {
+        if (cam != _camera || !_jitterApplied) return;
+        cam.projectionMatrix = _savedProjectionMatrix;
+        _jitterApplied = false;
+    }
+
     private void OnPostRenderCallback(Camera cam)
     {
         if (cam != _camera) return;
         ProcessFrame();
+    }
+
+    private static float[] GenerateHalton(int baseVal, int count)
+    {
+        var result = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            float f = 1f, r = 0f;
+            int idx = i + 1;
+            while (idx > 0) { f /= baseVal; r += f * (idx % baseVal); idx /= baseVal; }
+            result[i] = r;
+        }
+        return result;
     }
 
     private void LateUpdate()
@@ -752,6 +812,8 @@ internal class UpscalerManager : MonoBehaviour
     private void OnDestroy()
     {
         Settings.OnSettingsChanged -= Reinitialize;
+        Camera.onPreRender -= OnPreRenderJitter;
+        Camera.onPostRender -= OnPostRenderRestore;
 
         if (_useCameraCallback)
             Camera.onPostRender -= OnPostRenderCallback;
