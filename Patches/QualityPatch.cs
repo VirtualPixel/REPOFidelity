@@ -229,18 +229,22 @@ internal static class QualityPatch
         {
             case ShadowQuality.Low:
                 QualitySettings.shadowResolution = UnityEngine.ShadowResolution.Low;
+                QualitySettings.shadowCascades = 1;
                 SetLightShadowResolution(0);
                 break;
             case ShadowQuality.Medium:
                 QualitySettings.shadowResolution = UnityEngine.ShadowResolution.Medium;
+                QualitySettings.shadowCascades = 2;
                 SetLightShadowResolution(0);
                 break;
             case ShadowQuality.High:
                 QualitySettings.shadowResolution = UnityEngine.ShadowResolution.High;
+                QualitySettings.shadowCascades = 4;
                 SetLightShadowResolution(0);
                 break;
             case ShadowQuality.Ultra:
                 QualitySettings.shadowResolution = UnityEngine.ShadowResolution.VeryHigh;
+                QualitySettings.shadowCascades = 4;
                 SetLightShadowResolution(4096);
                 break;
         }
@@ -252,7 +256,32 @@ internal static class QualityPatch
         if (resolution == 0 && !_ultraShadowsApplied) return;
         _ultraShadowsApplied = resolution > 0;
         foreach (var light in Object.FindObjectsOfType<Light>())
-            light.shadowCustomResolution = resolution;
+        {
+            if (light.intensity <= 0f && light.shadows != LightShadows.None)
+                light.shadows = LightShadows.None;
+
+            if (resolution <= 0)
+            {
+                light.shadowCustomResolution = 0;
+                continue;
+            }
+
+            // directional lights use the global shadow resolution + cascades
+            if (light.type == LightType.Directional)
+            {
+                light.shadowCustomResolution = 0;
+                continue;
+            }
+
+            // small decorative point lights get lower resolution — they don't
+            // need 4K shadow maps at 2.9m range
+            if (light.type == LightType.Point && light.intensity < 1f && light.range < 5f)
+                light.shadowCustomResolution = 512;
+            else if (light.range < 10f)
+                light.shadowCustomResolution = Mathf.Min(resolution, 2048);
+            else
+                light.shadowCustomResolution = resolution;
+        }
     }
 
     private static void ApplyAnisotropicFiltering(int level)

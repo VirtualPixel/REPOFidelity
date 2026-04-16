@@ -17,7 +17,7 @@ internal static class MenuIntegration
     private static REPOSlider? _presetSlider, _upscalerSlider, _renderScaleSlider;
     private static REPOSlider? _sharpeningSlider, _aaSlider;
     private static REPOToggle? _pixelationToggle;
-    private static REPOSlider? _shadowQualitySlider, _shadowDistanceSlider;
+    private static REPOSlider? _shadowQualitySlider, _shadowDistanceSlider, _shadowBudgetSlider;
     private static REPOSlider? _lodSlider, _afSlider, _lightsSlider;
     private static REPOSlider? _textureSlider, _lightDistSlider;
     private static REPOSlider? _fogSlider, _viewDistSlider;
@@ -168,6 +168,9 @@ internal static class MenuIntegration
             s => ModSet(() => Settings.ShadowQualitySetting = Enum.Parse<ShadowQuality>(s)), out _shadowQualitySlider);
         AddFloatSlider("Shadow Distance", "", 5f, 200f, 0, Settings.ShadowDistance, "m",
             v => ModSet(() => Settings.ShadowDistance = v), out _shadowDistanceSlider);
+        AddIntSlider("Shadow Limit", "Max nearby shadows (0=unlimited)", 0, 50,
+            Settings.ResolvedShadowBudget, "",
+            v => ModSet(() => Settings.ShadowBudget = v), out _shadowBudgetSlider);
         AddFloatSlider("Light Distance", "", 10f, 100f, 0, Settings.LightDistance, "m",
             v => ModSet(() => Settings.LightDistance = v), out _lightDistSlider);
         AddIntSlider("Max Lights", "Per object", 1, 16, Settings.PixelLightCount, "",
@@ -395,6 +398,7 @@ internal static class MenuIntegration
         _pixelationToggle?.SetState(Settings.Pixelation, false);
         SetStr(_shadowQualitySlider, Settings.ShadowQualitySetting.ToString());
         SetNum(_shadowDistanceSlider, Settings.ShadowDistance);
+        SetNum(_shadowBudgetSlider, Settings.ResolvedShadowBudget);
         SetNum(_lodSlider, Settings.LODBias);
 
         int afIdx = Array.IndexOf(AfValues, Settings.AnisotropicFiltering);

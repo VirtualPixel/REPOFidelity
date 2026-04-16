@@ -61,7 +61,9 @@ static class SceneOptimizer
 {
     internal static void Apply()
     {
+        _shadowStrengths.Clear();
         EnableGPUInstancing();
+        DisableZeroIntensityShadows();
 
         SetParticleShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ParticleShadows));
 
@@ -74,6 +76,130 @@ static class SceneOptimizer
         // scan existing lights in the scene so switching presets mid-level works
         SetItemLightShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ItemLightShadows));
         SetExplosionLightShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ExplosionShadows));
+    }
+
+    // ---
+    // shadow budget — limits how many small point lights cast shadows at once.
+    // closest N to the camera get shadows with faded strength transitions.
+    // ---
+
+    static readonly List<(Light light, float dist)> _budgetCandidates = new();
+    static readonly Dictionary<int, float> _shadowStrengths = new();
+    const float FadeSpeed = 3f;
+
+    internal static void ResetShadowBudget()
+    {
+        _shadowStrengths.Clear();
+    }
+
+    internal static void UpdateShadowBudget(Camera? cam)
+    {
+        if (cam == null) return;
+
+        // mod disabled or budget unlimited — restore all managed lights
+        if (!Settings.ModEnabled)
+        {
+            RestoreManagedLights();
+            return;
+        }
+
+        int budget = Settings.ResolvedShadowBudget;
+        if (budget <= 0)
+        {
+            RestoreManagedLights();
+            return;
+        }
+
+        var camPos = cam.transform.position;
+        float cullDist = Settings.ResolvedShadowDistance;
+        float dt = 0.1f;
+
+        _budgetCandidates.Clear();
+
+        foreach (var light in Object.FindObjectsOfType<Light>())
+        {
+            if (!light.enabled || !light.gameObject.activeInHierarchy) continue;
+            if (light.intensity <= 0f) continue;
+
+            // only manage item glow lights — skip infrastructure
+            if (light.type != LightType.Point || light.intensity >= 1f || light.range >= 5f)
+                continue;
+
+            float dist = Vector3.Distance(camPos, light.transform.position);
+
+            // beyond shadow distance — fade out
+            if (dist > cullDist)
+            {
+                FadeLight(light, 0f, dt);
+                continue;
+            }
+
+            _budgetCandidates.Add((light, dist));
+        }
+
+        // sort by distance — closest first
+        _budgetCandidates.Sort((a, b) => a.dist.CompareTo(b.dist));
+
+        for (int i = 0; i < _budgetCandidates.Count; i++)
+        {
+            var light = _budgetCandidates[i].light;
+            float targetStrength = i < budget ? 1f : 0f;
+            FadeLight(light, targetStrength, dt);
+        }
+    }
+
+    static void RestoreManagedLights()
+    {
+        if (_shadowStrengths.Count == 0) return;
+        foreach (var light in Object.FindObjectsOfType<Light>())
+        {
+            if (!light.enabled || !light.gameObject.activeInHierarchy) continue;
+            if (light.type != LightType.Point || light.intensity >= 1f || light.range >= 5f)
+                continue;
+            light.shadows = LightShadows.Soft;
+            light.shadowStrength = 1f;
+        }
+        _shadowStrengths.Clear();
+    }
+
+    static void FadeLight(Light light, float target, float dt)
+    {
+        int id = light.GetInstanceID();
+        float current = _shadowStrengths.TryGetValue(id, out float c) ? c : (light.shadows != LightShadows.None ? 1f : 0f);
+
+        // lerp toward target
+        float next = Mathf.MoveTowards(current, target, FadeSpeed * dt);
+        _shadowStrengths[id] = next;
+
+        if (next <= 0.01f)
+        {
+            // fully faded out — disable shadow
+            if (light.shadows != LightShadows.None)
+                light.shadows = LightShadows.None;
+            light.shadowStrength = 0f;
+        }
+        else
+        {
+            // shadows active, apply strength
+            if (light.shadows == LightShadows.None)
+                light.shadows = LightShadows.Soft;
+            light.shadowStrength = next;
+        }
+    }
+
+    static void DisableZeroIntensityShadows()
+    {
+        int count = 0;
+        foreach (var light in Object.FindObjectsOfType<Light>())
+        {
+            if (light.intensity <= 0f && light.shadows != LightShadows.None)
+            {
+                light.shadows = LightShadows.None;
+                count++;
+            }
+        }
+        if (count > 0)
+            Plugin.Log.LogInfo($"disabled shadows on {count} zero-intensity lights");
     }
 
     static void SetParticleShadows(bool on)
@@ -192,6 +318,7 @@ static class PerfSettingsWatcher
     static bool _registered;
     static int _lastPreset = -1;
     static int _lastShadowQ = -1;
+    static int _lastShadowBudget;
     static int _lastPerfExp, _lastPerfItem, _lastPerfAnim, _lastPerfPart, _lastPerfTiny;
 
     internal static void Register()
@@ -209,6 +336,7 @@ static class PerfSettingsWatcher
         bool changed = Settings.ModEnabled != _lastModEnabled
             || (int)Settings.Preset != _lastPreset
             || (int)Settings.ResolvedShadowQuality != _lastShadowQ
+            || Settings.ResolvedShadowBudget != _lastShadowBudget
             || Settings.PerfExplosionShadows != _lastPerfExp
             || Settings.PerfItemLightShadows != _lastPerfItem
             || Settings.PerfAnimatedLightShadows != _lastPerfAnim
@@ -216,6 +344,11 @@ static class PerfSettingsWatcher
             || Settings.PerfTinyRendererCulling != _lastPerfTiny;
 
         if (!changed) return;
+
+        // if shadow budget changed, reset fade state so lights apply instantly
+        if (Settings.ResolvedShadowBudget != _lastShadowBudget)
+            SceneOptimizer.ResetShadowBudget();
+
         SnapshotState();
         SceneOptimizer.Apply();
     }
@@ -225,6 +358,7 @@ static class PerfSettingsWatcher
         _lastModEnabled = Settings.ModEnabled;
         _lastPreset = (int)Settings.Preset;
         _lastShadowQ = (int)Settings.ResolvedShadowQuality;
+        _lastShadowBudget = Settings.ResolvedShadowBudget;
         _lastPerfExp = Settings.PerfExplosionShadows;
         _lastPerfItem = Settings.PerfItemLightShadows;
         _lastPerfAnim = Settings.PerfAnimatedLightShadows;

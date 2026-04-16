@@ -193,6 +193,13 @@ internal static class Settings
         }
     }
 
+    internal static int ShadowBudget
+    {
+        get => D.shadowBudget;
+        set { D.shadowBudget = value; _file.Save(); OnSettingTweaked(); }
+    }
+    internal static int ResolvedShadowBudget;
+
     // per-optimization toggles for Custom preset. -1 = auto (follow preset logic)
     internal static int PerfExplosionShadows
     {
@@ -453,6 +460,15 @@ internal static class Settings
             ResolvedViewDistance = ViewDistance;
             ResolvedAnisotropicFiltering = AnisotropicFiltering;
             ResolvedTextureQuality = TextureQuality;
+            ResolvedShadowBudget = ShadowBudget == -1
+                ? ResolvedShadowQuality switch
+                {
+                    ShadowQuality.Ultra => 25,
+                    ShadowQuality.High => 20,
+                    ShadowQuality.Medium => 15,
+                    _ => 10,
+                }
+                : ShadowBudget;
         }
 
         Plugin.Log.LogInfo($"Resolved [{preset}]: {ResolvedUpscaleMode} {ResolvedRenderScale}% " +
@@ -490,6 +506,7 @@ internal static class Settings
             };
             D.anisotropicFiltering = ResolvedAnisotropicFiltering;
             D.textureQuality = (int)ResolvedTextureQuality;
+            D.shadowBudget = ResolvedShadowBudget;
         });
         _file.Save();
     }
@@ -589,6 +606,7 @@ internal static class Settings
                 ResolvedLODBias = 0.5f; ResolvedPixelLightCount = 2;
                 ResolvedLightDistance = 10f; ResolvedFogMultiplier = 1f; ResolvedViewDistance = 0f;
                 ResolvedAnisotropicFiltering = 2; ResolvedTextureQuality = TextureRes.Full;
+                ResolvedShadowBudget = 5;
                 break;
             case QualityPreset.Low:
                 // same 50% res as Potato but SMAA + better shadows/LOD/lights.
@@ -600,6 +618,7 @@ internal static class Settings
                 ResolvedLODBias = 1f; ResolvedPixelLightCount = 4;
                 ResolvedLightDistance = 20f; ResolvedFogMultiplier = 1f; ResolvedViewDistance = 0f;
                 ResolvedAnisotropicFiltering = 4; ResolvedTextureQuality = TextureRes.Full;
+                ResolvedShadowBudget = 10;
                 break;
             case QualityPreset.Medium:
                 // 75% + SMAA. Big visual jump. No upscaler pipeline.
@@ -610,6 +629,7 @@ internal static class Settings
                 ResolvedLODBias = 1.5f; ResolvedPixelLightCount = 6;
                 ResolvedLightDistance = 25f; ResolvedFogMultiplier = 1f; ResolvedViewDistance = 0f;
                 ResolvedAnisotropicFiltering = 8; ResolvedTextureQuality = TextureRes.Full;
+                ResolvedShadowBudget = 15;
                 break;
             case QualityPreset.High:
                 // 100% native + upscaler AA. Premium look.
@@ -629,6 +649,7 @@ internal static class Settings
                 ResolvedLODBias = 3f; ResolvedPixelLightCount = 8;
                 ResolvedLightDistance = 45f; ResolvedFogMultiplier = 1.1f; ResolvedViewDistance = 0f;
                 ResolvedAnisotropicFiltering = 16; ResolvedTextureQuality = TextureRes.Full;
+                ResolvedShadowBudget = 20;
                 break;
             case QualityPreset.Ultra:
                 // 100% + best upscaler + maxed everything
@@ -648,6 +669,7 @@ internal static class Settings
                 ResolvedLODBias = 4f; ResolvedPixelLightCount = 16;
                 ResolvedLightDistance = 75f; ResolvedFogMultiplier = 1.1f; ResolvedViewDistance = 0f;
                 ResolvedAnisotropicFiltering = 16; ResolvedTextureQuality = TextureRes.Full;
+                ResolvedShadowBudget = 25;
                 break;
             case QualityPreset.Auto:
                 ApplyAutoTune();
@@ -678,7 +700,13 @@ internal static class Settings
         ResolvedViewDistance = at.viewDistance;
         ResolvedAnisotropicFiltering = at.anisotropicFiltering;
         ResolvedTextureQuality = TextureRes.Full;
-
+        ResolvedShadowBudget = ResolvedShadowQuality switch
+        {
+            ShadowQuality.Ultra => 25,
+            ShadowQuality.High => 20,
+            ShadowQuality.Medium => 15,
+            _ => 10,
+        };
     }
 
     internal static void AutoSelectPreset(float avgFps, bool cpuBound = false)

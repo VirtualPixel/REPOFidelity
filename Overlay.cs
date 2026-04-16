@@ -87,6 +87,21 @@ internal static class Overlay
             }
         }
 
+        // FPS averager — suppress all other FPS display while running
+        if (FpsAverager.Running || !string.IsNullOrEmpty(FpsAverager.Status))
+        {
+            _lines.Add(new LineData(FpsAverager.Status, Col.Info));
+            if (FpsAverager.Running)
+            {
+                _showProgress = true;
+                _progress = FpsAverager.Progress;
+                _progressColor = new Color(0.4f, 0.7f, 0.95f);
+            }
+            // skip all other FPS-showing lines while averager is active
+            _nativeActive = TryUpdateNative();
+            return;
+        }
+
         if (!Settings.ModEnabled)
             _lines.Add(new LineData($"FIDELITY OFF ({Settings.ToggleKey})  {_smoothFps:F0} FPS  {_smoothMs:F1}ms", Col.Warn));
 

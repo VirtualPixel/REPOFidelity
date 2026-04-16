@@ -304,9 +304,25 @@ internal class UpscalerManager : MonoBehaviour
         RenderTexture.ReleaseTemporary(temp);
     }
 
+    private float _shadowBudgetTimer;
+    private const float ShadowBudgetInterval = 0.1f;
+
     private void Update()
     {
-        // F12: optimizer benchmark (only in gameplay levels)
+        _shadowBudgetTimer += Time.unscaledDeltaTime;
+        if (_shadowBudgetTimer >= ShadowBudgetInterval)
+        {
+            _shadowBudgetTimer = 0f;
+            Patches.SceneOptimizer.UpdateShadowBudget(_camera);
+        }
+
+        if (Input.GetKeyDown(KeyCode.F7) && Settings.ToggleKey != KeyCode.F7)
+            LightDiagnostics.Run();
+
+        if (Input.GetKeyDown(KeyCode.F9) && Settings.ToggleKey != KeyCode.F9)
+            FpsAverager.Toggle();
+
+        // F11: optimizer benchmark (only in gameplay levels)
         if (Input.GetKeyDown(KeyCode.F11) && IsInGameplayLevel())
             OptimizerBenchmark.Launch();
 

@@ -1,3 +1,11 @@
+## 1.3.0
+
+- Shadow budget system — caps how many small point lights cast shadows at once, closest to camera get priority. Fades shadow strength in/out for smooth transitions instead of pop-in. Configurable per preset (Potato=5, Ultra=25) or manually via Shadow Limit slider (0=unlimited)
+- Tiered shadow map resolution — directional lights use global resolution with cascades instead of a forced custom value, small decorative lights get 512 instead of 4096, infrastructure lights cap at 2048. Massive shadow cost reduction with no visible quality loss
+- Shadow cascades — Low/1, Medium/2, High+Ultra/4. Fixes directional light shadow quality (window lighting, outdoor shadows) which was previously stuck at 1 cascade
+- Disabled shadows on zero-intensity lights — mines and other inactive light sources were generating shadow maps for nothing
+- GPU instancing now enables on all materials at scene load (was already in 1.2.0 but now also runs alongside the shadow budget)
+
 ## 1.2.0
 
 - Added CPU optimization patches — EnemyDirector loop throttling, RoomVolumeCheck NonAlloc, SemiFunc result caching, PhysGrabObject list iteration bugfix, LightManager allocation-free cleanup

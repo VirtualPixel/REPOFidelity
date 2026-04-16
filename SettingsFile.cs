@@ -136,6 +136,8 @@ internal class SettingsData
     public bool filmGrain = true;
     public bool extractionFlickerFix = true;
 
+    public int shadowBudget = -1;
+
     // performance — these default to -1 (auto, driven by preset).
     // 0 = off, 1 = on. only applies when preset is Custom.
     public int perfExplosionShadows = -1;

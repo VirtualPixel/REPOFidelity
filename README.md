@@ -95,7 +95,10 @@ Surface detail on the vase and sharper edges on the clown figure. Shadows render
 - Post-processing toggles (motion blur, chromatic aberration, lens distortion, film grain, bloom)
 
 **Performance Optimizations**
-- Reduces shadow caster count (up to 85% fewer shadow passes)
+- Shadow budget — limits nearby shadow casters by distance, with smooth fade transitions. Prevents item-heavy scenes from tanking FPS
+- Tiered shadow resolution — scales shadow map size by light importance instead of one-size-fits-all 4K maps
+- Shadow cascades for directional lights — proper cascade distribution instead of a single shadow map stretched over the full distance
+- Kills shadows on zero-intensity lights (free FPS, zero visual impact)
 - GPU instancing on all materials (fewer draw calls)
 - Cached physics queries (less garbage collection pressure)
 - Disables unnecessary shadows on explosions, particle effects, animated lights
@@ -137,6 +140,7 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 | Anti-Aliasing | SMAA / FXAA / Off | SMAA | Post-process AA (disabled when upscaler provides AA) |
 | Shadow Quality | Off / Low / Med / High / Ultra | Varies | Shadow map resolution |
 | Shadow Distance | 5–200m | Varies | Max shadow render distance |
+| Shadow Limit | 0–50 | Varies | Max nearby shadows. 0 = unlimited. Closest lights get priority |
 | Pixel Lights | 1–16 | Varies | Per-object dynamic lights |
 | LOD Bias | 0.5–4.0 | Varies | Level of detail distance |
 | Texture Quality | Full | Full | Locked to full — R.E.P.O.'s textures are too small for mip reduction to matter |
