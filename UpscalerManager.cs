@@ -549,6 +549,9 @@ internal class UpscalerManager : MonoBehaviour
 
         Patches.SceneOptimizer.Apply();
         Patches.QualityPatch.ApplyQualitySettings();
+        // Re-apply avatar preview RT bump — Start has already run on existing
+        // PlayerAvatarMenus so the Harmony postfix won't fire; need to scan explicitly
+        Patches.PlayerAvatarMenuAAPatch.ReapplyAll();
         _togglePending = false;
     }
 

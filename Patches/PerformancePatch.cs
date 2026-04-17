@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.PostProcessing;
 
 namespace REPOFidelity.Patches;
 
@@ -495,6 +496,14 @@ static class PlayerAvatarMenuAAPatch
     static void Postfix(PlayerAvatarMenu __instance)
     {
         if (!Settings.ModEnabled) return;
+        ApplyToMenu(__instance);
+    }
+
+    // Re-applies the bump + gate + SMAA to a single PlayerAvatarMenu. Called from
+    // the Start postfix AND from the F10 re-enable path — on F10 toggle, the menu's
+    // Start has already run so the postfix doesn't fire again unless we call this.
+    internal static void ApplyToMenu(PlayerAvatarMenu __instance)
+    {
         if (__instance.cameraAndStuff == null) return;
 
         var cam = __instance.cameraAndStuff.GetComponentInChildren<Camera>(true);
@@ -505,6 +514,42 @@ static class PlayerAvatarMenuAAPatch
         }
 
         cam.allowMSAA = true;
+
+        // enable SMAA via PostProcessLayer if the camera has one — catches alpha /
+        // shader edges that MSAA misses. If the avatar camera doesn't already ship
+        // with a PPL (attached by the game prefab), we log and skip — creating one
+        // from scratch requires PostProcessResources that aren't easily accessible.
+        var ppl = cam.GetComponent<PostProcessLayer>();
+        if (ppl != null)
+        {
+            ppl.antialiasingMode = PostProcessLayer.Antialiasing.SubpixelMorphologicalAntialiasing;
+            ppl.fastApproximateAntialiasing.keepAlpha = true;
+        }
+        else
+        {
+            // Try reflection route — PostProcessLayer.m_Resources is internal.
+            // If the main camera has PPL with resources, borrow them and attach a new PPL.
+            var mainPpl = Camera.main?.GetComponent<PostProcessLayer>();
+            if (mainPpl != null)
+            {
+                var resField = typeof(PostProcessLayer).GetField("m_Resources",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var resources = resField?.GetValue(mainPpl) as PostProcessResources;
+                if (resources != null)
+                {
+                    var newPpl = cam.gameObject.AddComponent<PostProcessLayer>();
+                    newPpl.Init(resources);
+                    newPpl.volumeTrigger = cam.transform;
+                    newPpl.antialiasingMode = PostProcessLayer.Antialiasing.SubpixelMorphologicalAntialiasing;
+                    newPpl.fastApproximateAntialiasing.keepAlpha = true;
+                    Plugin.Log.LogInfo($"avatar preview: attached PostProcessLayer with SMAA to '{cam.name}'");
+                }
+                else
+                {
+                    Plugin.Log.LogInfo($"avatar preview: main PPL has no resources — SMAA unavailable on '{cam.name}'");
+                }
+            }
+        }
 
         var rt = cam.targetTexture;
         if (rt != null)
@@ -591,6 +636,15 @@ static class PlayerAvatarMenuAAPatch
     }
 
     internal static int AvatarRtOrigCount => _rtOrig.Count;
+
+    // F10 re-enable hook — scan existing PlayerAvatarMenu instances and reapply the
+    // bump + gate + SMAA. Start already fired at menu-open time so the postfix won't
+    // re-trigger on its own.
+    internal static void ReapplyAll()
+    {
+        foreach (var menu in Object.FindObjectsOfType<PlayerAvatarMenu>())
+            ApplyToMenu(menu);
+    }
 }
 
 // Tiny per-camera behaviour that toggles `enabled` based on whether the hosting
