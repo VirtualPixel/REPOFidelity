@@ -505,14 +505,20 @@ static class PlayerAvatarMenuAAPatch
         var rt = cam.targetTexture;
         if (rt != null)
         {
-            bool needsUpscale = rt.width < TargetRtSize || rt.height < TargetRtSize;
+            bool needsUpscale = rt.width < TargetRtSize && rt.height < TargetRtSize;
             bool needsMsaa = rt.antiAliasing < TargetMsaa;
             if ((needsUpscale || needsMsaa) && !_rtOrig.ContainsKey(rt))
             {
                 _rtOrig[rt] = (rt.width, rt.height, rt.antiAliasing);
 
-                int newW = Mathf.Max(rt.width, TargetRtSize);
-                int newH = Mathf.Max(rt.height, TargetRtSize);
+                // preserve original aspect ratio — scale shortest dimension up to
+                // TargetRtSize, apply same factor to the longer one. Prevents the
+                // portrait 209x418 avatar RT from squishing into 512x512.
+                int shortDim = Mathf.Min(rt.width, rt.height);
+                float scale = shortDim < TargetRtSize ? (float)TargetRtSize / shortDim : 1f;
+                int newW = Mathf.RoundToInt(rt.width * scale);
+                int newH = Mathf.RoundToInt(rt.height * scale);
+
                 bool wasCreated = rt.IsCreated();
                 if (wasCreated) rt.Release();
                 rt.width = newW;
@@ -532,9 +538,24 @@ static class PlayerAvatarMenuAAPatch
         gate.cam = cam;
     }
 
-    // F10 hook — restore every avatar preview RT to its vanilla dimensions/aa
+    // F10 hook — restore every avatar preview RT to its vanilla dimensions/aa.
+    // Must disable any cameras currently rendering to the RT before modifying it,
+    // or Unity leaves the RT in an inconsistent state when the pause menu is open.
     internal static void RestoreAvatarRt()
     {
+        if (_rtOrig.Count == 0) return;
+
+        // collect cameras targeting any of our tracked RTs, disable them during mutation
+        var camsToRestore = new List<Camera>();
+        foreach (var cam in Object.FindObjectsOfType<Camera>())
+        {
+            if (cam.targetTexture != null && _rtOrig.ContainsKey(cam.targetTexture))
+            {
+                cam.enabled = false;
+                camsToRestore.Add(cam);
+            }
+        }
+
         foreach (var kv in _rtOrig)
         {
             var rt = kv.Key;
@@ -547,6 +568,9 @@ static class PlayerAvatarMenuAAPatch
             if (wasCreated) rt.Create();
         }
         _rtOrig.Clear();
+
+        // cameras stay disabled — mod is off, gate won't re-enable until ModEnabled=true.
+        // If mod is re-enabled, the gate's LateUpdate will toggle them back based on pageActive.
     }
 
     internal static int AvatarRtOrigCount => _rtOrig.Count;

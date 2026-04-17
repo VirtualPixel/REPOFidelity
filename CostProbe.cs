@@ -149,7 +149,7 @@ internal class CostProbe : MonoBehaviour
         report.AppendLine($"CPU:    {SystemInfo.processorType} ({SystemInfo.processorCount} cores)");
         report.AppendLine($"Screen: {Screen.width}x{Screen.height}");
         report.AppendLine($"Test:   forced Ultra + DLAA + fog 1.0× (user had [{origPreset}] upscaler={origUpscaler} fog={origFog:F2}×)");
-        report.AppendLine($"Mod:    [{Settings.Preset}] upscaler={Settings.ResolvedUpscaleMode} " +
+        report.AppendLine($"Mod:    [Ultra-forced] upscaler={Settings.ResolvedUpscaleMode} " +
             $"scale={Settings.ResolvedRenderScale}% shadowQ={Settings.ResolvedShadowQuality} " +
             $"shadowD={Settings.ResolvedShadowDistance:F0}m lights={Settings.ResolvedPixelLightCount} " +
             $"lod={Settings.ResolvedLODBias:F1} AF={Settings.ResolvedAnisotropicFiltering}x");
