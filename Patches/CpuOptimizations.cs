@@ -285,10 +285,30 @@ static class SemiFuncCachePatch
 [HarmonyPatch(typeof(PhysGrabObject), "Update")]
 static class PhysGrabObjectFixPatch
 {
-    static void Prefix(PhysGrabObject __instance)
+    // Per-instance Rigidbody cache so we don't pay GetComponent every frame on
+    // every PhysGrabObject. Key is the object itself; Unity's fake-null handles
+    // destroyed entries via the null check below.
+    static readonly Dictionary<PhysGrabObject, Rigidbody?> _rbCache = new();
+
+    static bool Prefix(PhysGrabObject __instance)
     {
-        if (!Settings.ModEnabled || !Settings.CpuPatchesActive) return;
-        if (!__instance.grabbed) return;
+        if (!Settings.ModEnabled || !Settings.CpuPatchesActive) return true;
+
+        // Skip Update entirely when the object is at rest and not being held.
+        // Unity's physics engine auto-sleeps Rigidbodies below the sleep threshold,
+        // and a sleeping, un-grabbed PhysGrabObject has no state that Update needs
+        // to advance — all velocity-dependent work is moot and grab-list cleanup
+        // below is only relevant while grabbed.
+        if (!__instance.grabbed)
+        {
+            if (!_rbCache.TryGetValue(__instance, out var rb))
+            {
+                rb = __instance.GetComponent<Rigidbody>();
+                _rbCache[__instance] = rb;
+            }
+            if (rb != null && rb.IsSleeping()) return false;
+            return true;
+        }
 
         long t = FrameTimeMeter.Begin();
         for (int i = __instance.playerGrabbing.Count - 1; i >= 0; i--)
@@ -297,6 +317,7 @@ static class PhysGrabObjectFixPatch
             if (!g || !g.grabbed) __instance.playerGrabbing.RemoveAt(i);
         }
         FrameTimeMeter.End(FrameTimeMeter.PhysGrabObjectFix, t);
+        return true;
     }
 }
 

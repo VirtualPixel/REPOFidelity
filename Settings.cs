@@ -748,6 +748,10 @@ internal static class Settings
             ShadowQuality.Medium => 15,
             _ => 10,
         };
+        // CPU-bound Auto was throwing the preset's full shadow budget at scenes
+        // already choking on draw calls. Trim by 7 (floor of 8) — frees ~10
+        // shadow draws/frame, invisible to the player.
+        if (at.cpuBound) ResolvedShadowBudget = Mathf.Max(ResolvedShadowBudget - 7, 8);
     }
 
     internal static void AutoSelectPreset(float avgFpsRaw, float low1Fps, float low01Fps, bool cpuBound = false)
