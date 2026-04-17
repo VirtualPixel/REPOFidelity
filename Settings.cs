@@ -210,6 +210,10 @@ internal static class Settings
     }
     internal static int ResolvedShadowBudget;
 
+    // lowest fog multiplier presets/auto-tune may assign — manual slider can go lower.
+    // Placeholder value, revisit after tester feedback on what's actually playable.
+    internal const float PlayableFogFloor = 0.5f;
+
     // per-optimization toggles for Custom preset. -1 = auto (follow preset logic)
     internal static int PerfExplosionShadows
     {
@@ -307,6 +311,8 @@ internal static class Settings
     internal static int ResolvedPixelLightCount;
     internal static float ResolvedLightDistance;
     internal static float ResolvedFogMultiplier;
+    // fog end distance (meters) after ResolvedFogMultiplier is applied; populated when fog is written
+    internal static float ResolvedEffectiveFogEnd;
     internal static float ResolvedViewDistance;
     internal static int ResolvedAnisotropicFiltering;
     internal static TextureRes ResolvedTextureQuality;
