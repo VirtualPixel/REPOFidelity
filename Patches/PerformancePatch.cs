@@ -487,9 +487,11 @@ static class PlayerAvatarMenuAAPatch
 {
     // Shorter dimension scales up to this size, longer dim scales proportionally.
     // Camera only renders while the menu is open (gate below) so the per-frame
-    // cost is zero when not shown — we can afford the clarity boost.
-    const int TargetRtSize = 2048;
-    const int MaxLongDim = 4096;
+    // cost is zero when not shown. 2048 was overkill for ~400px UI display and
+    // cost ~0.7ms; 1024 is well above perceivable threshold with a quarter of
+    // the pixel work. MSAA + SMAA together handle edges with room to spare.
+    const int TargetRtSize = 1024;
+    const int MaxLongDim = 2048;
     const int TargetMsaa = 4;
 
     // saved originals so F10 can revert the RT back to vanilla size/aa
