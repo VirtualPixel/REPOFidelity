@@ -487,9 +487,23 @@ internal static class Settings
                 : ShadowBudget;
         }
 
+        ApplyFogClamps();
+
         Plugin.Log.LogInfo($"Resolved [{preset}]: {ResolvedUpscaleMode} {ResolvedRenderScale}% " +
             $"AA={ResolvedAAMode} shadows={ResolvedShadowQuality}/{ResolvedShadowDistance}m " +
-            $"LOD={ResolvedLODBias} lights={ResolvedPixelLightCount}");
+            $"LOD={ResolvedLODBias} lights={ResolvedPixelLightCount} " +
+            $"fogEnd={ResolvedEffectiveFogEnd:F0}m lightDist={ResolvedLightDistance:F0}m");
+    }
+
+    // ceiling shadow and light distances at small multiples of the effective fog end.
+    // renderings past fog are invisible; the overshoot keeps transitions smooth
+    // for casters partially inside the fog transition band.
+    internal static void ApplyFogClamps()
+    {
+        float end = ResolvedEffectiveFogEnd;
+        if (end <= 0f) return; // fog not yet captured; clamp will re-run when it is
+        ResolvedShadowDistance = Mathf.Min(ResolvedShadowDistance, end * 1.1f);
+        ResolvedLightDistance = Mathf.Min(ResolvedLightDistance, end * 1.2f);
     }
 
     private static void SyncCustomToResolved()

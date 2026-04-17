@@ -533,7 +533,10 @@ internal class UpscalerManager : MonoBehaviour
                 _camera.farClipPlane = RenderSettings.fogEndDistance + 10f;
         }
         if (_vanillaSaved)
+        {
             Settings.ResolvedEffectiveFogEnd = _vanillaFogEnd * fogMult;
+            Settings.ApplyFogClamps();
+        }
 
         Patches.SceneOptimizer.Apply();
         Patches.QualityPatch.ApplyQualitySettings();
@@ -792,6 +795,7 @@ internal class UpscalerManager : MonoBehaviour
         _lastEnvironmentSetupTime = Time.unscaledTime;
 
         Settings.ResolvedEffectiveFogEnd = _vanillaFogEnd * Settings.ResolvedFogMultiplier;
+        Settings.ApplyFogClamps();
 
         Plugin.Log.LogInfo($"Vanilla fog: start={_vanillaFogStart:F0}m end={_vanillaFogEnd:F0}m clip={_vanillaFarClip:F0}m (env #{_environmentSetupCount})");
     }
