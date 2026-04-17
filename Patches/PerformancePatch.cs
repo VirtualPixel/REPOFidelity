@@ -77,6 +77,11 @@ static class SceneOptimizer
 
         // must run AFTER other passes — renderers they've set to Off should stay out of the watchlist
         CaptureDistanceCullWatchlist();
+
+        // synchronous flashlight-budget revert so F10 diagnostic sees OK immediately
+        // (tick-based restore would lag by up to 100ms behind the post-disable log)
+        if (!Settings.ShouldOptimize(Settings.PerfOpt.FlashlightShadowBudget))
+            RestoreFlashlightBudget();
     }
 
     // ---
