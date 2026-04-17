@@ -126,13 +126,29 @@ internal class CostProbe : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible   = true;
 
+        // Save user state so we can both normalize test config AND cleanly restore.
+        // Baseline measurement was user-dependent before — now forced to a reference
+        // config (Ultra preset, DLAA, fog 1.0×) so runs across builds are comparable.
+        var origPreset = Settings.Preset;
         var origUpscaler = Settings.UpscaleModeSetting;
+        var origFog = Settings.FogDistanceMultiplier;
+
+        Status = "Normalizing test config (Ultra + DLAA + fog 1.0x)";
+        Settings.ApplyPreset(QualityPreset.Ultra);
+        Settings.ResolvedUpscaleMode = UpscaleMode.DLAA;
+        Settings.ResolvedRenderScale = 100;
+        Settings.ResolvedFogMultiplier = 1.0f;
+        Patches.QualityPatch.ApplyFogAndDrawDistance();
+        Patches.SceneOptimizer.Apply();
+        Patches.QualityPatch.ApplyQualitySettings();
+        yield return new WaitForSeconds(SettleSeconds);
 
         var report = new StringBuilder();
         report.AppendLine($"== REPOFidelity frame cost — {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==");
         report.AppendLine($"GPU:    {SystemInfo.graphicsDeviceName}");
         report.AppendLine($"CPU:    {SystemInfo.processorType} ({SystemInfo.processorCount} cores)");
         report.AppendLine($"Screen: {Screen.width}x{Screen.height}");
+        report.AppendLine($"Test:   forced Ultra + DLAA + fog 1.0× (user had [{origPreset}] upscaler={origUpscaler} fog={origFog:F2}×)");
         report.AppendLine($"Mod:    [{Settings.Preset}] upscaler={Settings.ResolvedUpscaleMode} " +
             $"scale={Settings.ResolvedRenderScale}% shadowQ={Settings.ResolvedShadowQuality} " +
             $"shadowD={Settings.ResolvedShadowDistance:F0}m lights={Settings.ResolvedPixelLightCount} " +
@@ -443,7 +459,6 @@ internal class CostProbe : MonoBehaviour
         if (GPUDetector.IsUpscalerSupported(UpscaleMode.FSR_Temporal)) upscalers.Add(UpscaleMode.FSR_Temporal);
         upscalers.Add(UpscaleMode.Off);
 
-        var origPreset = Settings.Preset;
         var sweepResults = new List<(string label, float ms, float shadowD, float lightD, bool isActive)>();
 
         foreach (var mode in upscalers)
@@ -460,7 +475,6 @@ internal class CostProbe : MonoBehaviour
         // Preset × fog matrix — force fog to 1.1x (loosest allowed) and 0.3x (tightest),
         // walk all 5 presets at each. This shows frame-time-per-quality-tier AND the
         // fog-driven shadow/light clamp cascading through each preset.
-        var origFog = Settings.FogDistanceMultiplier;
         var presetLadder = new[]
         {
             QualityPreset.Potato,

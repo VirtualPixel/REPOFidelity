@@ -448,9 +448,11 @@ static class SceneOptimizer
     internal static void LogRestoreState(string tag)
     {
         int shadowRes = QualityPatch.ShadowResOrigCount;
+        int avatarRt = PlayerAvatarMenuAAPatch.AvatarRtOrigCount;
         int total = _tinyRendererOrig.Count + _animatedLightOrig.Count
                   + _zeroIntensityOrig.Count + _gpuInstancingOrig.Count
-                  + _particleCullOrig.Count + _distanceCullWatchlist.Count + shadowRes;
+                  + _particleCullOrig.Count + _distanceCullWatchlist.Count
+                  + shadowRes + avatarRt;
         string prefix = total == 0 ? "OK" : "LEAK";
         Plugin.Log.LogInfo(
             $"[restore-state:{tag}] {prefix} total-mods={total} " +
@@ -460,7 +462,8 @@ static class SceneOptimizer
             $"gpuInst={_gpuInstancingOrig.Count} " +
             $"particleCull={_particleCullOrig.Count} " +
             $"distanceCull={_distanceCullWatchlist.Count} " +
-            $"shadowRes={shadowRes}");
+            $"shadowRes={shadowRes} " +
+            $"avatarRt={avatarRt}");
     }
 }
 
@@ -472,17 +475,18 @@ static class LevelOptimizationPatch
 
 // The lobby/pause avatar preview renders through PlayerAvatarMenu.cameraAndStuff
 // to a 320x320 render texture (by default), displayed scaled up in the menu UI.
-// At that resolution MSAA alone can't produce clean edges — need to bump both
-// the RT dimensions and multisample count. cameraAndStuff is the child transform
-// on the PlayerAvatarMenu that holds the dedicated camera.
+// Two fixes here:
+// 1. Bump RT to 512x512 + 4x MSAA for sharper edges
+// 2. Gate the camera's `enabled` flag on whether the hosting MenuPage is actually
+//    the active page — pauses render cost to zero when the menu isn't on top.
 [HarmonyPatch(typeof(PlayerAvatarMenu), "Start")]
 static class PlayerAvatarMenuAAPatch
 {
-    // 320x320 is the vanilla size — too low for clean edges. Bump to 512 (2.5×
-    // pixel count) with 4x MSAA. Camera renders every frame (not menu-only), so
-    // cost is always-on — kept conservative at 512 instead of 1024 for that reason.
     const int TargetRtSize = 512;
     const int TargetMsaa = 4;
+
+    // saved originals so F10 can revert the RT back to vanilla size/aa
+    internal static readonly Dictionary<RenderTexture, (int w, int h, int aa)> _rtOrig = new();
 
     static void Postfix(PlayerAvatarMenu __instance)
     {
@@ -499,28 +503,70 @@ static class PlayerAvatarMenuAAPatch
         cam.allowMSAA = true;
 
         var rt = cam.targetTexture;
-        if (rt == null)
+        if (rt != null)
         {
-            Plugin.Log.LogInfo($"avatar preview: camera '{cam.name}' has no RT — allowMSAA set only");
-            return;
+            bool needsUpscale = rt.width < TargetRtSize || rt.height < TargetRtSize;
+            bool needsMsaa = rt.antiAliasing < TargetMsaa;
+            if ((needsUpscale || needsMsaa) && !_rtOrig.ContainsKey(rt))
+            {
+                _rtOrig[rt] = (rt.width, rt.height, rt.antiAliasing);
+
+                int newW = Mathf.Max(rt.width, TargetRtSize);
+                int newH = Mathf.Max(rt.height, TargetRtSize);
+                bool wasCreated = rt.IsCreated();
+                if (wasCreated) rt.Release();
+                rt.width = newW;
+                rt.height = newH;
+                rt.antiAliasing = TargetMsaa;
+                if (wasCreated) rt.Create();
+
+                Plugin.Log.LogInfo($"avatar preview: RT '{rt.name}' bumped {_rtOrig[rt].w}x{_rtOrig[rt].h} " +
+                    $"aa={_rtOrig[rt].aa} → {newW}x{newH} aa={TargetMsaa}");
+            }
         }
 
-        bool needsUpscale = rt.width < TargetRtSize || rt.height < TargetRtSize;
-        bool needsMsaa = rt.antiAliasing < TargetMsaa;
-        if (!needsUpscale && !needsMsaa) return;
+        // gate the camera so it only renders while the hosting MenuPage is active
+        var gate = cam.gameObject.GetComponent<AvatarCameraGate>();
+        if (gate == null) gate = cam.gameObject.AddComponent<AvatarCameraGate>();
+        gate.menu = __instance;
+        gate.cam = cam;
+    }
 
-        int newW = Mathf.Max(rt.width, TargetRtSize);
-        int newH = Mathf.Max(rt.height, TargetRtSize);
-        int oldW = rt.width, oldH = rt.height, oldAa = rt.antiAliasing;
-        bool wasCreated = rt.IsCreated();
-        if (wasCreated) rt.Release();
-        rt.width = newW;
-        rt.height = newH;
-        rt.antiAliasing = TargetMsaa;
-        if (wasCreated) rt.Create();
+    // F10 hook — restore every avatar preview RT to its vanilla dimensions/aa
+    internal static void RestoreAvatarRt()
+    {
+        foreach (var kv in _rtOrig)
+        {
+            var rt = kv.Key;
+            if (rt == null) continue;
+            bool wasCreated = rt.IsCreated();
+            if (wasCreated) rt.Release();
+            rt.width = kv.Value.w;
+            rt.height = kv.Value.h;
+            rt.antiAliasing = kv.Value.aa;
+            if (wasCreated) rt.Create();
+        }
+        _rtOrig.Clear();
+    }
 
-        Plugin.Log.LogInfo($"avatar preview: RT '{rt.name}' bumped {oldW}x{oldH} aa={oldAa} → " +
-            $"{newW}x{newH} aa={TargetMsaa} (camera '{cam.name}')");
+    internal static int AvatarRtOrigCount => _rtOrig.Count;
+}
+
+// Tiny per-camera behaviour that toggles `enabled` based on whether the hosting
+// MenuPage is the active one. Zero cost when nothing's to render.
+internal class AvatarCameraGate : MonoBehaviour
+{
+    internal PlayerAvatarMenu? menu;
+    internal Camera? cam;
+
+    void LateUpdate()
+    {
+        if (cam == null) { Destroy(this); return; }
+        bool shouldRender = Settings.ModEnabled
+            && menu != null
+            && menu.parentPage != null
+            && menu.parentPage.pageActive;
+        if (cam.enabled != shouldRender) cam.enabled = shouldRender;
     }
 }
 

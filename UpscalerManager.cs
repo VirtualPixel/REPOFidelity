@@ -411,6 +411,7 @@ internal class UpscalerManager : MonoBehaviour
                 Patches.RenderTexturePatch.RestoreVanillaCameraSettings();
                 RestoreVanillaSettings();
                 Patches.QualityPatch.RestoreVanillaQuality();
+                Patches.PlayerAvatarMenuAAPatch.RestoreAvatarRt();
 
                 if (GraphicsManager.instance != null)
                     GraphicsManager.instance.UpdateAll();
