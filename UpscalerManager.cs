@@ -397,6 +397,8 @@ internal class UpscalerManager : MonoBehaviour
                 // disabling is instant — no render texture rebuild needed
                 Settings.ModEnabled = false;
                 Plugin.Log.LogInfo("Mod DISABLED");
+                // snapshot modifications BEFORE restore so the log shows what we reverted
+                Patches.SceneOptimizer.LogRestoreState("pre-disable");
                 Patches.SceneOptimizer.Apply();
 
                 _upscaler?.Dispose();
@@ -417,8 +419,9 @@ internal class UpscalerManager : MonoBehaviour
                     _camera.layerCullDistances = new float[32];
 
                 // verify restore cleanly returned to vanilla — OK = every tracked
-                // mutation reverted, LEAK = something's still altered. Shows in logs.
-                Patches.SceneOptimizer.LogRestoreState("F10-disable");
+                // mutation reverted, LEAK = something's still altered. Compare against
+                // the pre-disable snapshot above to see what was actually reverted.
+                Patches.SceneOptimizer.LogRestoreState("post-disable");
             }
             else
             {
