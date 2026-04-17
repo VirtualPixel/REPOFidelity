@@ -27,8 +27,23 @@ internal static class MenuIntegration
     private static REPOToggle? _vsyncToggle, _bloomToggle, _glitchToggle;
     private static REPOSlider? _perfExplosionSlider, _perfItemLightSlider;
     private static REPOSlider? _perfAnimLightSlider, _perfParticleSlider, _perfTinySlider;
-    private static UnityEngine.UI.Text? _benchHintText;
+    private static UnityEngine.UI.Text? _statusText;
+    private static UnityEngine.UI.Text? _autoTuneText;
     private static bool _benchmarkQueued;
+    private static StatusTicker? _ticker;
+
+    // Refreshes the status label 4×/s while the graphics page is open.
+    private class StatusTicker : MonoBehaviour
+    {
+        float _t;
+        void Update()
+        {
+            _t += Time.unscaledDeltaTime;
+            if (_t < 0.25f) return;
+            _t = 0f;
+            RefreshDynamicLabels();
+        }
+    }
 
     // FPS: "30"–"360" + "Unlimited", game stores -1 for unlimited
     private static readonly string[] FpsOptions;
@@ -80,6 +95,7 @@ internal static class MenuIntegration
     private static void ClosePage()
     {
         try { _page?.ClosePage(true); } catch { }
+        StopTicker();
     }
 
     private static void OpenPage()
@@ -87,18 +103,70 @@ internal static class MenuIntegration
         if (_page == null) CreatePage();
         _page!.OpenPage(openOnTop: true);
         SyncAll();
-        UpdateBenchHint();
+        RefreshDynamicLabels();
+        StartTicker();
     }
 
-    private static void UpdateBenchHint()
+    private static void StartTicker()
     {
-        if (_benchHintText == null) return;
-        if (_benchmarkQueued)
-            _benchHintText.text = "  Benchmark queued for next level";
-        else if (!SemiFunc.RunIsLevel())
-            _benchHintText.text = "  Start a game to auto-tune";
+        if (_ticker != null) return;
+        var go = new GameObject("REPOFidelity_MenuStatus");
+        UnityEngine.Object.DontDestroyOnLoad(go);
+        _ticker = go.AddComponent<StatusTicker>();
+    }
+
+    private static void StopTicker()
+    {
+        if (_ticker == null) return;
+        UnityEngine.Object.Destroy(_ticker.gameObject);
+        _ticker = null;
+    }
+
+    private static string BuildStatusLine()
+    {
+        int outW = Settings.OutputWidth, outH = Settings.OutputHeight;
+        int scale = Settings.ResolvedRenderScale;
+        int renW = Mathf.Max(1, outW * scale / 100);
+        int renH = Mathf.Max(1, outH * scale / 100);
+
+        string upscalerName = Settings.ResolvedUpscaleMode switch
+        {
+            UpscaleMode.DLAA         => "DLAA",
+            UpscaleMode.DLSS         => "DLSS",
+            UpscaleMode.FSR_Temporal => "FSR",
+            UpscaleMode.Off          => "native",
+            _                        => Settings.ResolvedUpscaleMode.ToString()
+        };
+
+        string resLine = scale == 100
+            ? $"{outW}×{outH} {upscalerName}"
+            : $"{outW}×{outH} → {renW}×{renH} ({upscalerName} {scale}%)";
+
+        float fps = Overlay.SmoothFps;
+        float ms  = Overlay.SmoothMs;
+
+        string perf;
+        if (!SemiFunc.RunIsLevel() || fps < 1f)
+            perf = "waiting for gameplay";
         else
-            _benchHintText.text = "";
+        {
+            string bottleneck = Settings.CpuBound ? "CPU-bound" : "GPU-bound";
+            perf = $"{bottleneck} • {ms:F1} ms / {fps:F0} fps";
+        }
+        return $"{perf}  •  {resLine}";
+    }
+
+    private static string BuildAutoTuneLabel()
+    {
+        if (_benchmarkQueued) return "AUTO-TUNE QUEUED (WILL RUN ON NEXT LEVEL)";
+        if (SemiFunc.RunIsLevel()) return "AUTO-TUNE BENCHMARK (15s)";
+        return "AUTO-TUNE — WILL QUEUE (START A GAME)";
+    }
+
+    private static void RefreshDynamicLabels()
+    {
+        if (_statusText != null) _statusText.text = "  " + BuildStatusLine();
+        if (_autoTuneText != null) _autoTuneText.text = BuildAutoTuneLabel();
     }
 
     private static void CreatePage()
@@ -107,6 +175,14 @@ internal static class MenuIntegration
             shouldCachePage: true, pageDimmerVisibility: false, spacing: 2f,
             localPosition: new Vector2(0f, 0f));
         _page.maskPadding = new Padding(0, 0, 0, 0);
+
+        // Live status line — bottleneck, fps, render resolution
+        _page.AddElementToScrollView(sv =>
+        {
+            var label = MenuAPI.CreateREPOLabel("", sv, new Vector2(0f, 0f));
+            _statusText = label.GetComponentInChildren<UnityEngine.UI.Text>();
+            return label.rectTransform;
+        });
 
         AddButton("RESET TO DEFAULT SETTINGS", () => { Settings.Preset = QualityPreset.High; SyncAll(); });
 
@@ -166,9 +242,6 @@ internal static class MenuIntegration
         AddStringSlider("Anti-Aliasing", "SMAA / FXAA",
             aaOptions, currentAA,
             s => ModSet(() => Settings.AntiAliasingMode = Enum.Parse<AAMode>(s)), out _aaSlider);
-        AddModToggle("Pixelation (Retro)", Settings.Pixelation,
-            b => ModSet(() => Settings.Pixelation = b), out _pixelationToggle);
-
         // Shadows & Lighting
         AddLabel("Shadows & Lighting");
         AddStringSlider("Shadow Quality", "Shadow map resolution",
@@ -176,7 +249,7 @@ internal static class MenuIntegration
             s => ModSet(() => Settings.ShadowQualitySetting = Enum.Parse<ShadowQuality>(s)), out _shadowQualitySlider);
         AddFloatSlider("Shadow Distance", "", 5f, 200f, 0, Settings.ShadowDistance, "m",
             v => ModSet(() => Settings.ShadowDistance = v), out _shadowDistanceSlider);
-        AddIntSlider("Shadow Limit", "Max nearby shadows (0=unlimited)", 0, 50,
+        AddIntSlider("Shadow Limit (0 = unlimited)", "Caps nearby shadow-casting lights", 0, 50,
             Settings.ResolvedShadowBudget, "",
             v => ModSet(() => Settings.ShadowBudget = v), out _shadowBudgetSlider);
         AddFloatSlider("Light Distance", "", 10f, 100f, 0, Settings.LightDistance, "m",
@@ -199,9 +272,13 @@ internal static class MenuIntegration
 
         // Environment
         AddLabel("Environment");
-        AddFloatSlider("Fog Distance", "Fog end multiplier", 1f, 1.1f, 2, Settings.FogDistanceMultiplier, "x",
+        // Fog upper bound stays at 1.1 because farther fog would give a
+        // gameplay advantage — lower bound opened up so reducing fog for
+        // performance is actually an option now.
+        AddFloatSlider("Fog Distance", "1.0 = vanilla; lower pulls fog closer for perf", 0.5f, 1.1f, 2,
+            Settings.FogDistanceMultiplier, "x",
             v => ModSet(() => Settings.FogDistanceMultiplier = v), out _fogSlider);
-        AddFloatSlider("Draw Distance", "Camera far clip (0=auto)", 0f, 500f, 0, Settings.ViewDistance, "m",
+        AddFloatSlider("Draw Distance (0 = auto)", "Camera far clip", 0f, 500f, 0, Settings.ViewDistance, "m",
             v => ModSet(() => Settings.ViewDistance = v), out _viewDistSlider);
 
         // Post Processing
@@ -220,11 +297,23 @@ internal static class MenuIntegration
         AddModToggle("Glitch Loop", true,
             b => GameSet(DataDirector.Setting.GlitchLoop, b ? 1 : 0,
                 () => GraphicsManager.instance.UpdateGlitchLoop()), out _glitchToggle);
+        AddModToggle("Pixelation (retro style)", Settings.Pixelation,
+            b => ModSet(() => Settings.Pixelation = b), out _pixelationToggle);
 
         // Performance
         AddLabel("Performance");
-        AddButton("Auto-Tune (Benchmark)", () =>
+        AddDynamicButton(BuildAutoTuneLabel(), () =>
         {
+            if (_benchmarkQueued)
+            {
+                // Click while queued = cancel.
+                _benchmarkQueued = false;
+                Settings.Preset = QualityPreset.High;
+                RefreshDynamicLabels();
+                SyncAll();
+                return;
+            }
+
             Settings.Preset = QualityPreset.Auto;
             if (SemiFunc.RunIsLevel())
             {
@@ -238,9 +327,9 @@ internal static class MenuIntegration
             {
                 Settings.InvalidateAutoTune();
                 _benchmarkQueued = true;
-                UpdateBenchHint();
+                RefreshDynamicLabels();
             }
-        });
+        }, out _autoTuneText);
 
         AddPerfSlider("Explosion Shadows", "Disable shadows on explosion lights",
             Settings.PerfExplosionShadows, v => ModSet(() => Settings.PerfExplosionShadows = v),
@@ -271,14 +360,6 @@ internal static class MenuIntegration
                 int i = Array.IndexOf(keyOpts, s);
                 if (i >= 0) Settings.ToggleKey = keyVals[i];
             }, out _);
-
-        // hint text — updated each time the page opens
-        _page!.AddElementToScrollView(sv =>
-        {
-            var label = MenuAPI.CreateREPOLabel("", sv, new Vector2(0f, -10f));
-            _benchHintText = label.GetComponentInChildren<UnityEngine.UI.Text>();
-            return label.rectTransform;
-        });
     }
 
     private static void ModSet(Action a) { if (!_syncing) a(); }
@@ -296,6 +377,19 @@ internal static class MenuIntegration
 
     private static void AddButton(string text, Action onClick, float xOffset = 38f) =>
         _page!.AddElementToScrollView(sv => MenuAPI.CreateREPOButton(text, onClick, sv, new Vector2(xOffset, 0f)).rectTransform);
+
+    // Button whose label can be refreshed later via its captured Text component.
+    private static void AddDynamicButton(string text, Action onClick, out UnityEngine.UI.Text? textOut, float xOffset = 38f)
+    {
+        UnityEngine.UI.Text? captured = null;
+        _page!.AddElementToScrollView(sv =>
+        {
+            var btn = MenuAPI.CreateREPOButton(text, onClick, sv, new Vector2(xOffset, 0f));
+            captured = btn.GetComponentInChildren<UnityEngine.UI.Text>();
+            return btn.rectTransform;
+        });
+        textOut = captured;
+    }
 
     private static void AddStringSlider(string text, string desc, string[] options, string def,
         Action<string> cb, out REPOSlider? r)

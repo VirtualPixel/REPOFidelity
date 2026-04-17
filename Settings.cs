@@ -590,13 +590,16 @@ internal static class Settings
 
     private static UpscaleMode BestUpscaler(UpscaleTier tier) => tier switch
     {
-        // budget: cheapest usable upscaler — FSR Temporal beats FSR spatial on both
-        // cost and quality per benchmark data. iGPU falls back to Off.
+        // budget: cheapest usable upscaler — FSR Temporal beats FSR spatial on
+        // both cost and quality per benchmark data. iGPU falls back to Off
+        // because even FSR's shader blit costs more than the savings on HD/UHD.
         UpscaleTier.Budget => GPUDetector.IsIntegratedGpu ? UpscaleMode.Off : UpscaleMode.FSR_Temporal,
-        // native AA: best AA at 100% scale — DLAA on NVIDIA, FSR Temporal elsewhere
+        // native AA: best AA at 100% scale — DLAA on NVIDIA, FSR Temporal
+        // everywhere else (AMD / Intel dGPU / Apple Silicon).
         UpscaleTier.NativeAA => GPUDetector.DlssAvailable ? UpscaleMode.DLAA
             : UpscaleMode.FSR_Temporal,
-        // quality: best upscaler available — DLSS on NVIDIA, FSR Temporal elsewhere
+        // quality: best upscaler available — DLSS on NVIDIA RTX,
+        // FSR Temporal on AMD / Intel dGPU / Apple Silicon.
         _ => GPUDetector.DlssAvailable
             ? UpscaleMode.DLSS : UpscaleMode.FSR_Temporal,
     };
@@ -719,12 +722,31 @@ internal static class Settings
         };
     }
 
-    internal static void AutoSelectPreset(float avgFps, bool cpuBound = false)
+    internal static void AutoSelectPreset(float avgFpsRaw, float low1Fps, float low01Fps, bool cpuBound = false)
     {
-        float target = Mathf.Max(Screen.currentResolution.refreshRate, 60f) * 1.05f;
+        int refresh = Mathf.Max(Screen.currentResolution.refreshRate, 60);
+        float target = refresh;
 
-        Plugin.Log.LogInfo($"Auto-tune: measured {avgFps:F0}, target {target:F0} " +
-            $"({Screen.currentResolution.refreshRate}Hz) {(cpuBound ? "CPU-BOUND" : "gpu-bound")}");
+        // Weighted composite — average dominates for steady scenes, lows
+        // punish systems with hitches. 50/30/20 matches how smoothness
+        // actually feels; spikes show up in the 1 % and 0.1 % buckets.
+        float p01 = low01Fps > 0 ? low01Fps : low1Fps;
+        float weighted = avgFpsRaw * 0.5f + low1Fps * 0.3f + p01 * 0.2f;
+
+        // Scene complexity factor: sparse benchmark scene means real gameplay
+        // will hit denser areas, so scale down primary fps to keep headroom.
+        // ~3000 MeshRenderers is typical; clamp bounds prevent wild swings.
+        int renderers = UnityEngine.Object.FindObjectsOfType<MeshRenderer>().Length;
+        float sceneFactor = Mathf.Clamp(3000f / Mathf.Max(renderers, 1500f), 0.85f, 1.0f);
+
+        // Thermal / GC / driver-variance cushion on top of the scene factor.
+        const float ThermalSafety = 0.92f;
+
+        float avgFps = weighted * sceneFactor * ThermalSafety;
+
+        Plugin.Log.LogInfo($"Auto-tune inputs: avg={avgFpsRaw:F0}  1%={low1Fps:F0}  0.1%={p01:F0}  " +
+            $"renderers={renderers}  weighted={weighted:F0}  sceneFactor={sceneFactor:F2}  " +
+            $"primary={avgFps:F0}  target={target}Hz  {(cpuBound ? "CPU-BOUND" : "gpu-bound")}");
 
         // start from Ultra
         int scale = 100;
@@ -773,27 +795,58 @@ internal static class Settings
 
         if (cpuBound)
         {
-            // CPU-bound: don't waste GPU headroom, but also don't exceed it.
-            // Step down GPU settings if the budget is still too tight —
-            // on systems where both CPU and GPU are weak (e.g. RX 6400 + i5-2500),
-            // we can't just max GPU settings because the GPU can't handle them either.
-            // step down CPU-impacting settings first (lights, shadows, LOD have CPU-side costs
-            // like culling and draw calls), keep pure-GPU settings (fog, AF) for last
-            if (budget < 1f) { shD = 100f; budget = Rebudget(); }
-            if (budget < 1f) { lights = 12; budget = Rebudget(); }
-            if (budget < 1f) { shD = 75f; budget = Rebudget(); }
-            if (budget < 1f) { lod = 2f; budget = Rebudget(); }
-            if (budget < 1f) { shD = 50f; budget = Rebudget(); }
-            if (budget < 1f) { lDist = 35f; budget = Rebudget(); }
-            if (budget < 1f) { lights = 8; budget = Rebudget(); }
-            if (budget < 1f) { shQ = ShadowQuality.High; budget = Rebudget(); }
-            if (budget < 1f) { shQ = ShadowQuality.Medium; budget = Rebudget(); }
-            if (budget < 1f) { af = 8; budget = Rebudget(); }
-            if (budget < 1f) { shD = 25f; lights = 4; lDist = 15f; af = 4; lod = 1f; budget = Rebudget(); }
-            if (budget < 1f) { shQ = ShadowQuality.Low; budget = Rebudget(); }
-            if (budget < 1f) { fog = 1f; budget = Rebudget(); }
+            // CPU-bound: GpuCost does NOT predict CPU savings. Pure-GPU knobs
+            // (AF, LOD, fog, shadow resolution, texture quality) don't reduce
+            // main-thread work, so they stay maxed — the GPU already has
+            // headroom by definition on a CPU-bound system. Step only knobs
+            // that reduce draw-call count (shadow distance shrinks the caster
+            // set, light count reduces forward passes per lit mesh, light
+            // distance kills far lights). Budget here is the direct measured
+            // FPS ratio, not a model.
+            float headroom = avgFps / target;
+            Plugin.Log.LogInfo($"CPU-bound: headroom={headroom:F2}  (avgFps={avgFps:F0}  target={target:F0})");
 
-            Plugin.Log.LogInfo($"CPU-bound: budget={budget:F2} shQ={shQ} shD={shD} lod={lod} lights={lights}");
+            if (headroom < 0.95f)
+            {
+                // Staircase of draw-call reductions. Farthest/least-visible
+                // shadow casters fade first; pixel lights drop only when we
+                // can't meet target from shadow cuts alone.
+                shD = 100f;
+                if (headroom < 0.90f) { lDist = 50f; }
+                if (headroom < 0.80f) { shD = 75f;  lights = 12; }
+                if (headroom < 0.70f) { shD = 50f;  lights = 10; }
+                if (headroom < 0.60f) { shD = 35f;  lights = 8;  lDist = 35f; }
+                if (headroom < 0.50f) { shD = 25f;  lights = 6;  lDist = 25f; }
+                if (headroom < 0.40f) { shD = 15f;  lights = 4;  lDist = 15f;
+                                         shQ = ShadowQuality.High; lod = 2f; af = 8; }
+                if (headroom < 0.30f) { shQ = ShadowQuality.Medium; lod = 1f; af = 4; }
+                if (headroom < 0.20f)
+                {
+                    // Final fallback: GPU-side relief for borderline systems —
+                    // scale drop lets the GPU return frames faster, which
+                    // shortens the CPU stall in Unity's render submission.
+                    shQ = ShadowQuality.Low;
+                    if (upscaler == UpscaleMode.Off || upscaler == UpscaleMode.DLAA)
+                    {
+                        upscaler = BestUpscaler(UpscaleTier.Quality);
+                        aa = AAMode.Off;
+                        minScale = MinRenderScale(upscaler);
+                    }
+                    scale = Mathf.Clamp(Mathf.RoundToInt(75f * Mathf.Sqrt(Mathf.Max(headroom, 0.1f) / 0.2f)), minScale, 80);
+                }
+            }
+            else if (headroom > 1.15f)
+            {
+                // Bonus tier — CPU is cruising. GPU has headroom too (CPU-bound
+                // by definition), so push pure-GPU fidelity up without spending
+                // CPU. Shadow distance / light count stay at Ultra — raising
+                // either would eat CPU budget we just verified we have.
+                sharp = 0.4f;
+                if (headroom > 1.30f) { lod = 5f; }
+                if (headroom > 1.50f) { lod = 6f; shD = 175f; }  // shD tiny CPU bump acceptable
+                if (headroom > 1.80f) { shD = 200f; }            // only when truly bottomless
+            }
+            // else: within ±5 % of target — keep Ultra defaults.
         }
         else
         {
@@ -842,6 +895,15 @@ internal static class Settings
                 upscaler = BestUpscaler(UpscaleTier.NativeAA);
                 aa = AAMode.Off;
             }
+
+            // Headroom bonus — when the system easily clears target at Ultra,
+            // push a few invisible-to-subtle values beyond vanilla Ultra so
+            // strong rigs actually see richer visuals instead of leftover fps.
+            // Re-measured between each bump so we don't blow past the budget.
+            if (budget > 1.3f) { shD   = 200f; budget = Rebudget(); }
+            if (budget > 1.3f) { lDist = 100f; budget = Rebudget(); }
+            if (budget > 1.5f) { lod   = 5f;   budget = Rebudget(); }
+            if (budget > 1.5f) { sharp = 0.4f;                      }
         }
 
         int perfLevel = shQ switch

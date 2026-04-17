@@ -6,7 +6,6 @@
 - Fixed DLSS output flashing white the first frame after enable (output RT was undefined until DLSS wrote the first frame over it)
 - Fixed DLSS staying black when a scale change caused Unity to recycle an RT's native pointer into a new texture — shared-handle cache now cleared on re-init
 - Sharpening slider no longer rebuilds the whole upscaler pipeline every tick, since it's a per-frame shader uniform
-- F9 benchmark now sweeps DLSS → FSR Temporal → Off back-to-back in the same area, concatenates the three reports and copies the whole thing to the clipboard
 - Shadow budget system — caps how many small point lights cast shadows at once, closest to camera get priority. Fades shadow strength in/out for smooth transitions instead of pop-in. Configurable per preset (Potato=5, Ultra=25) or manually via Shadow Limit slider (0=unlimited)
 - Tiered shadow map resolution — directional lights use global resolution with cascades instead of a forced custom value, small decorative lights get 512 instead of 4096, infrastructure lights cap at 2048. Massive shadow cost reduction with no visible quality loss
 - Shadow cascades — Low/1, Medium/2, High+Ultra/4. Fixes directional light shadow quality (window lighting, outdoor shadows) which was previously stuck at 1 cascade
@@ -15,6 +14,16 @@
 - Fixed FXAA darkening the image — keepAlpha wasn't set, so luminance was bleeding into the alpha channel during compositing
 - Max FPS is now a smooth slider (30–360 + Unlimited) instead of preset options — set exact values for adaptive sync
 - Performance toggle labels changed from Off/On to Keep/Disable for clarity
+- Auto-tune now weights 1% and 0.1% lows into its decision (50% avg + 30% 1%-low + 20% 0.1%-low). Stuttery systems actually step down now instead of sliding by on a good average
+- Auto-tune targets monitor refresh rate directly — the old `refresh × 1.05` padding was fighting the 1%-low safety the benchmark was already applying, which is how a 5090 on 240Hz ended up with LOD 2 and 8x AF
+- Fixed CPU-bound stepdown using GPU-cost predictions to size CPU savings. New ladder only touches the knobs that actually reduce draw-call count (shadow distance, light count, light distance) and leaves shadow quality / LOD / AF at Ultra where they belong. Strong-CPU systems now also get a bonus tier that raises sharpness, LOD, and shadow distance above vanilla Ultra when benchmark headroom allows
+- Scene-complexity factor — benchmark accounts for sparse scenes (menu, small rooms) vs. packed ones so real gameplay doesn't blow the budget
+- Intel Arc iGPU (Meteor Lake / Lunar Lake "Intel Arc Graphics") is now detected as integrated. Discrete Arc A380/A750/A770/B580 still come through as regular dGPUs and get FSR
+- Live status line at the top of the graphics menu — CPU-bound/GPU-bound tag, frame time, fps, render resolution, upscaler. Updates 4×/sec while the menu's open
+- Auto-Tune button label now tells you what clicking will actually do (`AUTO-TUNE BENCHMARK (15s)` in-game, `AUTO-TUNE — WILL QUEUE (START A GAME)` in the menu, `AUTO-TUNE QUEUED (WILL RUN ON NEXT LEVEL)` after queuing). Tap while queued to cancel
+- Shadow Limit and Draw Distance sliders moved the "0 = unlimited" / "0 = auto" hint into the label instead of burying it in the description
+- Fog Distance slider opened up below 1.0× so it's actually a performance knob — upper bound stays at 1.1× because anything farther would give a gameplay advantage
+- Pixelation moved from the Upscaling group to Post Processing, which is what it actually is
 
 ## 1.2.0
 

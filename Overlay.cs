@@ -31,6 +31,10 @@ internal static class Overlay
     static int _fpsFrames;
     static float _smoothFps, _smoothMs;
 
+    // exposed for the settings menu status line
+    internal static float SmoothFps => _smoothFps;
+    internal static float SmoothMs => _smoothMs;
+
     // animation
     const float SlideSpeed = 6f;     // lerp speed for slide in/out
     const float HideOffsetY = -40f;  // how far below target to start/end
@@ -87,17 +91,16 @@ internal static class Overlay
             }
         }
 
-        // FPS averager — suppress all other FPS display while running
-        if (FpsAverager.Running || !string.IsNullOrEmpty(FpsAverager.Status))
+        // Cost probe — suppress all other FPS display while running
+        if (CostProbe.Running || !string.IsNullOrEmpty(CostProbe.Status))
         {
-            _lines.Add(new LineData(FpsAverager.Status, Col.Info));
-            if (FpsAverager.Running)
+            _lines.Add(new LineData(CostProbe.Status, Col.Info));
+            if (CostProbe.Running)
             {
                 _showProgress = true;
-                _progress = FpsAverager.Progress;
+                _progress = CostProbe.Progress;
                 _progressColor = new Color(0.4f, 0.7f, 0.95f);
             }
-            // skip all other FPS-showing lines while averager is active
             _nativeActive = TryUpdateNative();
             return;
         }

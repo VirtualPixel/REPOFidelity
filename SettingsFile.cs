@@ -89,7 +89,7 @@ internal class AutoTuneData
     public int perfLevel = 0;
 
     // bump this when autotune logic changes but version doesn't
-    internal const int AutoTuneRevision = 2;
+    internal const int AutoTuneRevision = 3;
     public int revision;
 
     internal bool IsStale()

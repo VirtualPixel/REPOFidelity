@@ -378,7 +378,7 @@ internal class UpscalerManager : MonoBehaviour
             LightDiagnostics.Run();
 
         if (Input.GetKeyDown(KeyCode.F9) && Settings.ToggleKey != KeyCode.F9)
-            FpsAverager.Toggle();
+            CostProbe.Toggle();
 
         // F11: optimizer benchmark (only in gameplay levels)
         if (Input.GetKeyDown(KeyCode.F11) && IsInGameplayLevel())
@@ -738,10 +738,7 @@ internal class UpscalerManager : MonoBehaviour
             Plugin.Log.LogInfo($"  CPU ceiling (25% scale): {_lowGpuFps:F1} FPS | Full scale: {avgFps:F1} FPS | Ratio: {(avgFps / Mathf.Max(_lowGpuFps, 1f)):P0}");
             Plugin.Log.LogInfo("=========================");
 
-            float tuningFps = low1Fps * ThermalSafetyFactor;
-            Plugin.Log.LogInfo($"  Tuning target: {tuningFps:F1} FPS (1% low x {ThermalSafetyFactor} thermal safety)");
-
-            Settings.AutoSelectPreset(tuningFps, cpuBound);
+            Settings.AutoSelectPreset(avgFps, low1Fps, low01Fps, cpuBound);
 
             // glitch to cover the settings switch
             PlayGlitch();

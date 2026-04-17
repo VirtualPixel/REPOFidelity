@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -91,13 +92,20 @@ internal static class GPUDetector
         return GpuTier.Low;
     }
 
+    // Discrete Arc dGPU names have a model code like "A380", "A770", "B580".
+    // Arc iGPU on Meteor Lake / Lunar Lake is just "Intel(R) Arc(TM) Graphics".
+    private static readonly Regex ArcDiscretePattern = new(@"\b[AB]\d{3}\b", RegexOptions.Compiled);
+
     private static bool DetectIntegrated(string name, int vramMb, GpuVendor vendor)
     {
         string upper = name.ToUpperInvariant();
 
-        // Intel integrated (UHD, Iris, HD Graphics)
+        // Intel integrated — HD/UHD/Iris, plus Arc iGPU on Core Ultra
+        // (distinguished from Arc dGPU by the absence of a letter+3-digit
+        // model code).
         if (vendor == GpuVendor.Intel &&
-            (upper.Contains("UHD") || upper.Contains("IRIS") || upper.Contains("HD GRAPHICS")))
+            (upper.Contains("UHD") || upper.Contains("IRIS") || upper.Contains("HD GRAPHICS") ||
+             (upper.Contains("ARC") && !ArcDiscretePattern.IsMatch(upper))))
             return true;
 
         // AMD integrated (Radeon Graphics without a discrete model number, Vega iGPU)
@@ -106,10 +114,9 @@ internal static class GPUDetector
              (upper.Contains("RADEON GRAPHICS") && !upper.Contains("RX"))))
             return true;
 
-        // Apple Silicon uses unified memory — powerful but bandwidth-shared like an iGPU.
-        // FSR shader blits are affordable on M-series, so don't treat as iGPU for upscaler
-        // selection, but note it for logging/future decisions.
-        // (Apple Silicon returns false here — handled via BestUpscaler vendor checks instead)
+        // Apple Silicon uses unified memory — powerful but bandwidth-shared.
+        // FSR shader blits are affordable on M-series, so it isn't flagged as
+        // iGPU for upscaler purposes — BestUpscaler defaults Apple to FSR.
 
         // Fallback: very low VRAM is a strong iGPU signal
         if (vramMb > 0 && vramMb < 2048)
