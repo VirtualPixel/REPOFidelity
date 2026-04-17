@@ -470,6 +470,43 @@ static class LevelOptimizationPatch
     static void Postfix() => SceneOptimizer.Apply();
 }
 
+// The pause-menu avatar preview renders through its own camera to a render texture.
+// It inherits no AA from our main-camera upscaler pipeline, so its silhouette is
+// jagged. Walk PlayerAvatarMenu's hierarchy for the associated Camera, enable
+// allowMSAA, and bump the target render texture's sample count to 4 if it's lower.
+[HarmonyPatch(typeof(PlayerAvatarMenu), "Start")]
+static class PlayerAvatarMenuAAPatch
+{
+    static void Postfix(PlayerAvatarMenu __instance)
+    {
+        if (!Settings.ModEnabled) return;
+
+        var cam = __instance.GetComponentInChildren<Camera>(true);
+        if (cam == null) cam = __instance.GetComponentInParent<Camera>(true);
+        if (cam == null)
+        {
+            Plugin.Log.LogInfo("avatar AA: no camera found on PlayerAvatarMenu hierarchy");
+            return;
+        }
+
+        cam.allowMSAA = true;
+
+        var rt = cam.targetTexture;
+        if (rt != null && rt.antiAliasing < 4)
+        {
+            bool wasCreated = rt.IsCreated();
+            if (wasCreated) rt.Release();
+            rt.antiAliasing = 4;
+            if (wasCreated) rt.Create();
+            Plugin.Log.LogInfo($"avatar AA: bumped RT to 4x MSAA on camera '{cam.name}'");
+        }
+        else
+        {
+            Plugin.Log.LogInfo($"avatar AA: enabled allowMSAA on camera '{cam.name}' (RT aa={rt?.antiAliasing ?? -1})");
+        }
+    }
+}
+
 // re-apply when perf-relevant settings change mid-level
 static class PerfSettingsWatcher
 {
