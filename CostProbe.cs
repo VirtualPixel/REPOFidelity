@@ -216,7 +216,11 @@ internal class CostProbe : MonoBehaviour
         double cpuRend  = LookupMs(timeStats, "CPU Render Thread Frame Time");
         double cpuTotal = LookupMs(timeStats, "CPU Total Frame Time");
         double gpuTotal = LookupMs(timeStats, "GPU Frame Time");
-        string bottleneck = gpuTotal > cpuMain + 0.2 ? "GPU"
+        // Unity's GPU Frame Time recorder occasionally returns garbage values
+        // (overflow / driver hiccup during rapid state swaps). Clamp to sane range.
+        if (gpuTotal > 100.0 || gpuTotal < 0) gpuTotal = 0;
+        string bottleneck = gpuTotal <= 0 ? "CPU (main thread) [GPU marker unavailable]"
+                          : gpuTotal > cpuMain + 0.2 ? "GPU"
                           : cpuMain > gpuTotal + 0.2 ? "CPU (main thread)"
                           : "balanced CPU/GPU";
 
@@ -489,22 +493,27 @@ internal class CostProbe : MonoBehaviour
             }
         }
 
-        // Vanilla step — flip mod completely off, same path F10 uses.
+        // Vanilla step — flip mod completely off. Mirror the F10 disable flow so
+        // QualitySettings (shadow distance, LOD, etc.) genuinely reset to vanilla
+        // instead of inheriting the previous matrix cell's aggressive values.
         Status = "Sweep: Vanilla (mod OFF)";
         Settings.ModEnabled = false;
+        Patches.QualityPatch.RestoreVanillaQuality();
         Patches.SceneOptimizer.Apply();
         yield return new WaitForSeconds(SettleSeconds);
         Sample vanillaSample = default;
         yield return SampleFrames(UpscalerSampleSeconds, v => vanillaSample = v);
         sweepResults.Add(("Vanilla (F10)", vanillaSample.AvgMs, QualitySettings.shadowDistance, 0f, false));
 
-        // Restore — mirrors OptimizerBenchmark exit path.
+        // Restore — mirrors OptimizerBenchmark exit path. Re-apply mod's values on top
+        // of the vanilla QualitySettings so we end exactly where we started.
         Settings.ModEnabled = true;
         Settings.Preset = origPreset;
         Settings.UpscaleModeSetting = origUpscaler;
         Settings.FogDistanceMultiplier = origFog;
         Patches.SceneOptimizer.Apply();
         Patches.QualityPatch.ApplyQualitySettings();
+        Patches.QualityPatch.ApplyFogAndDrawDistance();
         yield return new WaitForSeconds(SettleSeconds);
 
         float bestMs = sweepResults.Min(r => r.ms);
