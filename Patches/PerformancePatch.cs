@@ -470,54 +470,58 @@ static class LevelOptimizationPatch
     static void Postfix() => SceneOptimizer.Apply();
 }
 
-// The lobby/pause avatar preview inherits no AA from our main-camera upscaler
-// pipeline — it renders through its own camera, giving jagged edges on the avatar.
-// Hook PlayerAvatarMenu.Start as the trigger; on first fire, sweep every active
-// Camera, apply MSAA to any that aren't the main gameplay camera, and log the
-// whole list so we can verify which one is the preview.
+// The lobby/pause avatar preview renders through PlayerAvatarMenu.cameraAndStuff
+// to a 320x320 render texture (by default), displayed scaled up in the menu UI.
+// At that resolution MSAA alone can't produce clean edges — need to bump both
+// the RT dimensions and multisample count. cameraAndStuff is the child transform
+// on the PlayerAvatarMenu that holds the dedicated camera.
 [HarmonyPatch(typeof(PlayerAvatarMenu), "Start")]
 static class PlayerAvatarMenuAAPatch
 {
-    static bool _swept;
+    // 320x320 is the vanilla size — too low for clean edges. Bump to 512 (2.5×
+    // pixel count) with 4x MSAA. Camera renders every frame (not menu-only), so
+    // cost is always-on — kept conservative at 512 instead of 1024 for that reason.
+    const int TargetRtSize = 512;
+    const int TargetMsaa = 4;
 
     static void Postfix(PlayerAvatarMenu __instance)
     {
         if (!Settings.ModEnabled) return;
-        if (_swept) return;
-        _swept = true;
+        if (__instance.cameraAndStuff == null) return;
 
-        // dump every active camera so we can identify the preview one from logs
-        int touched = 0;
-        foreach (var cam in Object.FindObjectsOfType<Camera>())
+        var cam = __instance.cameraAndStuff.GetComponentInChildren<Camera>(true);
+        if (cam == null)
         {
-            string rtInfo = cam.targetTexture != null
-                ? $"{cam.targetTexture.width}x{cam.targetTexture.height} aa={cam.targetTexture.antiAliasing}"
-                : "screen";
-            Plugin.Log.LogInfo($"avatar AA scan: '{cam.name}' tag={cam.tag} depth={cam.depth} " +
-                $"target={rtInfo} allowMSAA={cam.allowMSAA}");
-
-            // main gameplay camera already has our upscaler-driven AA pipeline.
-            // Skip it and the UI overlay. Everything else gets MSAA.
-            if (cam.CompareTag("MainCamera")) continue;
-            if (cam.name.Contains("Overlay") || cam.name.Contains("UI")) continue;
-
-            cam.allowMSAA = true;
-            var rt = cam.targetTexture;
-            if (rt != null && rt.antiAliasing < 4)
-            {
-                bool wasCreated = rt.IsCreated();
-                if (wasCreated) rt.Release();
-                rt.antiAliasing = 4;
-                if (wasCreated) rt.Create();
-            }
-            touched++;
+            Plugin.Log.LogInfo($"avatar preview: no Camera under cameraAndStuff on '{__instance.name}'");
+            return;
         }
 
-        Plugin.Log.LogInfo($"avatar AA: applied MSAA to {touched} non-main cameras");
-    }
+        cam.allowMSAA = true;
 
-    // reset so a level change re-scans (CameraLobbyMenu may not exist in gameplay scene)
-    internal static void ResetSweep() => _swept = false;
+        var rt = cam.targetTexture;
+        if (rt == null)
+        {
+            Plugin.Log.LogInfo($"avatar preview: camera '{cam.name}' has no RT — allowMSAA set only");
+            return;
+        }
+
+        bool needsUpscale = rt.width < TargetRtSize || rt.height < TargetRtSize;
+        bool needsMsaa = rt.antiAliasing < TargetMsaa;
+        if (!needsUpscale && !needsMsaa) return;
+
+        int newW = Mathf.Max(rt.width, TargetRtSize);
+        int newH = Mathf.Max(rt.height, TargetRtSize);
+        int oldW = rt.width, oldH = rt.height, oldAa = rt.antiAliasing;
+        bool wasCreated = rt.IsCreated();
+        if (wasCreated) rt.Release();
+        rt.width = newW;
+        rt.height = newH;
+        rt.antiAliasing = TargetMsaa;
+        if (wasCreated) rt.Create();
+
+        Plugin.Log.LogInfo($"avatar preview: RT '{rt.name}' bumped {oldW}x{oldH} aa={oldAa} → " +
+            $"{newW}x{newH} aa={TargetMsaa} (camera '{cam.name}')");
+    }
 }
 
 // re-apply when perf-relevant settings change mid-level
