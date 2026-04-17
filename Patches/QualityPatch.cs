@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
 
@@ -6,7 +7,9 @@ namespace REPOFidelity.Patches;
 [HarmonyPatch]
 internal static class QualityPatch
 {
-    private static bool _ultraShadowsApplied;
+    // Flashlight lights get an Ultra-only 4096 exemption; everything else follows
+    // the range-driven bracket table in ApplyRangeTieredLightShadows.
+    private static readonly HashSet<Light> _flashlightLights = new();
 
     private static ShadowResolution _vanillaShadowRes;
     private static float _vanillaShadowDist;
@@ -234,58 +237,80 @@ internal static class QualityPatch
             case ShadowQuality.Low:
                 QualitySettings.shadowResolution = UnityEngine.ShadowResolution.Low;
                 QualitySettings.shadowCascades = 1;
-                SetLightShadowResolution(0);
                 break;
             case ShadowQuality.Medium:
                 QualitySettings.shadowResolution = UnityEngine.ShadowResolution.Medium;
                 QualitySettings.shadowCascades = 2;
-                SetLightShadowResolution(0);
                 break;
             case ShadowQuality.High:
                 QualitySettings.shadowResolution = UnityEngine.ShadowResolution.High;
                 QualitySettings.shadowCascades = 4;
-                SetLightShadowResolution(0);
                 break;
             case ShadowQuality.Ultra:
                 QualitySettings.shadowResolution = UnityEngine.ShadowResolution.VeryHigh;
                 QualitySettings.shadowCascades = 4;
-                SetLightShadowResolution(4096);
                 break;
+        }
+        ApplyRangeTieredLightShadows();
+    }
+
+    // re-scan scene for Flashlight spotlights — cheap, runs on every shadow-resolution apply
+    // (level change, preset change). handles respawn / new level correctly without separate tracking.
+    private static void RefreshFlashlightLights()
+    {
+        _flashlightLights.Clear();
+        foreach (var fl in Object.FindObjectsOfType<FlashlightController>())
+        {
+            if (fl.spotlight != null) _flashlightLights.Add(fl.spotlight);
         }
     }
 
-    private static void SetLightShadowResolution(int resolution)
+    // range-tiered shadow map resolution applied to every non-directional light.
+    // resolution buckets are: <5m→256, 5-10m→512, 10-20m→1024, >20m→2048.
+    // Flashlight gets 4096 on Ultra only (player-focused spotlight, keep pristine).
+    // Potato caps the top bucket to 1024 for extra savings.
+    private static void ApplyRangeTieredLightShadows()
     {
-        // Skip the scan if we're setting 0 (default) and haven't applied custom resolutions
-        if (resolution == 0 && !_ultraShadowsApplied) return;
-        _ultraShadowsApplied = resolution > 0;
+        RefreshFlashlightLights();
+
+        bool ultraFlashlight = Settings.ResolvedShadowQuality == ShadowQuality.Ultra;
+        int cap = Settings.Preset == QualityPreset.Potato ? 1024 : 4096;
+
+        int touched = 0;
         foreach (var light in Object.FindObjectsOfType<Light>())
         {
             if (light.intensity <= 0f && light.shadows != LightShadows.None)
                 light.shadows = LightShadows.None;
 
-            if (resolution <= 0)
-            {
-                light.shadowCustomResolution = 0;
-                continue;
-            }
-
-            // directional lights use the global shadow resolution + cascades
+            // directional uses the global shadow resolution + cascades
             if (light.type == LightType.Directional)
             {
                 light.shadowCustomResolution = 0;
                 continue;
             }
 
-            // small decorative point lights get lower resolution — they don't
-            // need 4K shadow maps at 2.9m range
-            if (light.type == LightType.Point && light.intensity < 1f && light.range < 5f)
-                light.shadowCustomResolution = 512;
-            else if (light.range < 10f)
-                light.shadowCustomResolution = Mathf.Min(resolution, 2048);
-            else
-                light.shadowCustomResolution = resolution;
+            // Flashlight exemption — only on Ultra
+            if (ultraFlashlight && _flashlightLights.Contains(light))
+            {
+                light.shadowCustomResolution = 4096;
+                touched++;
+                continue;
+            }
+
+            float range = light.range;
+            int res = range switch
+            {
+                < 5f => 256,
+                < 10f => 512,
+                < 20f => 1024,
+                _ => 2048,
+            };
+            light.shadowCustomResolution = Mathf.Min(res, cap);
+            touched++;
         }
+
+        if (touched > 0)
+            Plugin.Log.LogInfo($"shadow-res: tiered {touched} lights (flashlights={_flashlightLights.Count}, cap={cap})");
     }
 
     private static void ApplyAnisotropicFiltering(int level)
