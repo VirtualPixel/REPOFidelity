@@ -512,12 +512,10 @@ static class PlayerAvatarMenuAAPatch
     // called from Start postfix and from F10 re-enable (where Start won't fire again)
     internal static void ApplyToMenu(PlayerAvatarMenu __instance)
     {
-        // only the pause-menu preview gets the bump. expressionAvatar, iconMakerAvatar,
-        // and worldAvatar variants exist during gameplay (one per player in some cases)
-        // and must keep vanilla behaviour — otherwise an 8-player lobby eats real ms
-        // on menu-style rendering that the user never sees.
-        if (__instance.expressionAvatar || __instance.iconMakerAvatar || __instance.worldAvatar)
-            return;
+        // only the pause-menu preview gets the bump. expressionAvatar variants exist
+        // during gameplay (one per player) and must keep vanilla behaviour — an
+        // 8-player lobby would otherwise eat real ms on menu-style rendering.
+        if (__instance.expressionAvatar) return;
 
         if (__instance.cameraAndStuff == null) return;
 

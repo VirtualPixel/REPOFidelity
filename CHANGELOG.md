@@ -9,6 +9,11 @@
 - F9 cost probe sweeps a preset × fog matrix — all five presets at fog 1.1× and 0.3×, plus upscaler and vanilla steps. Fully automated, settings restored on exit. Report header gained a "Range:" line with fog multiplier, effective fog end, and light distance so runs are self-documenting when comparing builds
 - Fixed F9 GPU frame time occasionally returning garbage 700-million-ms values after rapid state swaps — bottleneck label falls back to CPU when the marker's unreliable instead of incorrectly reading "GPU"
 - Fixed F9 vanilla sample inheriting the prior cell's shadow distance instead of restoring Unity's vanilla QualitySettings before measuring
+- F10 (mod off) now returns to true vanilla state. Tiny-renderer culling, animated-light shadows, zero-intensity lights, GPU instancing, particle culling mode, and per-range shadow resolution all save their original state and restore it on disable — previously most of those were one-way. A `restore-state` log line prints `OK` or `LEAK` on every F10 so any regression is obvious
+- Pause-menu avatar preview gets the treatment it was missing. The 320×320 / 209×418 render texture the game hands it bumps to 1024×(matching aspect) with 4× MSAA and SMAA via PostProcessLayer — vanilla's jagged edges come from rendering the avatar at native RT resolution with no AA. The camera is gated on the hosting MenuPage being active so it costs zero frame time when you're not looking at it. Expression / icon-maker / world-avatar variants stay vanilla (they exist during gameplay, one per player in some cases, and menu-grade rendering on them is pure waste)
+- CPU-bound Auto now trims its shadow budget by 7 (Ultra 25 → 18, etc.). The preset budget was sized for GPU-bound systems with headroom; on CPU-bound Auto it was throwing ~10 extra shadow draws a frame at a scene already choking on them
+- `PhysGrabObject.Update` skips entirely when the Rigidbody's sleeping and the object isn't being grabbed — 40+ idle objects in a typical scene used to pay for a full Update tick each frame for nothing. Grab-list bookkeeping still runs when grabbed
+- F9 cost probe normalizes the baseline to a fixed reference config (Ultra + DLAA + fog 1.0×) so runs are comparable across builds no matter what preset you were on. Your preset / upscaler / fog are restored on exit
 
 ## 1.3.0
 
