@@ -587,6 +587,15 @@ static class PlayerAvatarMenuAAPatch
         // 8-player lobby would otherwise eat real ms on menu-style rendering.
         if (__instance.expressionAvatar) return;
 
+        // bail in multi-avatar contexts (e.g. truck lobby with N players). Bumping
+        // N previews to 1024² + MSAA + SMAA scales linearly with lobby size — not
+        // worth the sharpness win for small UI portraits
+        int nonExpressionCount = 0;
+        foreach (var m in Object.FindObjectsOfType<PlayerAvatarMenu>())
+        {
+            if (!m.expressionAvatar && ++nonExpressionCount > 1) return;
+        }
+
         if (__instance.cameraAndStuff == null) return;
 
         var cam = __instance.cameraAndStuff.GetComponentInChildren<Camera>(true);
