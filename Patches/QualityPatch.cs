@@ -107,7 +107,7 @@ internal static class QualityPatch
 
         if (!Settings.ModEnabled) return;
         float fogMult = Settings.ResolvedFogMultiplier;
-        if (fogMult > 1f)
+        if (fogMult != 1f)
         {
             RenderSettings.fogEndDistance *= fogMult;
             RenderSettings.fogStartDistance *= fogMult;

@@ -525,7 +525,7 @@ internal class UpscalerManager : MonoBehaviour
         }
 
         float fogMult = Settings.ResolvedFogMultiplier;
-        if (_vanillaSaved && fogMult > 1f)
+        if (_vanillaSaved && fogMult != 1f)
         {
             RenderSettings.fogStartDistance = _vanillaFogStart * fogMult;
             RenderSettings.fogEndDistance = _vanillaFogEnd * fogMult;

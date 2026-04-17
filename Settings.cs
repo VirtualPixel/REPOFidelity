@@ -105,7 +105,7 @@ internal static class Settings
     internal static float FogDistanceMultiplier
     {
         get => D.fogMultiplier;
-        set { D.fogMultiplier = Mathf.Clamp(value, 1f, 1.1f); _file.Save(); OnSettingTweaked(); }
+        set { D.fogMultiplier = Mathf.Clamp(value, 0.3f, 1.1f); _file.Save(); OnSettingTweaked(); }
     }
     internal static float ViewDistance
     {
