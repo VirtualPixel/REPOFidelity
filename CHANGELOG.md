@@ -1,3 +1,8 @@
+## 1.5.0
+
+- F9 cost probe returns with a new multiplayer breakdown section: per-player distance to main camera, shadow-casting renderer count per avatar, flashlight budget state (within / culled / past fog), and totals for the cosmetic components (Eyelids / Expression / Overcharge) that get throttled past fog. Makes it straightforward to run F9 in a busy lobby and see where the player count is biting
+- F9 cost probe sweep still forces a normalized Ultra + DLAA + fog 1.0× baseline then restores your starting preset on exit, so results are comparable across builds and lobby sizes
+
 ## 1.4.0
 
 - Shadow and light distance now clamp to fog end instead of being independent per-preset values. Ultra's 150m shadows behind a 40m fog wall was pure waste — the geometry's invisible anyway. Shadow caps at fog × 1.1, light at fog × 1.2, the overshoot keeps casters right at the fog line from popping as you walk past

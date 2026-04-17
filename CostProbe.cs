@@ -352,6 +352,9 @@ internal class CostProbe : MonoBehaviour
         report.AppendLine($"  MonoBehaviours w/ FixedUpdate:  {scene.FixedUpdatingBehaviours}");
         report.AppendLine();
 
+        // ---- Multiplayer / per-player breakdown ----
+        AppendMultiplayerSection(report);
+
         // ---- Top MonoBehaviour types by instance count ----
         if (scene.TopBehaviourTypes.Count > 0)
         {
@@ -622,6 +625,68 @@ internal class CostProbe : MonoBehaviour
         {
             Plugin.Log.LogWarning($"Probe: can't patch {type.Name}.{methodName}: {ex.Message}");
         }
+    }
+
+    // Breaks down what players are costing: per-avatar distance + renderer
+    // count, flashlight budget state (within / culled / past-fog), and the
+    // throttle-eligible cosmetic component counts.
+    private static void AppendMultiplayerSection(StringBuilder report)
+    {
+        var avatars = UnityEngine.Object.FindObjectsOfType<PlayerAvatar>();
+        if (avatars.Length == 0) return;
+
+        var cam = Camera.main;
+        Vector3 camPos = cam != null ? cam.transform.position : Vector3.zero;
+        float fogEnd = Settings.ResolvedEffectiveFogEnd;
+        float fogCutoff = fogEnd > 0f ? fogEnd * 1.1f : float.PositiveInfinity;
+
+        report.AppendLine($"== Multiplayer / per-player (fog cutoff {fogCutoff:F0}m) ==");
+        report.AppendLine($"  PlayerAvatars: {avatars.Length}");
+        int pastFog = 0, shadowRenderers = 0;
+        foreach (var a in avatars)
+        {
+            if (a == null) continue;
+            float dist = cam != null ? Vector3.Distance(a.transform.position, camPos) : 0f;
+            bool beyond = dist > fogCutoff;
+            if (beyond) pastFog++;
+            int casters = 0;
+            foreach (var r in a.GetComponentsInChildren<Renderer>(true))
+                if (r.shadowCastingMode != UnityEngine.Rendering.ShadowCastingMode.Off) casters++;
+            shadowRenderers += casters;
+            string tag = a.isLocal ? "local" : "remote";
+            string gate = beyond ? " past-fog" : "";
+            report.AppendLine($"    [{tag,-6}] {a.playerName ?? "(unknown)",-20} {dist,5:F0}m  {casters,3} casters{gate}");
+        }
+        report.AppendLine($"  Total shadow-casting player renderers: {shadowRenderers}  ({pastFog} players past fog)");
+
+        var flashlights = UnityEngine.Object.FindObjectsOfType<FlashlightController>();
+        if (flashlights.Length > 0)
+        {
+            var sorted = new List<(FlashlightController fl, float dist)>();
+            foreach (var fl in flashlights)
+            {
+                if (fl.spotlight == null) continue;
+                float d = cam != null ? Vector3.Distance(fl.spotlight.transform.position, camPos) : 0f;
+                sorted.Add((fl, d));
+            }
+            sorted.Sort((a, b) => a.dist.CompareTo(b.dist));
+            const int budgetCap = 4;
+            int active = 0, overBudget = 0, flashPastFog = 0;
+            foreach (var (fl, d) in sorted)
+            {
+                if (d > fogCutoff) flashPastFog++;
+                else if (active < budgetCap) active++;
+                else overBudget++;
+            }
+            report.AppendLine($"  Flashlights: {sorted.Count} total — {active} within budget, {overBudget} culled over budget, {flashPastFog} past fog");
+        }
+
+        int eyelidsTotal = UnityEngine.Object.FindObjectsOfType<PlayerAvatarEyelids>().Length;
+        int expressionsTotal = UnityEngine.Object.FindObjectsOfType<PlayerExpression>().Length;
+        int overchargeTotal = UnityEngine.Object.FindObjectsOfType<PlayerAvatarOverchargeVisuals>().Length;
+        report.AppendLine($"  Cosmetic components: Eyelids×{eyelidsTotal}  Expression×{expressionsTotal}  Overcharge×{overchargeTotal}");
+        report.AppendLine($"  (components past fog cutoff skip their Update — see per-player distances above)");
+        report.AppendLine();
     }
 
     private static double LookupMs(List<(string name, string cat, double ms)> list, string marker)

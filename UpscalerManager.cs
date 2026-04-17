@@ -381,6 +381,9 @@ internal class UpscalerManager : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.F7) && Settings.ToggleKey != KeyCode.F7)
             LightDiagnostics.Run();
 
+        if (Input.GetKeyDown(KeyCode.F9) && Settings.ToggleKey != KeyCode.F9)
+            CostProbe.Toggle();
+
         // F11 toggles the optimization layer only — upscaler / AA stay on.
         // When off, every shadow / physics / render hack reverts to vanilla;
         // F10 cuts the whole mod instead

@@ -1,6 +1,6 @@
 {
     "name": "REPOFidelity",
-    "version_number": "1.3.0",
+    "version_number": "1.5.0",
     "website_url": "https://github.com/VirtualPixel/REPOFidelity",
     "description": "HD graphics + performance mod. DLSS, FSR, SMAA, shadow control, auto-benchmark. Better than REPO HD. Potato to Ultra presets. CPU/GPU-aware tuning. Full settings menu.",
     "dependencies": [
