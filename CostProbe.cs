@@ -440,7 +440,7 @@ internal class CostProbe : MonoBehaviour
         upscalers.Add(UpscaleMode.Off);
 
         var origPreset = Settings.Preset;
-        var sweepResults = new List<(string label, float ms, bool isActive)>();
+        var sweepResults = new List<(string label, float ms, float shadowD, float lightD, bool isActive)>();
 
         foreach (var mode in upscalers)
         {
@@ -449,18 +449,33 @@ internal class CostProbe : MonoBehaviour
             yield return new WaitForSeconds(SettleSeconds);
             Sample s = default;
             yield return SampleFrames(UpscalerSampleSeconds, v => s = v);
-            sweepResults.Add(($"{mode}", s.AvgMs, mode == origUpscaler && origPreset == Settings.Preset));
+            sweepResults.Add(($"{mode}", s.AvgMs, Settings.ResolvedShadowDistance, Settings.ResolvedLightDistance,
+                mode == origUpscaler && origPreset == Settings.Preset));
         }
 
-        // Potato preset step — whole preset stack swap.
-        Status = "Sweep: Potato preset";
-        Settings.Preset = QualityPreset.Potato;
-        Patches.SceneOptimizer.Apply();
-        Patches.QualityPatch.ApplyQualitySettings();
-        yield return new WaitForSeconds(SettleSeconds);
+        // Preset ladder — walk Potato → Ultra so frame-time-per-quality-tier is visible,
+        // and clamped shadow/light distances per preset show the fog-driven ceiling working.
+        var presetLadder = new[]
+        {
+            QualityPreset.Potato,
+            QualityPreset.Low,
+            QualityPreset.Medium,
+            QualityPreset.High,
+            QualityPreset.Ultra,
+        };
         Sample potatoSample = default;
-        yield return SampleFrames(UpscalerSampleSeconds, v => potatoSample = v);
-        sweepResults.Add(("Potato preset", potatoSample.AvgMs, false));
+        foreach (var p in presetLadder)
+        {
+            Status = $"Sweep: {p} preset";
+            Settings.Preset = p;
+            Patches.SceneOptimizer.Apply();
+            Patches.QualityPatch.ApplyQualitySettings();
+            yield return new WaitForSeconds(SettleSeconds);
+            Sample ps = default;
+            yield return SampleFrames(UpscalerSampleSeconds, v => ps = v);
+            sweepResults.Add(($"{p} preset", ps.AvgMs, Settings.ResolvedShadowDistance, Settings.ResolvedLightDistance, false));
+            if (p == QualityPreset.Potato) potatoSample = ps;
+        }
 
         // Vanilla step — flip mod completely off, same path F10 uses.
         Status = "Sweep: Vanilla (mod OFF)";
@@ -469,7 +484,7 @@ internal class CostProbe : MonoBehaviour
         yield return new WaitForSeconds(SettleSeconds);
         Sample vanillaSample = default;
         yield return SampleFrames(UpscalerSampleSeconds, v => vanillaSample = v);
-        sweepResults.Add(("Vanilla (F10)", vanillaSample.AvgMs, false));
+        sweepResults.Add(("Vanilla (F10)", vanillaSample.AvgMs, QualitySettings.shadowDistance, 0f, false));
 
         // Restore — mirrors OptimizerBenchmark exit path.
         Settings.ModEnabled = true;
@@ -480,11 +495,14 @@ internal class CostProbe : MonoBehaviour
         yield return new WaitForSeconds(SettleSeconds);
 
         float bestMs = sweepResults.Min(r => r.ms);
-        foreach (var (label, ms, isActive) in sweepResults)
+        foreach (var (label, ms, shadowD, lightD, isActive) in sweepResults)
         {
             string tag = isActive ? " (active)" : "";
             string delta = Mathf.Approximately(ms, bestMs) ? " ← fastest" : $"  {ms - bestMs:+0.00;-0.00}";
-            report.AppendLine($"  {label,-16} {ms,6:F2} ms{tag}{delta}");
+            string range = lightD > 0f
+                ? $"  shadowD={shadowD:F0}m lightD={lightD:F0}m"
+                : $"  shadowD={shadowD:F0}m";
+            report.AppendLine($"  {label,-16} {ms,6:F2} ms{range}{tag}{delta}");
         }
         float modOverhead = sweepResults.Where(r => r.label != "Vanilla (F10)").Min(r => r.ms) - vanillaSample.AvgMs;
         float potatoVsVanilla = potatoSample.AvgMs - vanillaSample.AvgMs;
