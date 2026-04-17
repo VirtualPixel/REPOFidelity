@@ -450,10 +450,11 @@ static class SceneOptimizer
     {
         int shadowRes = QualityPatch.ShadowResOrigCount;
         int avatarRt = PlayerAvatarMenuAAPatch.AvatarRtOrigCount;
+        int avatarPpl = PlayerAvatarMenuAAPatch.AvatarPplCount;
         int total = _tinyRendererOrig.Count + _animatedLightOrig.Count
                   + _zeroIntensityOrig.Count + _gpuInstancingOrig.Count
                   + _particleCullOrig.Count + _distanceCullWatchlist.Count
-                  + shadowRes + avatarRt;
+                  + shadowRes + avatarRt + avatarPpl;
         string prefix = total == 0 ? "OK" : "LEAK";
         Plugin.Log.LogInfo(
             $"[restore-state:{tag}] {prefix} total-mods={total} " +
@@ -464,7 +465,8 @@ static class SceneOptimizer
             $"particleCull={_particleCullOrig.Count} " +
             $"distanceCull={_distanceCullWatchlist.Count} " +
             $"shadowRes={shadowRes} " +
-            $"avatarRt={avatarRt}");
+            $"avatarRt={avatarRt} " +
+            $"avatarPpl={avatarPpl}");
     }
 }
 
@@ -493,6 +495,16 @@ static class PlayerAvatarMenuAAPatch
     // saved originals so F10 can revert the RT back to vanilla size/aa
     internal static readonly Dictionary<RenderTexture, (int w, int h, int aa)> _rtOrig = new();
 
+    // saved PostProcessLayer state so F10 reverts SMAA correctly. For each Camera
+    // we track either "attached by us" (destroy on F10) or "existed, AA was X"
+    // (restore AA mode on F10).
+    internal struct PplState
+    {
+        internal bool AttachedByUs;
+        internal PostProcessLayer.Antialiasing OriginalAa;
+    }
+    internal static readonly Dictionary<Camera, PplState> _pplState = new();
+
     static void Postfix(PlayerAvatarMenu __instance)
     {
         if (!Settings.ModEnabled) return;
@@ -516,19 +528,19 @@ static class PlayerAvatarMenuAAPatch
         cam.allowMSAA = true;
 
         // enable SMAA via PostProcessLayer if the camera has one — catches alpha /
-        // shader edges that MSAA misses. If the avatar camera doesn't already ship
-        // with a PPL (attached by the game prefab), we log and skip — creating one
-        // from scratch requires PostProcessResources that aren't easily accessible.
+        // shader edges that MSAA misses. Track attachment state so F10 reverts cleanly.
         var ppl = cam.GetComponent<PostProcessLayer>();
         if (ppl != null)
         {
+            if (!_pplState.ContainsKey(cam))
+                _pplState[cam] = new PplState { AttachedByUs = false, OriginalAa = ppl.antialiasingMode };
             ppl.antialiasingMode = PostProcessLayer.Antialiasing.SubpixelMorphologicalAntialiasing;
             ppl.fastApproximateAntialiasing.keepAlpha = true;
         }
         else
         {
-            // Try reflection route — PostProcessLayer.m_Resources is internal.
-            // If the main camera has PPL with resources, borrow them and attach a new PPL.
+            // No PPL on the avatar camera — attach one by reflecting resources from
+            // the main camera's PPL (m_Resources is internal, so needs reflection).
             var mainPpl = Camera.main?.GetComponent<PostProcessLayer>();
             if (mainPpl != null)
             {
@@ -542,6 +554,7 @@ static class PlayerAvatarMenuAAPatch
                     newPpl.volumeTrigger = cam.transform;
                     newPpl.antialiasingMode = PostProcessLayer.Antialiasing.SubpixelMorphologicalAntialiasing;
                     newPpl.fastApproximateAntialiasing.keepAlpha = true;
+                    _pplState[cam] = new PplState { AttachedByUs = true, OriginalAa = PostProcessLayer.Antialiasing.None };
                     Plugin.Log.LogInfo($"avatar preview: attached PostProcessLayer with SMAA to '{cam.name}'");
                 }
                 else
@@ -625,6 +638,21 @@ static class PlayerAvatarMenuAAPatch
         }
         _rtOrig.Clear();
 
+        // restore PostProcessLayer state — if we attached one, destroy it;
+        // if we modified an existing one, restore its original AA mode
+        foreach (var kv in _pplState)
+        {
+            var cam = kv.Key;
+            if (cam == null) continue;
+            var ppl = cam.GetComponent<PostProcessLayer>();
+            if (ppl == null) continue;
+            if (kv.Value.AttachedByUs)
+                Object.Destroy(ppl);
+            else
+                ppl.antialiasingMode = kv.Value.OriginalAa;
+        }
+        _pplState.Clear();
+
         // restore to vanilla: re-enable cameras AND strip our gate component so
         // the game's normal rendering flow resumes without interference
         foreach (var cam in affectedCams)
@@ -636,6 +664,7 @@ static class PlayerAvatarMenuAAPatch
     }
 
     internal static int AvatarRtOrigCount => _rtOrig.Count;
+    internal static int AvatarPplCount => _pplState.Count;
 
     // F10 re-enable hook — scan existing PlayerAvatarMenu instances and reapply the
     // bump + gate + SMAA. Start already fired at menu-open time so the postfix won't
