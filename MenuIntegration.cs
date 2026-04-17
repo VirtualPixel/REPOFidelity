@@ -275,7 +275,7 @@ internal static class MenuIntegration
         // Fog upper bound stays at 1.1 because farther fog would give a
         // gameplay advantage — lower bound opened up so reducing fog for
         // performance is actually an option now.
-        AddFloatSlider("Fog Distance", "1.0 = vanilla; lower pulls fog closer for perf", 0.5f, 1.1f, 2,
+        AddFloatSlider("Fog Distance", "1.0 = vanilla; lower pulls fog closer for perf", 0.3f, 1.1f, 2,
             Settings.FogDistanceMultiplier, "x",
             v => ModSet(() => Settings.FogDistanceMultiplier = v), out _fogSlider);
         AddFloatSlider("Draw Distance (0 = auto)", "Camera far clip", 0f, 500f, 0, Settings.ViewDistance, "m",
