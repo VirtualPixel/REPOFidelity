@@ -240,6 +240,11 @@ internal static class Settings
         get => D.perfTinyRendererCulling;
         set { D.perfTinyRendererCulling = value; _file.Save(); }
     }
+    internal static int PerfDistanceShadowCulling
+    {
+        get => D.perfDistanceShadowCulling;
+        set { D.perfDistanceShadowCulling = value; _file.Save(); }
+    }
 
     // check whether a specific optimization should be active.
     // for non-Custom presets, uses the tier system.
@@ -259,6 +264,7 @@ internal static class Settings
                 PerfOpt.ItemLightShadows => D.perfItemLightShadows,
                 PerfOpt.TinyRendererCulling => D.perfTinyRendererCulling,
                 PerfOpt.AnimatedLightShadows => D.perfAnimatedLightShadows,
+                PerfOpt.DistanceShadowCulling => D.perfDistanceShadowCulling,
                 _ => -1,
             };
             if (toggle == 0) return false;
@@ -289,6 +295,7 @@ internal static class Settings
             PerfOpt.ItemLightShadows => level >= 2,
             PerfOpt.TinyRendererCulling => level >= 2,
             PerfOpt.AnimatedLightShadows => level >= 3,
+            PerfOpt.DistanceShadowCulling => level >= 0, // always on when mod enabled
             _ => false,
         };
     }
@@ -300,6 +307,7 @@ internal static class Settings
         ItemLightShadows,
         TinyRendererCulling,
         AnimatedLightShadows,
+        DistanceShadowCulling,
     }
 
     internal static UpscaleMode ResolvedUpscaleMode;

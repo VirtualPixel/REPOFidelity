@@ -319,7 +319,7 @@ static class PerfSettingsWatcher
     static int _lastPreset = -1;
     static int _lastShadowQ = -1;
     static int _lastShadowBudget;
-    static int _lastPerfExp, _lastPerfItem, _lastPerfAnim, _lastPerfPart, _lastPerfTiny;
+    static int _lastPerfExp, _lastPerfItem, _lastPerfAnim, _lastPerfPart, _lastPerfTiny, _lastPerfDist;
 
     internal static void Register()
     {
@@ -341,7 +341,8 @@ static class PerfSettingsWatcher
             || Settings.PerfItemLightShadows != _lastPerfItem
             || Settings.PerfAnimatedLightShadows != _lastPerfAnim
             || Settings.PerfParticleShadows != _lastPerfPart
-            || Settings.PerfTinyRendererCulling != _lastPerfTiny;
+            || Settings.PerfTinyRendererCulling != _lastPerfTiny
+            || Settings.PerfDistanceShadowCulling != _lastPerfDist;
 
         if (!changed) return;
 
@@ -364,6 +365,7 @@ static class PerfSettingsWatcher
         _lastPerfAnim = Settings.PerfAnimatedLightShadows;
         _lastPerfPart = Settings.PerfParticleShadows;
         _lastPerfTiny = Settings.PerfTinyRendererCulling;
+        _lastPerfDist = Settings.PerfDistanceShadowCulling;
     }
 }
 

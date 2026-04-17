@@ -145,6 +145,7 @@ internal class SettingsData
     public int perfAnimatedLightShadows = -1;
     public int perfParticleShadows = -1;
     public int perfTinyRendererCulling = -1;
+    public int perfDistanceShadowCulling = -1;
 
     // bottleneck detection — true = CPU-bound (default assumption),
     // overwritten by auto-benchmark when it runs
