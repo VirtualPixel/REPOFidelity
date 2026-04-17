@@ -482,7 +482,11 @@ static class LevelOptimizationPatch
 [HarmonyPatch(typeof(PlayerAvatarMenu), "Start")]
 static class PlayerAvatarMenuAAPatch
 {
-    const int TargetRtSize = 512;
+    // Shorter dimension scales up to this size, longer dim scales proportionally.
+    // Camera only renders while the menu is open (gate below) so the per-frame
+    // cost is zero when not shown — we can afford the clarity boost.
+    const int TargetRtSize = 2048;
+    const int MaxLongDim = 4096;
     const int TargetMsaa = 4;
 
     // saved originals so F10 can revert the RT back to vanilla size/aa
@@ -512,12 +516,19 @@ static class PlayerAvatarMenuAAPatch
                 _rtOrig[rt] = (rt.width, rt.height, rt.antiAliasing);
 
                 // preserve original aspect ratio — scale shortest dimension up to
-                // TargetRtSize, apply same factor to the longer one. Prevents the
-                // portrait 209x418 avatar RT from squishing into 512x512.
+                // TargetRtSize, apply same factor to the longer one. Cap longer dim
+                // at MaxLongDim so extreme aspect ratios don't blow up VRAM.
                 int shortDim = Mathf.Min(rt.width, rt.height);
                 float scale = shortDim < TargetRtSize ? (float)TargetRtSize / shortDim : 1f;
                 int newW = Mathf.RoundToInt(rt.width * scale);
                 int newH = Mathf.RoundToInt(rt.height * scale);
+                int longDim = Mathf.Max(newW, newH);
+                if (longDim > MaxLongDim)
+                {
+                    float shrink = (float)MaxLongDim / longDim;
+                    newW = Mathf.RoundToInt(newW * shrink);
+                    newH = Mathf.RoundToInt(newH * shrink);
+                }
 
                 bool wasCreated = rt.IsCreated();
                 if (wasCreated) rt.Release();
@@ -539,20 +550,20 @@ static class PlayerAvatarMenuAAPatch
     }
 
     // F10 hook — restore every avatar preview RT to its vanilla dimensions/aa.
-    // Must disable any cameras currently rendering to the RT before modifying it,
-    // or Unity leaves the RT in an inconsistent state when the pause menu is open.
+    // Must temporarily disable cameras during mutation (Unity leaves state inconsistent
+    // otherwise), then re-enable and remove the gate so vanilla rendering resumes.
     internal static void RestoreAvatarRt()
     {
         if (_rtOrig.Count == 0) return;
 
-        // collect cameras targeting any of our tracked RTs, disable them during mutation
-        var camsToRestore = new List<Camera>();
+        // collect cameras targeting our tracked RTs, disable during mutation
+        var affectedCams = new List<Camera>();
         foreach (var cam in Object.FindObjectsOfType<Camera>())
         {
             if (cam.targetTexture != null && _rtOrig.ContainsKey(cam.targetTexture))
             {
                 cam.enabled = false;
-                camsToRestore.Add(cam);
+                affectedCams.Add(cam);
             }
         }
 
@@ -569,15 +580,24 @@ static class PlayerAvatarMenuAAPatch
         }
         _rtOrig.Clear();
 
-        // cameras stay disabled — mod is off, gate won't re-enable until ModEnabled=true.
-        // If mod is re-enabled, the gate's LateUpdate will toggle them back based on pageActive.
+        // restore to vanilla: re-enable cameras AND strip our gate component so
+        // the game's normal rendering flow resumes without interference
+        foreach (var cam in affectedCams)
+        {
+            cam.enabled = true;
+            var gate = cam.GetComponent<AvatarCameraGate>();
+            if (gate != null) Object.Destroy(gate);
+        }
     }
 
     internal static int AvatarRtOrigCount => _rtOrig.Count;
 }
 
 // Tiny per-camera behaviour that toggles `enabled` based on whether the hosting
-// MenuPage is the active one. Zero cost when nothing's to render.
+// MenuPage is actually displayed. Uses activeInHierarchy (not pageActive) so the
+// camera is live during the Opening animation — prevents a brief blank flash
+// when the menu fades in. When mod is disabled, leaves camera in vanilla-enabled
+// state so F10 doesn't wipe the preview.
 internal class AvatarCameraGate : MonoBehaviour
 {
     internal PlayerAvatarMenu? menu;
@@ -586,10 +606,19 @@ internal class AvatarCameraGate : MonoBehaviour
     void LateUpdate()
     {
         if (cam == null) { Destroy(this); return; }
-        bool shouldRender = Settings.ModEnabled
-            && menu != null
+
+        // mod off — defer to vanilla behaviour (always enabled)
+        if (!Settings.ModEnabled)
+        {
+            if (!cam.enabled) cam.enabled = true;
+            return;
+        }
+
+        // mod on — gate on whether the menu page is in the hierarchy and active.
+        // Catches Opening / Active / Activating — only skips when fully hidden.
+        bool shouldRender = menu != null
             && menu.parentPage != null
-            && menu.parentPage.pageActive;
+            && menu.parentPage.gameObject.activeInHierarchy;
         if (cam.enabled != shouldRender) cam.enabled = shouldRender;
     }
 }
