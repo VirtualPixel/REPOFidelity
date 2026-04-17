@@ -64,6 +64,7 @@ static class SceneOptimizer
         _shadowStrengths.Clear();
         EnableGPUInstancing();
         DisableZeroIntensityShadows();
+        EnableParticleAutoCull();
 
         SetParticleShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ParticleShadows));
 
@@ -293,6 +294,25 @@ static class SceneOptimizer
         }
         if (count > 0)
             Plugin.Log.LogInfo($"{(on ? "restored" : "disabled")} shadows on {count} particle renderers");
+    }
+
+    // off-screen and non-emitting systems still tick every frame unless culling is explicit.
+    // a typical R.E.P.O. level has 230+ systems registered and 1 emitting — the other ~229
+    // are pure overhead until this runs.
+    static void EnableParticleAutoCull()
+    {
+        int count = 0;
+        foreach (var ps in Object.FindObjectsOfType<ParticleSystem>())
+        {
+            var main = ps.main;
+            if (main.cullingMode != ParticleSystemCullingMode.Automatic)
+            {
+                main.cullingMode = ParticleSystemCullingMode.Automatic;
+                count++;
+            }
+        }
+        if (count > 0)
+            Plugin.Log.LogInfo($"particle auto-cull: enabled on {count} systems");
     }
 
     static void EnableGPUInstancing()

@@ -645,7 +645,7 @@ internal static class Settings
                 ResolvedAAMode = AAMode.Off;
                 ResolvedShadowQuality = ShadowQuality.Low; ResolvedShadowDistance = 10f;
                 ResolvedLODBias = 0.5f; ResolvedPixelLightCount = 2;
-                ResolvedLightDistance = 10f; ResolvedFogMultiplier = 1f; ResolvedViewDistance = 0f;
+                ResolvedLightDistance = 10f; ResolvedFogMultiplier = 0.85f; ResolvedViewDistance = 0f;
                 ResolvedAnisotropicFiltering = 2; ResolvedTextureQuality = TextureRes.Full;
                 ResolvedShadowBudget = 5;
                 break;
