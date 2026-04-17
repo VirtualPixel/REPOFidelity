@@ -4,6 +4,7 @@
 - Probe baseline now samples your real settings (preset, upscaler, fog, AA — whatever you play with) so the profiler markers / per-camera timings / script cost rankings reflect actual frame time at actual settings. The preset × fog × upscaler sweep that comes after still normalizes to Ultra + DLAA + fog 1.0× so the individual cells compare cleanly across users and builds
 - Report header grew to include GPU VRAM + graphics API, system memory, OS, monitor refresh rate, and mod flag state (`modEnabled`, `optEnabled`, `cpuPatches`) — should be enough for one-shot diagnosis without needing follow-up questions
 - Multiplayer breakdown section: per-PlayerAvatar distance from main camera, shadow-casting renderer count, flashlight budget state (within / culled / past fog), and the cosmetic-component totals that get throttled past fog. Tells you at a glance whether a busy lobby is hitting the budget caps or the cosmetic throttle is kicking in
+- Player input is locked for the duration of the probe (~90s) so movement / look / grab can't perturb the measurement. F9 to abort still works because it bypasses the game's input-disable flag. Probe only starts in a gameplay level — pressing F9 in the main menu does nothing
 
 ## 1.4.0
 

@@ -74,6 +74,18 @@ internal class CostProbe : MonoBehaviour
         Plugin.Log.LogInfo("Cost probe cancelled");
     }
 
+    // Keeps the game's input-disable timer topped up while the probe runs so the
+    // player can't walk around or move the camera during measurement. F9 still
+    // goes through Unity's raw Input manager, so the abort binding still fires.
+    // GameDirector.SetDisableInput naturally decays to false within a second of
+    // the last call, so no explicit cleanup is needed on Abort / natural finish.
+    void Update()
+    {
+        if (!Running) return;
+        if (GameDirector.instance != null)
+            GameDirector.instance.SetDisableInput(1f);
+    }
+
     private IEnumerator RunSafe()
     {
         var inner = Run();

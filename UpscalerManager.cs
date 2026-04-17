@@ -382,10 +382,13 @@ internal class UpscalerManager : MonoBehaviour
             LightDiagnostics.Run();
 
         // F9 launches the full diagnostic sweep when the user has opted in via
-        // the config file — off by default so normal play doesn't trigger a 90s probe
+        // the config file — off by default so normal play doesn't trigger a 90s
+        // probe. Gated to gameplay levels only (menus have no scene to measure);
+        // pressing F9 again during a run aborts it.
         if (Input.GetKeyDown(KeyCode.F9)
             && Settings.ToggleKey != KeyCode.F9
-            && Settings.DiagnosticsEnabled)
+            && Settings.DiagnosticsEnabled
+            && (CostProbe.Running || IsInGameplayLevel()))
             CostProbe.Toggle();
 
         // F11 toggles the optimization layer only — upscaler / AA stay on.
