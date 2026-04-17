@@ -1,7 +1,7 @@
 ## 1.3.0
 
 - DLSS evaluation now runs on a private D3D12 device with D3D11↔D3D12 shared-texture interop, working around the D3D11 DLSS path being blocked by the driver on RTX 50-series (Blackwell). Existing RTX 20/30/40 cards use the same code path
-- DLSS gets projection-matrix jitter the same way FSR Temporal does — sub-pixel accumulation works, which is what the transformer actually needs to look sharp
+- DLSS gets projection-matrix jitter the same way FSR Temporal does — sub-pixel accumulation now functions, which is the whole point of a temporal upscaler
 - DLSS now requests Preset E (CNN) instead of the transformer default — more forgiving of Unity's built-in-RP motion vectors which aren't perfectly jitter-clean
 - Fixed DLSS output flashing white the first frame after enable (output RT was undefined until DLSS wrote the first frame over it)
 - Fixed DLSS staying black when a scale change caused Unity to recycle an RT's native pointer into a new texture — shared-handle cache now cleared on re-init

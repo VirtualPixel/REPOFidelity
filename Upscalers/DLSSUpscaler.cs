@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -114,10 +115,8 @@ internal class DLSSUpscaler : IUpscaler
         }
     }
 
-    [System.Runtime.InteropServices.UnmanagedFunctionPointer(
-        System.Runtime.InteropServices.CallingConvention.StdCall)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate void GetDeviceDelegate(IntPtr self, out IntPtr device);
-
 
     public void Initialize(Camera camera, int inputWidth, int inputHeight, int outputWidth, int outputHeight)
     {

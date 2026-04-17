@@ -1,6 +1,5 @@
-// ngx_bridge.cpp — C bridge to NVIDIA NGX for DLSS.
-// Links against the official NGX SDK (nvsdk_ngx_d.lib) instead of
-// manual vtable walking. Uses proper SDK functions for all param access.
+// ngx_bridge.cpp — C bridge around NVIDIA NGX for DLSS, linked against the
+// official NGX SDK (nvsdk_ngx_d.lib).
 
 #define NGX_ENABLE_DEPRECATED_SHUTDOWN
 #define NGX_ENABLE_DEPRECATED_GET_PARAMETERS
@@ -25,7 +24,6 @@
 
 #define EXPORT extern "C" __declspec(dllexport)
 
-// Log callback
 typedef void(__cdecl* LogCallback)(const char* msg);
 static LogCallback g_logCb = nullptr;
 
@@ -43,7 +41,7 @@ static ID3D11Device* g_device = nullptr;
 static ID3D11DeviceContext* g_context = nullptr;
 static bool g_initialized = false;
 
-// ===== D3D12 / D3D11on12 interop =====
+// ===== private D3D12 device + shared NT-handle interop =====
 
 static ID3D12Device*              g_d12Device     = nullptr;
 static ID3D12CommandQueue*        g_d12Queue      = nullptr;
@@ -353,7 +351,6 @@ EXPORT int NGXBridge_InitD3D11(ID3D11Device* device) {
 
     Log("NGXBridge: Data path: %ls", bridgeDir.c_str());
 
-    // use Init_with_ProjectID — engine type UNITY may enable D3D11 DLSS
     auto result = NVSDK_NGX_D3D11_Init_with_ProjectID(
         "REPOFidelity",
         NVSDK_NGX_ENGINE_TYPE_UNITY,
@@ -366,7 +363,6 @@ EXPORT int NGXBridge_InitD3D11(ID3D11Device* device) {
     Log("NGXBridge: Init_with_ProjectID result: 0x%08X", result);
 
     if (!NVSDK_NGX_SUCCEED(result)) {
-        // fallback to basic init
         result = NVSDK_NGX_D3D11_Init(0x12345678, bridgeDir.c_str(), device, nullptr, NVSDK_NGX_Version_API);
         Log("NGXBridge: Init fallback result: 0x%08X", result);
     }
