@@ -76,6 +76,73 @@ static class SceneOptimizer
         // scan existing lights in the scene so switching presets mid-level works
         SetItemLightShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ItemLightShadows));
         SetExplosionLightShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ExplosionShadows));
+
+        // must run AFTER other passes — renderers they've set to Off should stay out of the watchlist
+        CaptureDistanceCullWatchlist();
+    }
+
+    // ---
+    // distance-based shadow cull — small props (<2m bounds) disable shadow casting when
+    // beyond fog-clamped shadow distance, re-enable when inside. runs every frame via
+    // UpdateDistanceShadowCull, built once per level via CaptureDistanceCullWatchlist.
+    // ---
+
+    static readonly List<Renderer> _distanceCullWatchlist = new();
+
+    static void CaptureDistanceCullWatchlist()
+    {
+        _distanceCullWatchlist.Clear();
+        if (!Settings.ShouldOptimize(Settings.PerfOpt.DistanceShadowCulling)) return;
+
+        int count = 0;
+        foreach (var r in Object.FindObjectsOfType<MeshRenderer>())
+        {
+            if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
+            if (r.bounds.size.magnitude >= 2f) continue;
+            _distanceCullWatchlist.Add(r);
+            count++;
+        }
+        if (count > 0)
+            Plugin.Log.LogInfo($"distance cull watchlist: {count} small renderers");
+    }
+
+    internal static void UpdateDistanceShadowCull(Camera? cam)
+    {
+        if (cam == null || _distanceCullWatchlist.Count == 0) return;
+
+        // mod off or flag off — restore everything and bail
+        if (!Settings.ShouldOptimize(Settings.PerfOpt.DistanceShadowCulling))
+        {
+            RestoreDistanceCullWatchlist();
+            return;
+        }
+
+        float threshold = Settings.ResolvedShadowDistance * 0.7f;
+        float thresholdSq = threshold * threshold;
+        float hystOn = threshold * 0.9f;
+        float hystOnSq = hystOn * hystOn;
+        var camPos = cam.transform.position;
+
+        for (int i = 0; i < _distanceCullWatchlist.Count; i++)
+        {
+            var r = _distanceCullWatchlist[i];
+            if (r == null) continue;
+            float distSq = (r.transform.position - camPos).sqrMagnitude;
+            bool isOff = r.shadowCastingMode == ShadowCastingMode.Off;
+            if (isOff && distSq < hystOnSq)
+                r.shadowCastingMode = ShadowCastingMode.On;
+            else if (!isOff && distSq > thresholdSq)
+                r.shadowCastingMode = ShadowCastingMode.Off;
+        }
+    }
+
+    static void RestoreDistanceCullWatchlist()
+    {
+        for (int i = 0; i < _distanceCullWatchlist.Count; i++)
+        {
+            var r = _distanceCullWatchlist[i];
+            if (r != null) r.shadowCastingMode = ShadowCastingMode.On;
+        }
     }
 
     // ---
