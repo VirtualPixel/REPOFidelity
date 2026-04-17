@@ -469,11 +469,15 @@ internal class CostProbe : MonoBehaviour
         Sample potatoSample = default;
         foreach (var fog in fogPasses)
         {
-            Settings.FogDistanceMultiplier = fog;
             foreach (var p in presetLadder)
             {
                 Status = $"Sweep: {p} @ fog {fog:F1}x";
-                Settings.Preset = p;
+                // ApplyPreset directly — bypasses file-save event storm, sets Resolved values from preset.
+                Settings.ApplyPreset(p);
+                // Override fog after ApplyPreset (which hardcodes its own fog per preset).
+                Settings.ResolvedFogMultiplier = fog;
+                // Push fog to RenderSettings + update ResolvedEffectiveFogEnd + re-clamp shadow/light.
+                Patches.QualityPatch.ApplyFogAndDrawDistance();
                 Patches.SceneOptimizer.Apply();
                 Patches.QualityPatch.ApplyQualitySettings();
                 yield return new WaitForSeconds(SettleSeconds);

@@ -624,7 +624,7 @@ internal static class Settings
             ? UpscaleMode.DLSS : UpscaleMode.FSR_Temporal,
     };
 
-    private static void ApplyPreset(QualityPreset preset)
+    internal static void ApplyPreset(QualityPreset preset)
     {
         bool cpu = CpuBound;
 
