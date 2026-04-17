@@ -188,12 +188,21 @@ static class SceneOptimizer
 
         _flashlightSorted.Sort((a, b) => a.distSq.CompareTo(b.distSq));
 
+        // flashlights past fog end have no visible shadow anyway — skip them
+        // before the budget check so a far-away player doesn't eat a slot
+        float fogEnd = Settings.ResolvedEffectiveFogEnd;
+        float fogCutoffSq = fogEnd > 0f ? (fogEnd * 1.1f) * (fogEnd * 1.1f) : float.PositiveInfinity;
+
+        int withinBudget = 0;
         for (int i = 0; i < _flashlightSorted.Count; i++)
         {
-            var light = _flashlightSorted[i].light;
-            if (i < FlashlightBudgetN)
+            var (light, distSq) = _flashlightSorted[i];
+            bool pastFog = distSq > fogCutoffSq;
+            bool slotAvailable = withinBudget < FlashlightBudgetN;
+
+            if (!pastFog && slotAvailable)
             {
-                // within budget — restore original mode if we'd previously muted it
+                withinBudget++;
                 if (_flashlightBudgetOrig.TryGetValue(light, out var orig))
                 {
                     light.shadows = orig;
@@ -202,7 +211,6 @@ static class SceneOptimizer
             }
             else if (light.shadows != LightShadows.None)
             {
-                // over budget — mute shadows, save original for restore
                 if (!_flashlightBudgetOrig.ContainsKey(light))
                     _flashlightBudgetOrig[light] = light.shadows;
                 light.shadows = LightShadows.None;
