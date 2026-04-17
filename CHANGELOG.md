@@ -24,6 +24,7 @@
 - Shadow Limit and Draw Distance sliders moved the "0 = unlimited" / "0 = auto" hint into the label instead of burying it in the description
 - Fog Distance slider opened up below 1.0× so it's actually a performance knob — upper bound stays at 1.1× because anything farther would give a gameplay advantage
 - Pixelation moved from the Upscaling group to Post Processing, which is what it actually is
+- Potato preset now always runs at 50% render scale (matches vanilla Potato) instead of flipping to 100% on CPU-bound systems
 
 ## 1.2.0
 

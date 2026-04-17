@@ -611,9 +611,9 @@ internal static class Settings
         switch (preset)
         {
             case QualityPreset.Potato:
-                // max perf, faster than vanilla. 50% native + cut everything.
+                // max perf, matches vanilla's 50% render scale. cut everything else.
                 ResolvedUpscaleMode = UpscaleMode.Off;
-                ResolvedRenderScale = cpu ? 100 : 50;
+                ResolvedRenderScale = 50;
                 ResolvedAAMode = AAMode.Off;
                 ResolvedShadowQuality = ShadowQuality.Low; ResolvedShadowDistance = 10f;
                 ResolvedLODBias = 0.5f; ResolvedPixelLightCount = 2;
