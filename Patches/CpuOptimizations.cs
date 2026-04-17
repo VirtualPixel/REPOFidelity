@@ -285,20 +285,16 @@ static class SemiFuncCachePatch
 [HarmonyPatch(typeof(PhysGrabObject), "Update")]
 static class PhysGrabObjectFixPatch
 {
-    // Per-instance Rigidbody cache so we don't pay GetComponent every frame on
-    // every PhysGrabObject. Key is the object itself; Unity's fake-null handles
-    // destroyed entries via the null check below.
+    // cached Rigidbody lookup — avoids GetComponent per Update tick
     static readonly Dictionary<PhysGrabObject, Rigidbody?> _rbCache = new();
+
+    internal static void ClearRbCache() => _rbCache.Clear();
 
     static bool Prefix(PhysGrabObject __instance)
     {
         if (!Settings.ModEnabled || !Settings.CpuPatchesActive) return true;
 
-        // Skip Update entirely when the object is at rest and not being held.
-        // Unity's physics engine auto-sleeps Rigidbodies below the sleep threshold,
-        // and a sleeping, un-grabbed PhysGrabObject has no state that Update needs
-        // to advance — all velocity-dependent work is moot and grab-list cleanup
-        // below is only relevant while grabbed.
+        // sleeping and not grabbed → Update is busywork, skip it
         if (!__instance.grabbed)
         {
             if (!_rbCache.TryGetValue(__instance, out var rb))

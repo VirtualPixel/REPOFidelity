@@ -80,8 +80,8 @@ static class SceneOptimizer
     }
 
     // ---
-    // Saved-state restoration — each per-object mutation records what it changed
-    // so F10 (mod off) or flag-off returns the scene to genuine vanilla state.
+    // saved-state dictionaries — each mutation records what it changed so F10
+    // (mod off) or flag-off returns the scene to vanilla
     // ---
 
     static readonly Dictionary<MeshRenderer, ShadowCastingMode> _tinyRendererOrig = new();
@@ -361,7 +361,7 @@ static class SceneOptimizer
                 seen.Add(mat);
                 if (mat.shader != null && !mat.enableInstancing)
                 {
-                    _gpuInstancingOrig[mat] = false;
+                    _gpuInstancingOrig[mat] = mat.enableInstancing;
                     mat.enableInstancing = true;
                     count++;
                 }
@@ -442,54 +442,51 @@ static class SceneOptimizer
             Plugin.Log.LogInfo($"disabled shadows on {count} animated lights");
     }
 
-    // diagnostic — report how many modifications are currently tracked across all
-    // restore dictionaries. Non-zero when mod is enabled is normal. Non-zero after
-    // F10 disable means a restore path is broken. "OK" prefix means all restores
-    // completed (every dict empty), "LEAK" means something is still modified.
+    // "LEAK" if any dict is non-empty post-disable, "OK" otherwise. Note
+    // watchlist counts are candidate-list sizes, not mutations — they clear on
+    // next Apply() so a non-zero value there doesn't mean a broken restore path.
     internal static void LogRestoreState(string tag)
     {
         int shadowRes = QualityPatch.ShadowResOrigCount;
         int avatarRt = PlayerAvatarMenuAAPatch.AvatarRtOrigCount;
         int avatarPpl = PlayerAvatarMenuAAPatch.AvatarPplCount;
-        int total = _tinyRendererOrig.Count + _animatedLightOrig.Count
-                  + _zeroIntensityOrig.Count + _gpuInstancingOrig.Count
-                  + _particleCullOrig.Count + _distanceCullWatchlist.Count
-                  + shadowRes + avatarRt + avatarPpl;
-        string prefix = total == 0 ? "OK" : "LEAK";
+        int mutations = _tinyRendererOrig.Count + _animatedLightOrig.Count
+                      + _zeroIntensityOrig.Count + _gpuInstancingOrig.Count
+                      + _particleCullOrig.Count + shadowRes + avatarRt + avatarPpl;
+        string prefix = mutations == 0 ? "OK" : "LEAK";
         Plugin.Log.LogInfo(
-            $"[restore-state:{tag}] {prefix} total-mods={total} " +
+            $"[restore-state:{tag}] {prefix} mutations={mutations} " +
             $"tinyRend={_tinyRendererOrig.Count} " +
             $"animLight={_animatedLightOrig.Count} " +
             $"zeroInt={_zeroIntensityOrig.Count} " +
             $"gpuInst={_gpuInstancingOrig.Count} " +
             $"particleCull={_particleCullOrig.Count} " +
-            $"distanceCull={_distanceCullWatchlist.Count} " +
             $"shadowRes={shadowRes} " +
             $"avatarRt={avatarRt} " +
-            $"avatarPpl={avatarPpl}");
+            $"avatarPpl={avatarPpl} " +
+            $"watchlist={_distanceCullWatchlist.Count}");
     }
 }
 
 [HarmonyPatch(typeof(LevelGenerator), "GenerateDone")]
 static class LevelOptimizationPatch
 {
-    static void Postfix() => SceneOptimizer.Apply();
+    static void Postfix()
+    {
+        SceneOptimizer.Apply();
+        // destroyed PhysGrabObjects would otherwise pile up as stale keys
+        PhysGrabObjectFixPatch.ClearRbCache();
+    }
 }
 
-// The lobby/pause avatar preview renders through PlayerAvatarMenu.cameraAndStuff
-// to a 320x320 render texture (by default), displayed scaled up in the menu UI.
-// Two fixes here:
-// 1. Bump RT to 512x512 + 4x MSAA for sharper edges
-// 2. Gate the camera's `enabled` flag on whether the hosting MenuPage is actually
-//    the active page — pauses render cost to zero when the menu isn't on top.
+// vanilla renders the avatar preview to a tiny RT (e.g. 209x418) with no AA, so
+// edges are jagged when the UI scales it up. Bump RT, add MSAA + SMAA, and gate
+// the camera to idle while the menu is hidden.
 [HarmonyPatch(typeof(PlayerAvatarMenu), "Start")]
 static class PlayerAvatarMenuAAPatch
 {
-    // Shorter dimension scales up to this size, longer dim scales proportionally.
-    // Camera only renders while the menu is open (gate below) so the per-frame
-    // cost is zero when not shown. 2048 was overkill for ~400px UI display and
-    // cost ~0.7ms; 1024 is well above perceivable threshold with a quarter of
-    // the pixel work. MSAA + SMAA together handle edges with room to spare.
+    // 2048 was overkill for a ~400px UI display and cost ~0.7ms/frame; 1024 looks
+    // identical and costs a quarter as much. MSAA + SMAA handles the rest.
     const int TargetRtSize = 1024;
     const int MaxLongDim = 2048;
     const int TargetMsaa = 4;
@@ -497,9 +494,8 @@ static class PlayerAvatarMenuAAPatch
     // saved originals so F10 can revert the RT back to vanilla size/aa
     internal static readonly Dictionary<RenderTexture, (int w, int h, int aa)> _rtOrig = new();
 
-    // saved PostProcessLayer state so F10 reverts SMAA correctly. For each Camera
-    // we track either "attached by us" (destroy on F10) or "existed, AA was X"
-    // (restore AA mode on F10).
+    // for F10 revert: either we attached the PPL (destroy it) or modified an
+    // existing one (revert its AA mode)
     internal struct PplState
     {
         internal bool AttachedByUs;
@@ -513,9 +509,7 @@ static class PlayerAvatarMenuAAPatch
         ApplyToMenu(__instance);
     }
 
-    // Re-applies the bump + gate + SMAA to a single PlayerAvatarMenu. Called from
-    // the Start postfix AND from the F10 re-enable path — on F10 toggle, the menu's
-    // Start has already run so the postfix doesn't fire again unless we call this.
+    // called from Start postfix and from F10 re-enable (where Start won't fire again)
     internal static void ApplyToMenu(PlayerAvatarMenu __instance)
     {
         if (__instance.cameraAndStuff == null) return;
@@ -529,8 +523,7 @@ static class PlayerAvatarMenuAAPatch
 
         cam.allowMSAA = true;
 
-        // enable SMAA via PostProcessLayer if the camera has one — catches alpha /
-        // shader edges that MSAA misses. Track attachment state so F10 reverts cleanly.
+        // SMAA catches the alpha/shader edges MSAA misses
         var ppl = cam.GetComponent<PostProcessLayer>();
         if (ppl != null)
         {
@@ -541,8 +534,8 @@ static class PlayerAvatarMenuAAPatch
         }
         else
         {
-            // No PPL on the avatar camera — attach one by reflecting resources from
-            // the main camera's PPL (m_Resources is internal, so needs reflection).
+            // no PPL on avatar camera — borrow resources from main camera's PPL to attach one
+            // (m_Resources is internal, so needs reflection)
             var mainPpl = Camera.main?.GetComponent<PostProcessLayer>();
             if (mainPpl != null)
             {
@@ -609,9 +602,8 @@ static class PlayerAvatarMenuAAPatch
         gate.cam = cam;
     }
 
-    // F10 hook — restore every avatar preview RT to its vanilla dimensions/aa.
-    // Must temporarily disable cameras during mutation (Unity leaves state inconsistent
-    // otherwise), then re-enable and remove the gate so vanilla rendering resumes.
+    // F10 hook. Unity leaves RTs in a bad state if mutated while a camera's
+    // actively rendering them, so cycle cam.enabled around the resize.
     internal static void RestoreAvatarRt()
     {
         if (_rtOrig.Count == 0) return;
@@ -640,8 +632,7 @@ static class PlayerAvatarMenuAAPatch
         }
         _rtOrig.Clear();
 
-        // restore PostProcessLayer state — if we attached one, destroy it;
-        // if we modified an existing one, restore its original AA mode
+        // attached-by-us → destroy; modified → revert AA mode
         foreach (var kv in _pplState)
         {
             var cam = kv.Key;
@@ -655,8 +646,7 @@ static class PlayerAvatarMenuAAPatch
         }
         _pplState.Clear();
 
-        // restore to vanilla: re-enable cameras AND strip our gate component so
-        // the game's normal rendering flow resumes without interference
+        // re-enable cameras, strip the gate — vanilla rendering takes back over
         foreach (var cam in affectedCams)
         {
             cam.enabled = true;
@@ -668,9 +658,7 @@ static class PlayerAvatarMenuAAPatch
     internal static int AvatarRtOrigCount => _rtOrig.Count;
     internal static int AvatarPplCount => _pplState.Count;
 
-    // F10 re-enable hook — scan existing PlayerAvatarMenu instances and reapply the
-    // bump + gate + SMAA. Start already fired at menu-open time so the postfix won't
-    // re-trigger on its own.
+    // F10 re-enable — Start already fired, so scan + reapply manually
     internal static void ReapplyAll()
     {
         foreach (var menu in Object.FindObjectsOfType<PlayerAvatarMenu>())
@@ -678,11 +666,9 @@ static class PlayerAvatarMenuAAPatch
     }
 }
 
-// Tiny per-camera behaviour that toggles `enabled` based on whether the hosting
-// MenuPage is actually displayed. Uses activeInHierarchy (not pageActive) so the
-// camera is live during the Opening animation — prevents a brief blank flash
-// when the menu fades in. When mod is disabled, leaves camera in vanilla-enabled
-// state so F10 doesn't wipe the preview.
+// Toggles camera.enabled based on whether the hosting MenuPage is in the
+// hierarchy. activeInHierarchy (not pageActive) catches the Opening animation
+// too, so the preview isn't blank for the fade-in frames.
 internal class AvatarCameraGate : MonoBehaviour
 {
     internal PlayerAvatarMenu? menu;

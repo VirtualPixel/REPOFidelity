@@ -419,9 +419,6 @@ internal class UpscalerManager : MonoBehaviour
                 if (_camera != null)
                     _camera.layerCullDistances = new float[32];
 
-                // verify restore cleanly returned to vanilla — OK = every tracked
-                // mutation reverted, LEAK = something's still altered. Compare against
-                // the pre-disable snapshot above to see what was actually reverted.
                 Patches.SceneOptimizer.LogRestoreState("post-disable");
             }
             else
@@ -549,8 +546,7 @@ internal class UpscalerManager : MonoBehaviour
 
         Patches.SceneOptimizer.Apply();
         Patches.QualityPatch.ApplyQualitySettings();
-        // Re-apply avatar preview RT bump — Start has already run on existing
-        // PlayerAvatarMenus so the Harmony postfix won't fire; need to scan explicitly
+        // Start already ran on existing PlayerAvatarMenus; postfix won't re-fire
         Patches.PlayerAvatarMenuAAPatch.ReapplyAll();
         _togglePending = false;
     }
