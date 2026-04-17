@@ -453,8 +453,10 @@ internal class CostProbe : MonoBehaviour
                 mode == origUpscaler && origPreset == Settings.Preset));
         }
 
-        // Preset ladder — walk Potato → Ultra so frame-time-per-quality-tier is visible,
-        // and clamped shadow/light distances per preset show the fog-driven ceiling working.
+        // Preset × fog matrix — force fog to 1.1x (loosest allowed) and 0.3x (tightest),
+        // walk all 5 presets at each. This shows frame-time-per-quality-tier AND the
+        // fog-driven shadow/light clamp cascading through each preset.
+        var origFog = Settings.FogDistanceMultiplier;
         var presetLadder = new[]
         {
             QualityPreset.Potato,
@@ -463,18 +465,24 @@ internal class CostProbe : MonoBehaviour
             QualityPreset.High,
             QualityPreset.Ultra,
         };
+        var fogPasses = new[] { 1.1f, 0.3f };
         Sample potatoSample = default;
-        foreach (var p in presetLadder)
+        foreach (var fog in fogPasses)
         {
-            Status = $"Sweep: {p} preset";
-            Settings.Preset = p;
-            Patches.SceneOptimizer.Apply();
-            Patches.QualityPatch.ApplyQualitySettings();
-            yield return new WaitForSeconds(SettleSeconds);
-            Sample ps = default;
-            yield return SampleFrames(UpscalerSampleSeconds, v => ps = v);
-            sweepResults.Add(($"{p} preset", ps.AvgMs, Settings.ResolvedShadowDistance, Settings.ResolvedLightDistance, false));
-            if (p == QualityPreset.Potato) potatoSample = ps;
+            Settings.FogDistanceMultiplier = fog;
+            foreach (var p in presetLadder)
+            {
+                Status = $"Sweep: {p} @ fog {fog:F1}x";
+                Settings.Preset = p;
+                Patches.SceneOptimizer.Apply();
+                Patches.QualityPatch.ApplyQualitySettings();
+                yield return new WaitForSeconds(SettleSeconds);
+                Sample ps = default;
+                yield return SampleFrames(UpscalerSampleSeconds, v => ps = v);
+                sweepResults.Add(($"{p}@{fog:F1}x", ps.AvgMs,
+                    Settings.ResolvedShadowDistance, Settings.ResolvedLightDistance, false));
+                if (p == QualityPreset.Potato && Mathf.Approximately(fog, 1.1f)) potatoSample = ps;
+            }
         }
 
         // Vanilla step — flip mod completely off, same path F10 uses.
@@ -490,6 +498,7 @@ internal class CostProbe : MonoBehaviour
         Settings.ModEnabled = true;
         Settings.Preset = origPreset;
         Settings.UpscaleModeSetting = origUpscaler;
+        Settings.FogDistanceMultiplier = origFog;
         Patches.SceneOptimizer.Apply();
         Patches.QualityPatch.ApplyQualitySettings();
         yield return new WaitForSeconds(SettleSeconds);
