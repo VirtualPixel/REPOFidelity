@@ -98,6 +98,12 @@ static class SceneOptimizer
 
     static readonly List<Renderer> _distanceCullWatchlist = new();
 
+    // flashlight shadow budget — only N closest flashlights keep their original shadow
+    // mode, rest go to None. saves original mode per spotlight so F10 / flag-off revert
+    static readonly Dictionary<Light, LightShadows> _flashlightBudgetOrig = new();
+    static readonly List<(Light light, float distSq)> _flashlightSorted = new();
+    const int FlashlightBudgetN = 4;
+
     static void CaptureDistanceCullWatchlist()
     {
         // restore any renderers we'd previously disabled before dropping references,
@@ -155,6 +161,60 @@ static class SceneOptimizer
             var r = _distanceCullWatchlist[i];
             if (r != null) r.shadowCastingMode = ShadowCastingMode.On;
         }
+    }
+
+    // cap concurrent flashlight shadow maps. N × 2048² shadow maps at 20 players
+    // destroys mid-range GPUs; limit to the 4 closest-to-camera flashlights.
+    internal static void UpdateFlashlightShadowBudget(Camera? cam)
+    {
+        if (cam == null) return;
+
+        if (!Settings.ShouldOptimize(Settings.PerfOpt.FlashlightShadowBudget))
+        {
+            RestoreFlashlightBudget();
+            return;
+        }
+
+        _flashlightSorted.Clear();
+        var camPos = cam.transform.position;
+        foreach (var fl in Object.FindObjectsOfType<FlashlightController>())
+        {
+            var light = fl.spotlight;
+            if (light == null) continue;
+            if (!light.isActiveAndEnabled) continue;
+            float distSq = (light.transform.position - camPos).sqrMagnitude;
+            _flashlightSorted.Add((light, distSq));
+        }
+
+        _flashlightSorted.Sort((a, b) => a.distSq.CompareTo(b.distSq));
+
+        for (int i = 0; i < _flashlightSorted.Count; i++)
+        {
+            var light = _flashlightSorted[i].light;
+            if (i < FlashlightBudgetN)
+            {
+                // within budget — restore original mode if we'd previously muted it
+                if (_flashlightBudgetOrig.TryGetValue(light, out var orig))
+                {
+                    light.shadows = orig;
+                    _flashlightBudgetOrig.Remove(light);
+                }
+            }
+            else if (light.shadows != LightShadows.None)
+            {
+                // over budget — mute shadows, save original for restore
+                if (!_flashlightBudgetOrig.ContainsKey(light))
+                    _flashlightBudgetOrig[light] = light.shadows;
+                light.shadows = LightShadows.None;
+            }
+        }
+    }
+
+    static void RestoreFlashlightBudget()
+    {
+        foreach (var kv in _flashlightBudgetOrig)
+            if (kv.Key != null) kv.Key.shadows = kv.Value;
+        _flashlightBudgetOrig.Clear();
     }
 
     // ---
@@ -452,7 +512,8 @@ static class SceneOptimizer
         int avatarPpl = PlayerAvatarMenuAAPatch.AvatarPplCount;
         int mutations = _tinyRendererOrig.Count + _animatedLightOrig.Count
                       + _zeroIntensityOrig.Count + _gpuInstancingOrig.Count
-                      + _particleCullOrig.Count + shadowRes + avatarRt + avatarPpl;
+                      + _particleCullOrig.Count + shadowRes + avatarRt + avatarPpl
+                      + _flashlightBudgetOrig.Count;
         string prefix = mutations == 0 ? "OK" : "LEAK";
         Plugin.Log.LogInfo(
             $"[restore-state:{tag}] {prefix} mutations={mutations} " +
@@ -464,6 +525,7 @@ static class SceneOptimizer
             $"shadowRes={shadowRes} " +
             $"avatarRt={avatarRt} " +
             $"avatarPpl={avatarPpl} " +
+            $"flashBudget={_flashlightBudgetOrig.Count} " +
             $"watchlist={_distanceCullWatchlist.Count}");
     }
 }
@@ -706,7 +768,7 @@ static class PerfSettingsWatcher
     static int _lastPreset = -1;
     static int _lastShadowQ = -1;
     static int _lastShadowBudget;
-    static int _lastPerfExp, _lastPerfItem, _lastPerfAnim, _lastPerfPart, _lastPerfTiny, _lastPerfDist;
+    static int _lastPerfExp, _lastPerfItem, _lastPerfAnim, _lastPerfPart, _lastPerfTiny, _lastPerfDist, _lastPerfFlash;
 
     internal static void Register()
     {
@@ -729,7 +791,8 @@ static class PerfSettingsWatcher
             || Settings.PerfAnimatedLightShadows != _lastPerfAnim
             || Settings.PerfParticleShadows != _lastPerfPart
             || Settings.PerfTinyRendererCulling != _lastPerfTiny
-            || Settings.PerfDistanceShadowCulling != _lastPerfDist;
+            || Settings.PerfDistanceShadowCulling != _lastPerfDist
+            || Settings.PerfFlashlightShadowBudget != _lastPerfFlash;
 
         if (!changed) return;
 
@@ -753,6 +816,7 @@ static class PerfSettingsWatcher
         _lastPerfPart = Settings.PerfParticleShadows;
         _lastPerfTiny = Settings.PerfTinyRendererCulling;
         _lastPerfDist = Settings.PerfDistanceShadowCulling;
+        _lastPerfFlash = Settings.PerfFlashlightShadowBudget;
     }
 }
 

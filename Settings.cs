@@ -245,6 +245,11 @@ internal static class Settings
         get => D.perfDistanceShadowCulling;
         set { D.perfDistanceShadowCulling = value; _file.Save(); }
     }
+    internal static int PerfFlashlightShadowBudget
+    {
+        get => D.perfFlashlightShadowBudget;
+        set { D.perfFlashlightShadowBudget = value; _file.Save(); }
+    }
 
     // check whether a specific optimization should be active.
     // for non-Custom presets, uses the tier system.
@@ -265,6 +270,7 @@ internal static class Settings
                 PerfOpt.TinyRendererCulling => D.perfTinyRendererCulling,
                 PerfOpt.AnimatedLightShadows => D.perfAnimatedLightShadows,
                 PerfOpt.DistanceShadowCulling => D.perfDistanceShadowCulling,
+                PerfOpt.FlashlightShadowBudget => D.perfFlashlightShadowBudget,
                 _ => -1,
             };
             if (toggle == 0) return false;
@@ -296,6 +302,7 @@ internal static class Settings
             PerfOpt.TinyRendererCulling => level >= 2,
             PerfOpt.AnimatedLightShadows => level >= 3,
             PerfOpt.DistanceShadowCulling => level >= 0, // always on when mod enabled
+            PerfOpt.FlashlightShadowBudget => level >= 0, // always on — caps flashlight shadows
             _ => false,
         };
     }
@@ -308,6 +315,7 @@ internal static class Settings
         TinyRendererCulling,
         AnimatedLightShadows,
         DistanceShadowCulling,
+        FlashlightShadowBudget,
     }
 
     internal static UpscaleMode ResolvedUpscaleMode;

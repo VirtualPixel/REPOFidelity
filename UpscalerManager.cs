@@ -373,6 +373,7 @@ internal class UpscalerManager : MonoBehaviour
             _shadowBudgetTimer = 0f;
             Patches.SceneOptimizer.UpdateShadowBudget(_camera);
             Patches.SceneOptimizer.UpdateDistanceShadowCull(_camera);
+            Patches.SceneOptimizer.UpdateFlashlightShadowBudget(_camera);
         }
 
         if (Input.GetKeyDown(KeyCode.F7) && Settings.ToggleKey != KeyCode.F7)

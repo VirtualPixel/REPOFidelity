@@ -14,6 +14,7 @@
 - CPU-bound Auto now trims its shadow budget by 7 (Ultra 25 → 18, etc.). The preset budget was sized for GPU-bound systems with headroom; on CPU-bound Auto it was throwing ~10 extra shadow draws a frame at a scene already choking on them
 - `PhysGrabObject.Update` skips entirely when the Rigidbody's sleeping and the object isn't being grabbed — 40+ idle objects in a typical scene used to pay for a full Update tick each frame for nothing. Grab-list bookkeeping still runs when grabbed
 - F9 cost probe normalizes the baseline to a fixed reference config (Ultra + DLAA + fog 1.0×) so runs are comparable across builds no matter what preset you were on. Your preset / upscaler / fog are restored on exit
+- Concurrent flashlight shadow maps now capped at the 4 closest to the main camera. 20 flashlights × 2048² shadow maps is 80 MP/frame of pure rasterization — bigger than a 4K framebuffer — and was wrecking mid-range GPUs in busy lobbies. Distant flashlights keep their lit cone; only the shadow casting goes dark past the budget
 
 ## 1.3.0
 
