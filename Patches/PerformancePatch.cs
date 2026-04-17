@@ -62,17 +62,13 @@ static class SceneOptimizer
     internal static void Apply()
     {
         _shadowStrengths.Clear();
-        EnableGPUInstancing();
-        DisableZeroIntensityShadows();
-        EnableParticleAutoCull();
+        ApplyGpuInstancing(Settings.ModEnabled);
+        ApplyZeroIntensityShadows(Settings.ModEnabled);
+        ApplyParticleAutoCull(Settings.ModEnabled);
 
         SetParticleShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ParticleShadows));
-
-        if (Settings.ShouldOptimize(Settings.PerfOpt.TinyRendererCulling))
-            SetTinyRendererShadows(false);
-
-        if (Settings.ShouldOptimize(Settings.PerfOpt.AnimatedLightShadows))
-            SetAnimatedLightShadows(false);
+        ApplyTinyRendererCull(Settings.ShouldOptimize(Settings.PerfOpt.TinyRendererCulling));
+        ApplyAnimatedLightCull(Settings.ShouldOptimize(Settings.PerfOpt.AnimatedLightShadows));
 
         // scan existing lights in the scene so switching presets mid-level works
         SetItemLightShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ItemLightShadows));
@@ -81,6 +77,17 @@ static class SceneOptimizer
         // must run AFTER other passes — renderers they've set to Off should stay out of the watchlist
         CaptureDistanceCullWatchlist();
     }
+
+    // ---
+    // Saved-state restoration — each per-object mutation records what it changed
+    // so F10 (mod off) or flag-off returns the scene to genuine vanilla state.
+    // ---
+
+    static readonly Dictionary<MeshRenderer, ShadowCastingMode> _tinyRendererOrig = new();
+    static readonly Dictionary<Light, LightShadows> _animatedLightOrig = new();
+    static readonly Dictionary<Light, LightShadows> _zeroIntensityOrig = new();
+    static readonly Dictionary<Material, bool> _gpuInstancingOrig = new();
+    static readonly Dictionary<ParticleSystem, ParticleSystemCullingMode> _particleCullOrig = new();
 
     // ---
     // distance-based shadow cull — small props (<2m bounds) disable shadow casting when
@@ -258,13 +265,20 @@ static class SceneOptimizer
         }
     }
 
-    static void DisableZeroIntensityShadows()
+    static void ApplyZeroIntensityShadows(bool enable)
     {
+        foreach (var kv in _zeroIntensityOrig)
+            if (kv.Key != null) kv.Key.shadows = kv.Value;
+        _zeroIntensityOrig.Clear();
+
+        if (!enable) return;
+
         int count = 0;
         foreach (var light in Object.FindObjectsOfType<Light>())
         {
             if (light.intensity <= 0f && light.shadows != LightShadows.None)
             {
+                _zeroIntensityOrig[light] = light.shadows;
                 light.shadows = LightShadows.None;
                 count++;
             }
@@ -299,14 +313,27 @@ static class SceneOptimizer
     // off-screen and non-emitting systems still tick every frame unless culling is explicit.
     // a typical R.E.P.O. level has 230+ systems registered and 1 emitting — the other ~229
     // are pure overhead until this runs.
-    static void EnableParticleAutoCull()
+    static void ApplyParticleAutoCull(bool enable)
     {
+        foreach (var kv in _particleCullOrig)
+        {
+            if (kv.Key != null)
+            {
+                var m = kv.Key.main;
+                m.cullingMode = kv.Value;
+            }
+        }
+        _particleCullOrig.Clear();
+
+        if (!enable) return;
+
         int count = 0;
         foreach (var ps in Object.FindObjectsOfType<ParticleSystem>())
         {
             var main = ps.main;
             if (main.cullingMode != ParticleSystemCullingMode.Automatic)
             {
+                _particleCullOrig[ps] = main.cullingMode;
                 main.cullingMode = ParticleSystemCullingMode.Automatic;
                 count++;
             }
@@ -315,8 +342,14 @@ static class SceneOptimizer
             Plugin.Log.LogInfo($"particle auto-cull: enabled on {count} systems");
     }
 
-    static void EnableGPUInstancing()
+    static void ApplyGpuInstancing(bool enable)
     {
+        foreach (var kv in _gpuInstancingOrig)
+            if (kv.Key != null) kv.Key.enableInstancing = kv.Value;
+        _gpuInstancingOrig.Clear();
+
+        if (!enable) return;
+
         int count = 0;
         var seen = new HashSet<Material>();
         foreach (var r in Object.FindObjectsOfType<MeshRenderer>())
@@ -327,6 +360,7 @@ static class SceneOptimizer
                 seen.Add(mat);
                 if (mat.shader != null && !mat.enableInstancing)
                 {
+                    _gpuInstancingOrig[mat] = false;
                     mat.enableInstancing = true;
                     count++;
                 }
@@ -336,15 +370,21 @@ static class SceneOptimizer
             Plugin.Log.LogInfo($"enabled GPU instancing on {count} materials");
     }
 
-    static void SetTinyRendererShadows(bool on)
+    static void ApplyTinyRendererCull(bool enable)
     {
-        if (on) return; // can't restore — don't know original state
+        foreach (var kv in _tinyRendererOrig)
+            if (kv.Key != null) kv.Key.shadowCastingMode = kv.Value;
+        _tinyRendererOrig.Clear();
+
+        if (!enable) return;
+
         int count = 0;
         foreach (var r in Object.FindObjectsOfType<MeshRenderer>())
         {
             if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
             if (r.bounds.size.magnitude < 0.3f)
             {
+                _tinyRendererOrig[r] = r.shadowCastingMode;
                 r.shadowCastingMode = ShadowCastingMode.Off;
                 count++;
             }
@@ -378,21 +418,49 @@ static class SceneOptimizer
         }
     }
 
-    static void SetAnimatedLightShadows(bool on)
+    static void ApplyAnimatedLightCull(bool enable)
     {
-        if (on) return; // one-way — can't restore without knowing original shadow mode
+        foreach (var kv in _animatedLightOrig)
+            if (kv.Key != null) kv.Key.shadows = kv.Value;
+        _animatedLightOrig.Clear();
+
+        if (!enable) return;
+
         int count = 0;
         foreach (var la in Object.FindObjectsOfType<LightAnimator>())
         {
             var light = la.GetComponent<Light>();
             if (light != null && light.shadows != LightShadows.None)
             {
+                _animatedLightOrig[light] = light.shadows;
                 light.shadows = LightShadows.None;
                 count++;
             }
         }
         if (count > 0)
             Plugin.Log.LogInfo($"disabled shadows on {count} animated lights");
+    }
+
+    // diagnostic — report how many modifications are currently tracked across all
+    // restore dictionaries. Non-zero when mod is enabled is normal. Non-zero after
+    // F10 disable means a restore path is broken. "OK" prefix means all restores
+    // completed (every dict empty), "LEAK" means something is still modified.
+    internal static void LogRestoreState(string tag)
+    {
+        int shadowRes = QualityPatch.ShadowResOrigCount;
+        int total = _tinyRendererOrig.Count + _animatedLightOrig.Count
+                  + _zeroIntensityOrig.Count + _gpuInstancingOrig.Count
+                  + _particleCullOrig.Count + _distanceCullWatchlist.Count + shadowRes;
+        string prefix = total == 0 ? "OK" : "LEAK";
+        Plugin.Log.LogInfo(
+            $"[restore-state:{tag}] {prefix} total-mods={total} " +
+            $"tinyRend={_tinyRendererOrig.Count} " +
+            $"animLight={_animatedLightOrig.Count} " +
+            $"zeroInt={_zeroIntensityOrig.Count} " +
+            $"gpuInst={_gpuInstancingOrig.Count} " +
+            $"particleCull={_particleCullOrig.Count} " +
+            $"distanceCull={_distanceCullWatchlist.Count} " +
+            $"shadowRes={shadowRes}");
     }
 }
 

@@ -415,6 +415,10 @@ internal class UpscalerManager : MonoBehaviour
 
                 if (_camera != null)
                     _camera.layerCullDistances = new float[32];
+
+                // verify restore cleanly returned to vanilla — OK = every tracked
+                // mutation reverted, LEAK = something's still altered. Shows in logs.
+                Patches.SceneOptimizer.LogRestoreState("F10-disable");
             }
             else
             {

@@ -11,6 +11,10 @@ internal static class QualityPatch
     // the range-driven bracket table in ApplyRangeTieredLightShadows.
     private static readonly HashSet<Light> _flashlightLights = new();
 
+    // Saved original shadowCustomResolution per-light so F10 restores tiered lights
+    // back to whatever resolution the game had them at (usually 0 = inherit global).
+    private static readonly Dictionary<Light, int> _shadowResOrig = new();
+
     private static ShadowResolution _vanillaShadowRes;
     private static float _vanillaShadowDist;
     private static float _vanillaLodBias;
@@ -43,6 +47,16 @@ internal static class QualityPatch
         QualitySettings.pixelLightCount = _vanillaPixelLights;
         QualitySettings.anisotropicFiltering = _vanillaAF;
         QualitySettings.globalTextureMipmapLimit = _vanillaTexMip;
+        RestoreRangeTieredLightShadows();
+    }
+
+    internal static int ShadowResOrigCount => _shadowResOrig.Count;
+
+    private static void RestoreRangeTieredLightShadows()
+    {
+        foreach (var kv in _shadowResOrig)
+            if (kv.Key != null) kv.Key.shadowCustomResolution = kv.Value;
+        _shadowResOrig.Clear();
     }
 
     [HarmonyPostfix]
@@ -271,6 +285,12 @@ internal static class QualityPatch
     // Potato caps the top bucket to 1024 for extra savings.
     private static void ApplyRangeTieredLightShadows()
     {
+        // restore-before-apply — needed so F10 toggle and preset changes don't
+        // layer clamps on top of clamps and drift away from the true original
+        RestoreRangeTieredLightShadows();
+
+        if (!Settings.ModEnabled) return;
+
         RefreshFlashlightLights();
 
         bool ultraFlashlight = Settings.ResolvedShadowQuality == ShadowQuality.Ultra;
@@ -285,6 +305,7 @@ internal static class QualityPatch
             // directional uses the global shadow resolution + cascades
             if (light.type == LightType.Directional)
             {
+                _shadowResOrig[light] = light.shadowCustomResolution;
                 light.shadowCustomResolution = 0;
                 continue;
             }
@@ -292,6 +313,7 @@ internal static class QualityPatch
             // Flashlight exemption — only on Ultra
             if (ultraFlashlight && _flashlightLights.Contains(light))
             {
+                _shadowResOrig[light] = light.shadowCustomResolution;
                 light.shadowCustomResolution = 4096;
                 touched++;
                 continue;
@@ -305,6 +327,7 @@ internal static class QualityPatch
                 < 20f => 1024,
                 _ => 2048,
             };
+            _shadowResOrig[light] = light.shadowCustomResolution;
             light.shadowCustomResolution = Mathf.Min(res, cap);
             touched++;
         }
