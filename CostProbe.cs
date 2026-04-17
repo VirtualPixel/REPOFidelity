@@ -137,6 +137,9 @@ internal class CostProbe : MonoBehaviour
             $"scale={Settings.ResolvedRenderScale}% shadowQ={Settings.ResolvedShadowQuality} " +
             $"shadowD={Settings.ResolvedShadowDistance:F0}m lights={Settings.ResolvedPixelLightCount} " +
             $"lod={Settings.ResolvedLODBias:F1} AF={Settings.ResolvedAnisotropicFiltering}x");
+        report.AppendLine($"Range:  fog={Settings.ResolvedFogMultiplier:F2}x " +
+            $"effectiveFogEnd={Settings.ResolvedEffectiveFogEnd:F0}m " +
+            $"lightD={Settings.ResolvedLightDistance:F0}m shadowBudget={Settings.ResolvedShadowBudget}");
         report.AppendLine();
 
         Status = "Measuring (all markers + per-camera + scene)";
