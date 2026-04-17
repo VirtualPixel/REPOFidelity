@@ -126,36 +126,28 @@ internal class CostProbe : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible   = true;
 
-        // Save user state so we can both normalize test config AND cleanly restore.
-        // Baseline measurement was user-dependent before — now forced to a reference
-        // config (Ultra preset, DLAA, fog 1.0×) so runs across builds are comparable.
+        // Save user state — baseline measures the user's real game settings so
+        // the profiler breakdown reflects what they're actually experiencing. The
+        // sweep later normalizes to a fixed config (Ultra + DLAA + fog 1.0×) so
+        // individual preset / fog cells are comparable across users and builds.
         var origPreset = Settings.Preset;
         var origUpscaler = Settings.UpscaleModeSetting;
         var origFog = Settings.FogDistanceMultiplier;
 
-        Status = "Normalizing test config (Ultra + DLAA + fog 1.0x)";
-        Settings.ApplyPreset(QualityPreset.Ultra);
-        Settings.ResolvedUpscaleMode = UpscaleMode.DLAA;
-        Settings.ResolvedRenderScale = 100;
-        Settings.ResolvedFogMultiplier = 1.0f;
-        Patches.QualityPatch.ApplyFogAndDrawDistance();
-        Patches.SceneOptimizer.Apply();
-        Patches.QualityPatch.ApplyQualitySettings();
-        yield return new WaitForSeconds(SettleSeconds);
-
         var report = new StringBuilder();
-        report.AppendLine($"== REPOFidelity frame cost — {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==");
-        report.AppendLine($"GPU:    {SystemInfo.graphicsDeviceName}");
-        report.AppendLine($"CPU:    {SystemInfo.processorType} ({SystemInfo.processorCount} cores)");
-        report.AppendLine($"Screen: {Screen.width}x{Screen.height}");
-        report.AppendLine($"Test:   forced Ultra + DLAA + fog 1.0× (user had [{origPreset}] upscaler={origUpscaler} fog={origFog:F2}×)");
-        report.AppendLine($"Mod:    [Ultra-forced] upscaler={Settings.ResolvedUpscaleMode} " +
+        report.AppendLine($"== REPOFidelity frame cost — {DateTime.Now:yyyy-MM-dd HH:mm:ss} (v{BuildInfo.Version}) ==");
+        report.AppendLine($"GPU:    {SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsMemorySize}MB, {SystemInfo.graphicsDeviceType})");
+        report.AppendLine($"CPU:    {SystemInfo.processorType} ({SystemInfo.processorCount} cores, {SystemInfo.systemMemorySize}MB RAM)");
+        report.AppendLine($"OS:     {SystemInfo.operatingSystem}");
+        report.AppendLine($"Screen: {Screen.width}x{Screen.height} @ {Screen.currentResolution.refreshRateRatio.value:F0}Hz ({(Screen.fullScreen ? "fullscreen" : "windowed")})");
+        report.AppendLine($"Mod:    [{Settings.Preset}] upscaler={Settings.ResolvedUpscaleMode} " +
             $"scale={Settings.ResolvedRenderScale}% shadowQ={Settings.ResolvedShadowQuality} " +
             $"shadowD={Settings.ResolvedShadowDistance:F0}m lights={Settings.ResolvedPixelLightCount} " +
             $"lod={Settings.ResolvedLODBias:F1} AF={Settings.ResolvedAnisotropicFiltering}x");
         report.AppendLine($"Range:  fog={Settings.ResolvedFogMultiplier:F2}x " +
             $"effectiveFogEnd={Settings.ResolvedEffectiveFogEnd:F0}m " +
             $"lightD={Settings.ResolvedLightDistance:F0}m shadowBudget={Settings.ResolvedShadowBudget}");
+        report.AppendLine($"Flags:  modEnabled={Settings.ModEnabled} optEnabled={Settings.OptimizationsEnabled} cpuPatches={Settings.CpuPatchesActive}");
         report.AppendLine();
 
         Status = "Measuring (all markers + per-camera + scene)";
@@ -455,8 +447,22 @@ internal class CostProbe : MonoBehaviour
         report.AppendLine();
 
         // ---- Upscaler + Potato + Vanilla sweep ----
+        // Normalize to a reference config (Ultra + DLAA + fog 1.0×) so individual
+        // sweep cells are comparable across users / lobbies / builds. The baseline
+        // above was measured at the user's actual settings; the sweep below is the
+        // apples-to-apples comparison
+        Status = "Normalizing for sweep (Ultra + DLAA + fog 1.0x)";
+        Settings.ApplyPreset(QualityPreset.Ultra);
+        Settings.ResolvedUpscaleMode = UpscaleMode.DLAA;
+        Settings.ResolvedRenderScale = 100;
+        Settings.ResolvedFogMultiplier = 1.0f;
+        Patches.QualityPatch.ApplyFogAndDrawDistance();
+        Patches.SceneOptimizer.Apply();
+        Patches.QualityPatch.ApplyQualitySettings();
+        yield return new WaitForSeconds(SettleSeconds);
+
         Status = "Sweep: DLSS / FSR / Off / Potato / Vanilla";
-        report.AppendLine($"== Upscalers + Potato + Vanilla ({UpscalerSampleSeconds}s each) ==");
+        report.AppendLine($"== Sweep (normalized Ultra + DLAA + fog 1.0× baseline, {UpscalerSampleSeconds}s each) ==");
         var upscalers = new List<UpscaleMode>();
         if (GPUDetector.IsUpscalerSupported(UpscaleMode.DLSS))         upscalers.Add(UpscaleMode.DLSS);
         if (GPUDetector.IsUpscalerSupported(UpscaleMode.FSR_Temporal)) upscalers.Add(UpscaleMode.FSR_Temporal);

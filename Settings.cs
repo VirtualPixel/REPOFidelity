@@ -257,6 +257,11 @@ internal static class Settings
         get => D.perfFlashlightShadowBudget;
         set { D.perfFlashlightShadowBudget = value; _file.Save(); }
     }
+    internal static bool DiagnosticsEnabled
+    {
+        get => D.diagnosticsEnabled;
+        set { D.diagnosticsEnabled = value; _file.Save(); }
+    }
 
     // check whether a specific optimization should be active.
     // for non-Custom presets, uses the tier system.

@@ -381,7 +381,11 @@ internal class UpscalerManager : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.F7) && Settings.ToggleKey != KeyCode.F7)
             LightDiagnostics.Run();
 
-        if (Input.GetKeyDown(KeyCode.F9) && Settings.ToggleKey != KeyCode.F9)
+        // F9 launches the full diagnostic sweep when the user has opted in via
+        // the config file — off by default so normal play doesn't trigger a 90s probe
+        if (Input.GetKeyDown(KeyCode.F9)
+            && Settings.ToggleKey != KeyCode.F9
+            && Settings.DiagnosticsEnabled)
             CostProbe.Toggle();
 
         // F11 toggles the optimization layer only — upscaler / AA stay on.

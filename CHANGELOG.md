@@ -1,7 +1,9 @@
 ## 1.5.0
 
-- F9 cost probe returns with a new multiplayer breakdown section: per-player distance to main camera, shadow-casting renderer count per avatar, flashlight budget state (within / culled / past fog), and totals for the cosmetic components (Eyelids / Expression / Overcharge) that get throttled past fog. Makes it straightforward to run F9 in a busy lobby and see where the player count is biting
-- F9 cost probe sweep still forces a normalized Ultra + DLAA + fog 1.0× baseline then restores your starting preset on exit, so results are comparable across builds and lobby sizes
+- F9 is now an opt-in diagnostic. Off by default — flip `diagnosticsEnabled` to `true` in the BepInEx config, load a save, press F9 and the full probe runs (~90s), copying a report to the clipboard when it finishes. Built for sending me "here's what's going on with my machine" data when someone needs support
+- Probe baseline now samples your real settings (preset, upscaler, fog, AA — whatever you play with) so the profiler markers / per-camera timings / script cost rankings reflect actual frame time at actual settings. The preset × fog × upscaler sweep that comes after still normalizes to Ultra + DLAA + fog 1.0× so the individual cells compare cleanly across users and builds
+- Report header grew to include GPU VRAM + graphics API, system memory, OS, monitor refresh rate, and mod flag state (`modEnabled`, `optEnabled`, `cpuPatches`) — should be enough for one-shot diagnosis without needing follow-up questions
+- Multiplayer breakdown section: per-PlayerAvatar distance from main camera, shadow-casting renderer count, flashlight budget state (within / culled / past fog), and the cosmetic-component totals that get throttled past fog. Tells you at a glance whether a busy lobby is hitting the budget caps or the cosmetic throttle is kicking in
 
 ## 1.4.0
 
