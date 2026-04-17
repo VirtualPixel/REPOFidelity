@@ -470,41 +470,54 @@ static class LevelOptimizationPatch
     static void Postfix() => SceneOptimizer.Apply();
 }
 
-// The pause-menu avatar preview renders through its own camera to a render texture.
-// It inherits no AA from our main-camera upscaler pipeline, so its silhouette is
-// jagged. Walk PlayerAvatarMenu's hierarchy for the associated Camera, enable
-// allowMSAA, and bump the target render texture's sample count to 4 if it's lower.
+// The lobby/pause avatar preview inherits no AA from our main-camera upscaler
+// pipeline — it renders through its own camera, giving jagged edges on the avatar.
+// Hook PlayerAvatarMenu.Start as the trigger; on first fire, sweep every active
+// Camera, apply MSAA to any that aren't the main gameplay camera, and log the
+// whole list so we can verify which one is the preview.
 [HarmonyPatch(typeof(PlayerAvatarMenu), "Start")]
 static class PlayerAvatarMenuAAPatch
 {
+    static bool _swept;
+
     static void Postfix(PlayerAvatarMenu __instance)
     {
         if (!Settings.ModEnabled) return;
+        if (_swept) return;
+        _swept = true;
 
-        var cam = __instance.GetComponentInChildren<Camera>(true);
-        if (cam == null) cam = __instance.GetComponentInParent<Camera>(true);
-        if (cam == null)
+        // dump every active camera so we can identify the preview one from logs
+        int touched = 0;
+        foreach (var cam in Object.FindObjectsOfType<Camera>())
         {
-            Plugin.Log.LogInfo("avatar AA: no camera found on PlayerAvatarMenu hierarchy");
-            return;
+            string rtInfo = cam.targetTexture != null
+                ? $"{cam.targetTexture.width}x{cam.targetTexture.height} aa={cam.targetTexture.antiAliasing}"
+                : "screen";
+            Plugin.Log.LogInfo($"avatar AA scan: '{cam.name}' tag={cam.tag} depth={cam.depth} " +
+                $"target={rtInfo} allowMSAA={cam.allowMSAA}");
+
+            // main gameplay camera already has our upscaler-driven AA pipeline.
+            // Skip it and the UI overlay. Everything else gets MSAA.
+            if (cam.CompareTag("MainCamera")) continue;
+            if (cam.name.Contains("Overlay") || cam.name.Contains("UI")) continue;
+
+            cam.allowMSAA = true;
+            var rt = cam.targetTexture;
+            if (rt != null && rt.antiAliasing < 4)
+            {
+                bool wasCreated = rt.IsCreated();
+                if (wasCreated) rt.Release();
+                rt.antiAliasing = 4;
+                if (wasCreated) rt.Create();
+            }
+            touched++;
         }
 
-        cam.allowMSAA = true;
-
-        var rt = cam.targetTexture;
-        if (rt != null && rt.antiAliasing < 4)
-        {
-            bool wasCreated = rt.IsCreated();
-            if (wasCreated) rt.Release();
-            rt.antiAliasing = 4;
-            if (wasCreated) rt.Create();
-            Plugin.Log.LogInfo($"avatar AA: bumped RT to 4x MSAA on camera '{cam.name}'");
-        }
-        else
-        {
-            Plugin.Log.LogInfo($"avatar AA: enabled allowMSAA on camera '{cam.name}' (RT aa={rt?.antiAliasing ?? -1})");
-        }
+        Plugin.Log.LogInfo($"avatar AA: applied MSAA to {touched} non-main cameras");
     }
+
+    // reset so a level change re-scans (CameraLobbyMenu may not exist in gameplay scene)
+    internal static void ResetSweep() => _swept = false;
 }
 
 // re-apply when perf-relevant settings change mid-level
