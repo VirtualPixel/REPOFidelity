@@ -33,7 +33,10 @@ Make fog the master distance knob. Shadow and light ranges derive from fog end r
 ### Part A — Fog as the master distance knob
 
 **A1. Open the fog setter range.**
-`Settings.cs:108` currently reads `Mathf.Clamp(value, 1f, 1.1f)`. Change to `Mathf.Clamp(value, 0.3f, 1.1f)`. Lower bound of 0.3x gives a real performance knob without making the game unplayable. Upper bound stays at 1.1x (gameplay advantage). Slider bounds in `MenuIntegration.cs` will be matched to the new range.
+`Settings.cs:108` currently reads `Mathf.Clamp(value, 1f, 1.1f)`. Change to `Mathf.Clamp(value, 0.3f, 1.1f)`. Lower bound of 0.3x gives a real performance knob for users who manually pull fog closer. Upper bound stays at 1.1x (gameplay advantage). Slider bounds in `MenuIntegration.cs` will be matched to the new range.
+
+**A1b. Playable floor for automated paths.**
+Manual users can set any value ≥ 0.3x, but presets and auto-tune must not drop fog below a "playable floor" constant. Exact value TBD after tester feedback — placeholder `PlayableFogFloor = 0.5f`, revisit once gameplay is tested at aggressive fog. Presets continue to assign their hard-coded fog multipliers (1.0x / 1.1x); auto-tune's stepdown ladder, if it ever adds fog to its reduction list, clamps to `PlayableFogFloor`. The manual slider does not enforce this floor — that's the knob for users who accept unplayable to hit a frame target.
 
 **A2. Derive an "effective fog end" value.**
 In `UpscalerManager` near the existing fog application (around line 531, where `RenderSettings.fogEndDistance = _vanillaFogEnd * fogMult` lives), compute:
@@ -51,7 +54,7 @@ After `effectiveFogEnd` is known, apply a ceiling:
 ResolvedShadowDistance = Min(presetValue, effectiveFogEnd × 1.1)
 ```
 
-The `× 1.1` overshoot allows shadows from casters just inside the fog line to still contribute to the visible edge. Preset value stays the lower bound — Potato's 10m is not stretched upward. On Ultra with ~40m vanilla fog, shadow distance drops from 150m to ~44m. On Potato with 10m shadow distance and higher fog, nothing changes.
+The `× 1.1` overshoot is a *visual-quality* requirement, not just a perf buffer: if the clamp equaled fog end exactly, a caster partially inside the fog transition zone would have its shadow pop in/out at the fog boundary as the player walked. The overshoot renders shadows slightly past where fog has fully hidden the caster, so transitions stay smooth. Preset value stays the lower bound — Potato's 10m is not stretched upward. On Ultra with ~40m vanilla fog, shadow distance drops from 150m to ~44m. On Potato with 10m shadow distance and higher fog, nothing changes.
 
 **A4. Clamp light distance.**
 Same approach:
@@ -60,7 +63,7 @@ Same approach:
 ResolvedLightDistance = Min(presetValue, effectiveFogEnd × 1.2)
 ```
 
-The `× 1.2` factor is slightly more generous than shadows because lights can bloom into fog atmospherically even when the source itself isn't visible. Feeds through the existing `GraphicsManager.UpdateLightDistance` postfix that already writes `ResolvedLightDistance`.
+Same no-pop rationale as A3, plus a slightly more generous factor because lights can bloom into fog atmospherically even when the source itself isn't visible. Feeds through the existing `GraphicsManager.UpdateLightDistance` postfix that already writes `ResolvedLightDistance`.
 
 **A5. Recompute on relevant triggers.**
 The clamp must re-run when:
@@ -113,6 +116,7 @@ Build, measure, build, measure — not build-all-then-measure. This tells us whe
 ### Settings schema changes
 
 - `FogDistanceMultiplier` clamp range widens: `(1f, 1.1f)` → `(0.3f, 1.1f)`
+- New `Settings.PlayableFogFloor` constant (initial `0.5f`, revisit after testing)
 - New `Settings.ResolvedEffectiveFogEnd` field (float, meters)
 - New `PerfOpt.DistanceShadowCulling` enum member with `level >= 0` gating
 - New `perfDistanceShadowCulling` bool in `SettingsFile` with default `true`
@@ -128,7 +132,7 @@ Build, measure, build, measure — not build-all-then-measure. This tells us whe
 
 ## Risks & mitigations
 
-- **Fog < 1.0x is a gameplay change.** Players see enemies closer. Mitigation: default stays 1.0x, only power users who open the slider get the tighter fog. CHANGELOG already anticipated this direction.
+- **Fog < 1.0x is a gameplay change.** Players see enemies closer. Mitigation: default stays 1.0x, only power users who open the slider get the tighter fog. CHANGELOG already anticipated this direction. `PlayableFogFloor` prevents presets & auto-tune from dragging a player below comfortable gameplay without explicit opt-in.
 - **Shadow clamp could look wrong in large outdoor areas.** If a future R.E.P.O. level has 100m+ fog, our clamp won't constrain anything — which is correct behavior. Only risk is if vanilla fog end is ever detected incorrectly. Mitigation: `_vanillaFogEnd` is captured once during environment setup and logged; sanity-check in logs.
 - **Per-frame watchlist scan cost.** At ~500 watchlist entries, sqrMagnitude loop is cheap but not free. Mitigation: the scan IS the whole point, but if F9 shows this stepping on savings, switch to every-N-frames instead of every frame.
 - **Prop spawns mid-level won't be in the watchlist.** Acceptable — they're usually near the player. If it turns out to matter, add a watchlist rebuild on specific spawn events (e.g., item drops) in a later iteration.
