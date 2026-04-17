@@ -5,6 +5,8 @@
 - Report header grew to include GPU VRAM + graphics API, system memory, OS, monitor refresh rate, and mod flag state (`modEnabled`, `optEnabled`, `cpuPatches`) — should be enough for one-shot diagnosis without needing follow-up questions
 - Multiplayer breakdown section: per-PlayerAvatar distance from main camera, shadow-casting renderer count, flashlight budget state (within / culled / past fog), and the cosmetic-component totals that get throttled past fog. Tells you at a glance whether a busy lobby is hitting the budget caps or the cosmetic throttle is kicking in
 - Player input is locked for the duration of the probe (~90s) so movement / look / grab can't perturb the measurement. F9 to abort still works because it bypasses the game's input-disable flag. Probe only starts in a gameplay level — pressing F9 in the main menu does nothing
+- Cosmetic throttle expanded: AnimNoise, FlashlightLightAim, FlashlightTilt, PlayerDeathEffects, PlayerReviveEffects now skip their Update when the player is past fog end. Scales with player count — a 20-player lobby with 18 past-fog players saves on the order of 0.1 ms per frame on the list together. Deliberately excluded: PlayerHealthGrab / PlayerDeathHead / PlayerTumble (fire RPCs and mutate gameplay state) and FlashlightBob / FlashlightSprint (already early-return for remote players)
+- F9 report gained GC tracking: gen0 / gen1 collection counts over the sample window plus the Mono heap delta, plus the worst single-frame time in ms. Gives a direct line on whether 0.1% lows are GC pauses vs. steady-state cost
 
 ## 1.4.0
 

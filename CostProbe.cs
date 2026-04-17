@@ -194,6 +194,14 @@ internal class CostProbe : MonoBehaviour
         var countTotals = new long[countRecs.Count];
         var memTotals   = new long[memRecs.Count];
 
+        // GC tracking — delta over the sample reveals whether 0.1% lows come
+        // from GC pauses. Unity's Mono stops the world on gen 0 collection; a
+        // few collections over an 8s sample is normal, many is a spike source.
+        int gen0Start = System.GC.CollectionCount(0);
+        int gen1Start = System.GC.CollectionCount(1);
+        long monoStart = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
+        float worstFrameMs = 0f;
+
         var frames = new List<float>(2048);
         float elapsed = 0f;
         while (elapsed < SampleSeconds)
@@ -201,12 +209,18 @@ internal class CostProbe : MonoBehaviour
             float dt = Time.unscaledDeltaTime;
             frames.Add(dt);
             elapsed += dt;
+            float frameMs = dt * 1000f;
+            if (frameMs > worstFrameMs) worstFrameMs = frameMs;
             Progress = elapsed / SampleSeconds;
             for (int i = 0; i < timeRecs.Count;  i++) timeTotals[i]  += timeRecs[i].rec.LastValue;
             for (int i = 0; i < countRecs.Count; i++) countTotals[i] += countRecs[i].rec.LastValue;
             for (int i = 0; i < memRecs.Count;   i++) memTotals[i]   += memRecs[i].rec.LastValue;
             yield return null;
         }
+
+        int gen0Delta = System.GC.CollectionCount(0) - gen0Start;
+        int gen1Delta = System.GC.CollectionCount(1) - gen1Start;
+        long monoEnd = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
 
         Camera.onPreRender  -= OnCamPre;
         Camera.onPostRender -= OnCamPost;
@@ -244,10 +258,13 @@ internal class CostProbe : MonoBehaviour
                           : cpuMain > gpuTotal + 0.2 ? "CPU (main thread)"
                           : "balanced CPU/GPU";
 
-        report.AppendLine($"Baseline:     {baseline.AvgMs:F2} ms ({baseline.AvgFps:F0} fps)  1%={baseline.P1Low:F0} fps  0.1%={baseline.P01Low:F0} fps  ({baseline.FrameCount} frames)");
+        report.AppendLine($"Baseline:     {baseline.AvgMs:F2} ms ({baseline.AvgFps:F0} fps)  1%={baseline.P1Low:F0} fps  0.1%={baseline.P01Low:F0} fps  worstFrame={worstFrameMs:F1} ms  ({baseline.FrameCount} frames)");
         if (cpuTotal > 0) report.AppendLine($"CPU total:    {cpuTotal:F2} ms    main={cpuMain:F2}   render={cpuRend:F2}");
         if (gpuTotal > 0) report.AppendLine($"GPU total:    {gpuTotal:F2} ms");
         report.AppendLine($"Bottleneck:   {bottleneck}");
+        long monoDeltaKb = (monoEnd - monoStart) / 1024;
+        float gcPerSec = gen0Delta / (float)SampleSeconds;
+        report.AppendLine($"GC:           gen0={gen0Delta} gen1={gen1Delta} over {SampleSeconds:F0}s  ({gcPerSec:F2}/s)  mono Δ={monoDeltaKb:+0;-0} KB");
         report.AppendLine();
 
         // ---- Every profiler marker, ranked ----
