@@ -1,3 +1,15 @@
+## 1.4.0
+
+- Shadow and light distance now clamp to fog end instead of being independent per-preset values. Ultra's 150m shadows behind a 40m fog wall was pure waste — the geometry's invisible anyway. Shadow caps at fog × 1.1, light at fog × 1.2, the overshoot keeps casters right at the fog line from popping as you walk past
+- Fog slider lower bound opened to 0.3× — 1.3.0's changelog claimed this already happened but the setter clamp was still blocking it, and the fog apply path had a `> 1f` gate that silently ignored anything under vanilla. Presets and auto-tune stay above 0.5× ("playable floor") so dragging fog into your face stays a deliberate choice
+- Potato preset defaults to fog 0.85× — small atmospheric reduction, small extra savings on top of the distance cascade
+- Small renderers (bounds < 2m) stop casting shadows past 70% of effective shadow distance, re-enable when closer, 10% hysteresis band kills flicker at the boundary. Cuts off-screen shadow-map work that the game pays for on distant props
+- Per-light shadow map resolution is bucketed by range across every preset: <5m → 256, 5-10m → 512, 10-20m → 1024, >20m → 2048. Flashlight keeps 4096 on Ultra only. Potato caps at 1024. No more 4K shadow maps on 3m Button Lights
+- ParticleSystem.cullingMode set to Automatic on every system so off-screen and non-emitting systems skip their per-frame update. A typical level registers 230+ systems with 1 actively emitting — the other 229 were ticking for nothing
+- F9 cost probe sweeps a preset × fog matrix — all five presets at fog 1.1× and 0.3×, plus upscaler and vanilla steps. Fully automated, settings restored on exit. Report header gained a "Range:" line with fog multiplier, effective fog end, and light distance so runs are self-documenting when comparing builds
+- Fixed F9 GPU frame time occasionally returning garbage 700-million-ms values after rapid state swaps — bottleneck label falls back to CPU when the marker's unreliable instead of incorrectly reading "GPU"
+- Fixed F9 vanilla sample inheriting the prior cell's shadow distance instead of restoring Unity's vanilla QualitySettings before measuring
+
 ## 1.3.0
 
 - DLSS evaluation now runs on a private D3D12 device with D3D11↔D3D12 shared-texture interop, working around the D3D11 DLSS path being blocked by the driver on RTX 50-series (Blackwell). Existing RTX 20/30/40 cards use the same code path
