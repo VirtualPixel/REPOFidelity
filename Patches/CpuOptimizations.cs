@@ -228,10 +228,28 @@ static class RoomVolumeNonAllocPatch
             MapModule m = instance.CurrentRooms[0].MapModule;
             for (int i = 1; i < instance.CurrentRooms.Count; i++)
                 if (m != instance.CurrentRooms[i].MapModule) { same = false; break; }
-            if (same) instance.CurrentRooms[0].SetExplored();
+            if (same)
+            {
+                // v0.4.0-tester: SetExplored now returns bool (was void). When true,
+                // local player on a new room earns scouting points scaled by distance
+                // from the truck — this is new progression currency used by tester.
+                bool explored = instance.CurrentRooms[0].SetExplored();
+                if (explored && player.isLocal && TruckSafetySpawnPoint.instance
+                    && ProgressionManager.instance)
+                {
+                    float distanceToTruck = Vector3.Distance(
+                        player.playerTransform.position,
+                        TruckSafetySpawnPoint.instance.transform.position) / 20f;
+                    ProgressionManager.instance.roundPointsScouting += 100f * distanceToTruck;
+                }
+            }
         }
 
         instance.wasInRoom = instance.CurrentRooms.Count > 0;
+
+        // v0.4.0-tester: CheckSet ends with TutorialExtractionReminderLogic().
+        // Publicizer exposes it, so we can call it directly.
+        instance.TutorialExtractionReminderLogic();
     }
 }
 

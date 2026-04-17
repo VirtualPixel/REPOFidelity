@@ -43,7 +43,10 @@ static class FlashlightShadowPatch
 
 // spectate camera forces shadow distance to 90m — always cap this,
 // it's wasteful on every preset for a zoomed death cam
-[HarmonyPatch(typeof(SpectateCamera), "Update")]
+// v0.4.0-tester: SpectateCamera's state-machine tick moved from Update() to
+// LateUpdate() (Update() now only calls HeadEnergyLogic). StateDeath still
+// writes shadowDistance = 90f on impulse, so LateUpdate postfix re-caps it.
+[HarmonyPatch(typeof(SpectateCamera), "LateUpdate")]
 static class SpectateShadowPatch
 {
     static void Postfix()

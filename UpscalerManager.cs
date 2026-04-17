@@ -813,10 +813,14 @@ internal class UpscalerManager : MonoBehaviour
     internal static int _environmentSetupCount;
     internal static float _lastEnvironmentSetupTime;
 
-    internal static void SaveVanillaFog()
+    // v0.4.0-tester: Setup() no longer writes RenderSettings.fogStartDistance/fogEndDistance.
+    // Instead it initializes instance fields (FogStartDistance/FogEndDistance) which FogLogic
+    // lerps each frame. Read from the instance so we capture accurate vanilla even before
+    // FogLogic's first tick.
+    internal static void SaveVanillaFog(EnvironmentDirector env)
     {
-        _vanillaFogStart = RenderSettings.fogStartDistance;
-        _vanillaFogEnd = RenderSettings.fogEndDistance;
+        _vanillaFogStart = env.FogStartDistance;
+        _vanillaFogEnd = env.FogEndDistance;
         if (Camera.main != null)
             _vanillaFarClip = Camera.main.farClipPlane;
         _vanillaSaved = true;

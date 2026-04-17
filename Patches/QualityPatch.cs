@@ -116,18 +116,31 @@ internal static class QualityPatch
             PostProcessing.Instance.grain.active = false;
     }
 
+    // v0.4.0-tester: Setup() only initializes instance fields — does NOT write RenderSettings.
+    // FogLogic() runs every Update() frame and lerps instance fields into RenderSettings.
+    // We capture vanilla from instance fields here, then enforce the multiplier in
+    // PostfixFogLogic below so room-to-room transitions (RoomFog) stay scaled.
     [HarmonyPostfix]
     [HarmonyPatch(typeof(EnvironmentDirector), nameof(EnvironmentDirector.Setup))]
     public static void PostfixEnvironmentSetup(EnvironmentDirector __instance)
     {
-        UpscalerManager.SaveVanillaFog();
+        UpscalerManager.SaveVanillaFog(__instance);
+    }
 
+    // Enforce fog multiplier + view distance every frame after the game's lerp writes
+    // RenderSettings. Harmless to run every tick — we multiply the game-written values,
+    // not compound our own state.
+    [HarmonyPostfix]
+    [HarmonyPatch(typeof(EnvironmentDirector), "FogLogic")]
+    public static void PostfixFogLogic(EnvironmentDirector __instance)
+    {
         if (!Settings.ModEnabled) return;
+
         float fogMult = Settings.ResolvedFogMultiplier;
         if (fogMult != 1f)
         {
-            RenderSettings.fogEndDistance *= fogMult;
             RenderSettings.fogStartDistance *= fogMult;
+            RenderSettings.fogEndDistance *= fogMult;
         }
         Settings.ResolvedEffectiveFogEnd = RenderSettings.fogEndDistance;
         Settings.ApplyFogClamps();
@@ -139,15 +152,11 @@ internal static class QualityPatch
         }
         else
         {
-            // never clip tighter than vanilla — distant lights bleed through fog
             float clip = RenderSettings.fogEndDistance + 10f;
             if (UpscalerManager._vanillaSaved)
                 clip = Mathf.Max(clip, UpscalerManager._vanillaFarClip);
             __instance.MainCamera.farClipPlane = clip;
         }
-
-        Plugin.Log.LogInfo($"Fog: {RenderSettings.fogStartDistance:F0}-{RenderSettings.fogEndDistance:F0}m, " +
-            $"clip: {__instance.MainCamera.farClipPlane:F0}m");
     }
 
     internal static void ApplyFogAndDrawDistance()
