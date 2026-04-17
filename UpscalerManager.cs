@@ -374,17 +374,26 @@ internal class UpscalerManager : MonoBehaviour
             Patches.SceneOptimizer.UpdateShadowBudget(_camera);
             Patches.SceneOptimizer.UpdateDistanceShadowCull(_camera);
             Patches.SceneOptimizer.UpdateFlashlightShadowBudget(_camera);
+            Patches.SceneOptimizer.UpdatePlayerAvatarShadowCull(_camera);
         }
 
         if (Input.GetKeyDown(KeyCode.F7) && Settings.ToggleKey != KeyCode.F7)
             LightDiagnostics.Run();
 
-        if (Input.GetKeyDown(KeyCode.F9) && Settings.ToggleKey != KeyCode.F9)
-            CostProbe.Toggle();
-
-        // F11: optimizer benchmark (only in gameplay levels)
-        if (Input.GetKeyDown(KeyCode.F11) && IsInGameplayLevel())
-            OptimizerBenchmark.Launch();
+        // F11 toggles the optimization layer only — upscaler / AA stay on.
+        // When off, every shadow / physics / render hack reverts to vanilla;
+        // F10 cuts the whole mod instead
+        if (Input.GetKeyDown(KeyCode.F11) && Settings.ToggleKey != KeyCode.F11)
+        {
+            Settings.OptimizationsEnabled = !Settings.OptimizationsEnabled;
+            Plugin.Log.LogInfo($"Optimizations {(Settings.OptimizationsEnabled ? "ENABLED" : "DISABLED")}");
+            if (!Settings.OptimizationsEnabled)
+                Patches.SceneOptimizer.LogRestoreState("pre-opt-disable");
+            Patches.SceneOptimizer.Apply();
+            Patches.QualityPatch.ApplyQualitySettings();
+            if (!Settings.OptimizationsEnabled)
+                Patches.SceneOptimizer.LogRestoreState("post-opt-disable");
+        }
 
         if (!_benchmarkActive && !_togglePending && Input.GetKeyDown(Settings.ToggleKey))
         {

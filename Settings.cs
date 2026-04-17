@@ -161,6 +161,12 @@ internal static class Settings
 
     internal static bool ModEnabled = true;
 
+    // F11-togglable flag. When off, SceneOptimizer passes and CPU throttle patches
+    // skip — the mod's visual features (upscaler, AA) stay active, only the
+    // performance layer reverts to vanilla. Session-only, defaults on.
+    internal static bool OptimizationsEnabled = true;
+    internal static bool OptimizationsActive => ModEnabled && OptimizationsEnabled;
+
     internal static bool CpuBound => _autoTune.IsStale() || _autoTune.cpuBound;
 
     // --- CPU optimizations ---
@@ -174,9 +180,10 @@ internal static class Settings
     }
 
     // Runtime gate — updated every 0.5s, true when CPU patches should be active.
-    // When CpuPatchMode is Auto (-1), this tracks rolling frame time.
-    // When forced (0 or 1), returns the forced value.
-    internal static bool CpuPatchesActive { get; private set; } = true;
+    // auto-gate driven by rolling frame time (when CpuPatchMode == Auto / -1);
+    // the public getter also masks on OptimizationsActive so F11 propagates
+    private static bool _cpuPatchesActiveRaw = true;
+    internal static bool CpuPatchesActive => _cpuPatchesActiveRaw && OptimizationsActive;
 
     private static float _cpuGateTimer;
     private static float _cpuGateAccum;
@@ -185,8 +192,8 @@ internal static class Settings
 
     internal static void UpdateCpuGate()
     {
-        if (CpuPatchMode == 1) { CpuPatchesActive = true; return; }
-        if (CpuPatchMode == 0) { CpuPatchesActive = false; return; }
+        if (CpuPatchMode == 1) { _cpuPatchesActiveRaw = true; return; }
+        if (CpuPatchMode == 0) { _cpuPatchesActiveRaw = false; return; }
 
         // auto mode: sample frame time over 0.5s windows
         _cpuGateAccum += UnityEngine.Time.unscaledDeltaTime;
@@ -196,7 +203,7 @@ internal static class Settings
         if (_cpuGateTimer >= 0.5f && _cpuGateFrames > 0)
         {
             float avgMs = (_cpuGateAccum / _cpuGateFrames) * 1000f;
-            CpuPatchesActive = avgMs >= CpuGateThresholdMs;
+            _cpuPatchesActiveRaw = avgMs >= CpuGateThresholdMs;
             _cpuGateTimer = 0f;
             _cpuGateAccum = 0f;
             _cpuGateFrames = 0;
@@ -256,8 +263,8 @@ internal static class Settings
     // for Custom, checks the per-toggle override first, falls back to tier.
     internal static bool ShouldOptimize(PerfOpt opt)
     {
-        // F10 disables the mod — respect that for visual changes
-        if (!ModEnabled) return false;
+        // F10 disables the mod, F11 disables just the optimization layer
+        if (!OptimizationsActive) return false;
 
         // Custom preset with explicit override
         if (Preset == QualityPreset.Custom)

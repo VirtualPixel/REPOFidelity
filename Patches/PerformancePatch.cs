@@ -63,9 +63,9 @@ static class SceneOptimizer
     internal static void Apply()
     {
         _shadowStrengths.Clear();
-        ApplyGpuInstancing(Settings.ModEnabled);
-        ApplyZeroIntensityShadows(Settings.ModEnabled);
-        ApplyParticleAutoCull(Settings.ModEnabled);
+        ApplyGpuInstancing(Settings.OptimizationsActive);
+        ApplyZeroIntensityShadows(Settings.OptimizationsActive);
+        ApplyParticleAutoCull(Settings.OptimizationsActive);
 
         SetParticleShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ParticleShadows));
         ApplyTinyRendererCull(Settings.ShouldOptimize(Settings.PerfOpt.TinyRendererCulling));
@@ -77,11 +77,76 @@ static class SceneOptimizer
 
         // must run AFTER other passes — renderers they've set to Off should stay out of the watchlist
         CaptureDistanceCullWatchlist();
+        CapturePlayerAvatarRenderers();
 
         // synchronous flashlight-budget revert so F10 diagnostic sees OK immediately
         // (tick-based restore would lag by up to 100ms behind the post-disable log)
         if (!Settings.ShouldOptimize(Settings.PerfOpt.FlashlightShadowBudget))
             RestoreFlashlightBudget();
+    }
+
+    // per-player avatar renderers, plus force updateWhenOffscreen=false on SkinnedMesh
+    // so Unity stops paying bone-matrix updates on invisible players
+    static void CapturePlayerAvatarRenderers()
+    {
+        RestorePlayerAvatarRenderers();
+        _playerAvatarRenderers.Clear();
+        if (!Settings.OptimizationsActive) return;
+
+        int smrAudit = 0;
+        foreach (var avatar in Object.FindObjectsOfType<PlayerAvatar>())
+        {
+            foreach (var r in avatar.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
+                _playerAvatarShadowOrig[r] = r.shadowCastingMode;
+                _playerAvatarRenderers.Add(r);
+                if (r is SkinnedMeshRenderer smr && smr.updateWhenOffscreen)
+                {
+                    _playerAvatarSmrUpdateOrig[smr] = true;
+                    smr.updateWhenOffscreen = false;
+                    smrAudit++;
+                }
+            }
+        }
+        if (smrAudit > 0)
+            Plugin.Log.LogInfo($"player avatar: forced updateWhenOffscreen=false on {smrAudit} skinned meshes");
+    }
+
+    internal static void UpdatePlayerAvatarShadowCull(Camera? cam)
+    {
+        if (cam == null || _playerAvatarRenderers.Count == 0) return;
+        if (!Settings.OptimizationsActive) return;
+
+        float fogEnd = Settings.ResolvedEffectiveFogEnd;
+        if (fogEnd <= 0f) return;
+        float cutoff = fogEnd * 1.1f;
+        float cutoffSq = cutoff * cutoff;
+        float hystSq = (cutoff * 0.9f) * (cutoff * 0.9f);
+        var camPos = cam.transform.position;
+
+        for (int i = 0; i < _playerAvatarRenderers.Count; i++)
+        {
+            var r = _playerAvatarRenderers[i];
+            if (r == null) continue;
+            float distSq = (r.transform.position - camPos).sqrMagnitude;
+            bool isOff = r.shadowCastingMode == ShadowCastingMode.Off;
+            if (isOff && distSq < hystSq
+                && _playerAvatarShadowOrig.TryGetValue(r, out var orig))
+                r.shadowCastingMode = orig;
+            else if (!isOff && distSq > cutoffSq)
+                r.shadowCastingMode = ShadowCastingMode.Off;
+        }
+    }
+
+    static void RestorePlayerAvatarRenderers()
+    {
+        foreach (var kv in _playerAvatarShadowOrig)
+            if (kv.Key != null) kv.Key.shadowCastingMode = kv.Value;
+        _playerAvatarShadowOrig.Clear();
+        foreach (var kv in _playerAvatarSmrUpdateOrig)
+            if (kv.Key != null) kv.Key.updateWhenOffscreen = kv.Value;
+        _playerAvatarSmrUpdateOrig.Clear();
     }
 
     // ---
@@ -108,6 +173,14 @@ static class SceneOptimizer
     static readonly Dictionary<Light, LightShadows> _flashlightBudgetOrig = new();
     static readonly List<(Light light, float distSq)> _flashlightSorted = new();
     const int FlashlightBudgetN = 4;
+
+    // player avatar renderers — skinned meshes for each player. Distant players'
+    // avatars still cast into the directional shadow map; gate that by distance.
+    // updateWhenOffscreen gets forced false so Unity can skip bone updates when
+    // the avatar isn't visible.
+    static readonly List<Renderer> _playerAvatarRenderers = new();
+    static readonly Dictionary<Renderer, ShadowCastingMode> _playerAvatarShadowOrig = new();
+    static readonly Dictionary<SkinnedMeshRenderer, bool> _playerAvatarSmrUpdateOrig = new();
 
     static void CaptureDistanceCullWatchlist()
     {
@@ -248,8 +321,8 @@ static class SceneOptimizer
     {
         if (cam == null) return;
 
-        // mod disabled or budget unlimited — restore all managed lights
-        if (!Settings.ModEnabled)
+        // mod / optimizations disabled or budget unlimited — restore all managed lights
+        if (!Settings.OptimizationsActive)
         {
             RestoreManagedLights();
             return;
@@ -526,7 +599,8 @@ static class SceneOptimizer
         int mutations = _tinyRendererOrig.Count + _animatedLightOrig.Count
                       + _zeroIntensityOrig.Count + _gpuInstancingOrig.Count
                       + _particleCullOrig.Count + shadowRes + avatarRt + avatarPpl
-                      + _flashlightBudgetOrig.Count;
+                      + _flashlightBudgetOrig.Count
+                      + _playerAvatarShadowOrig.Count + _playerAvatarSmrUpdateOrig.Count;
         string prefix = mutations == 0 ? "OK" : "LEAK";
         Plugin.Log.LogInfo(
             $"[restore-state:{tag}] {prefix} mutations={mutations} " +
@@ -539,6 +613,8 @@ static class SceneOptimizer
             $"avatarRt={avatarRt} " +
             $"avatarPpl={avatarPpl} " +
             $"flashBudget={_flashlightBudgetOrig.Count} " +
+            $"playerShadow={_playerAvatarShadowOrig.Count} " +
+            $"playerSmr={_playerAvatarSmrUpdateOrig.Count} " +
             $"watchlist={_distanceCullWatchlist.Count}");
     }
 }
@@ -552,6 +628,14 @@ static class LevelOptimizationPatch
         // destroyed PhysGrabObjects would otherwise pile up as stale keys
         PhysGrabObjectFixPatch.ClearRbCache();
     }
+}
+
+// Late-joining / respawning PlayerAvatars need their renderers captured too —
+// GenerateDone only fires on level gen, so network joiners slip through otherwise
+[HarmonyPatch(typeof(PlayerAvatar), "Start")]
+static class PlayerAvatarStartPatch
+{
+    static void Postfix() => SceneOptimizer.Apply();
 }
 
 // vanilla renders the avatar preview to a tiny RT (e.g. 209x418) with no AA, so

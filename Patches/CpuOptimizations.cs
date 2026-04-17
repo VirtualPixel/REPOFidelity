@@ -357,5 +357,53 @@ static class ClearCpuCachesOnLevel
     {
         SemiFuncCachePatch.ClearCache();
         EnemyDirectorThrottlePatch.ResetCache();
+        PlayerCosmeticThrottle.ResetCamera();
     }
+}
+
+// PlayerAvatarEyelids, PlayerExpression, and PlayerAvatarOverchargeVisuals all
+// tick per-frame per-player. In a 20-player game that's 60 Update calls computing
+// eyelid rotations and blendshape springs for visuals nobody can see when the
+// player is past fog end. Skip the whole Update in that case.
+static class PlayerCosmeticThrottle
+{
+    static Camera? _cam;
+
+    internal static bool ShouldSkip(Transform t)
+    {
+        if (!Settings.CpuPatchesActive) return false;
+        float fogEnd = Settings.ResolvedEffectiveFogEnd;
+        if (fogEnd <= 0f) return false;
+
+        // Camera.main changes across spectate / menu transitions. refetch any time
+        // the cached reference goes null OR its backing GameObject was destroyed
+        if (_cam == null || _cam.transform == null) _cam = Camera.main;
+        if (_cam == null) return false;
+
+        float cutoff = fogEnd * 1.1f;
+        return (t.position - _cam.transform.position).sqrMagnitude > cutoff * cutoff;
+    }
+
+    internal static void ResetCamera() => _cam = null;
+}
+
+[HarmonyPatch(typeof(PlayerAvatarEyelids), "Update")]
+static class PlayerAvatarEyelidsThrottlePatch
+{
+    static bool Prefix(PlayerAvatarEyelids __instance)
+        => !PlayerCosmeticThrottle.ShouldSkip(__instance.transform);
+}
+
+[HarmonyPatch(typeof(PlayerExpression), "Update")]
+static class PlayerExpressionThrottlePatch
+{
+    static bool Prefix(PlayerExpression __instance)
+        => !PlayerCosmeticThrottle.ShouldSkip(__instance.transform);
+}
+
+[HarmonyPatch(typeof(PlayerAvatarOverchargeVisuals), "Update")]
+static class PlayerAvatarOverchargeVisualsThrottlePatch
+{
+    static bool Prefix(PlayerAvatarOverchargeVisuals __instance)
+        => !PlayerCosmeticThrottle.ShouldSkip(__instance.transform);
 }

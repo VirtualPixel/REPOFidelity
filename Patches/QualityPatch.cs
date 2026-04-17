@@ -285,11 +285,11 @@ internal static class QualityPatch
     // Potato caps the top bucket to 1024 for extra savings.
     private static void ApplyRangeTieredLightShadows()
     {
-        // restore-before-apply — needed so F10 toggle and preset changes don't
+        // restore-before-apply — needed so F10 / F11 toggle and preset changes don't
         // layer clamps on top of clamps and drift away from the true original
         RestoreRangeTieredLightShadows();
 
-        if (!Settings.ModEnabled) return;
+        if (!Settings.OptimizationsActive) return;
 
         RefreshFlashlightLights();
 
