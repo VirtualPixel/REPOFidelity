@@ -112,6 +112,7 @@ internal static class QualityPatch
             RenderSettings.fogEndDistance *= fogMult;
             RenderSettings.fogStartDistance *= fogMult;
         }
+        Settings.ResolvedEffectiveFogEnd = RenderSettings.fogEndDistance;
 
         float viewDist = Settings.ResolvedViewDistance;
         if (viewDist > 0f)
@@ -139,6 +140,7 @@ internal static class QualityPatch
         float fogMult = Settings.ResolvedFogMultiplier;
         RenderSettings.fogStartDistance = UpscalerManager._vanillaFogStart * fogMult;
         RenderSettings.fogEndDistance = UpscalerManager._vanillaFogEnd * fogMult;
+        Settings.ResolvedEffectiveFogEnd = RenderSettings.fogEndDistance;
 
         float viewDist = Settings.ResolvedViewDistance;
         var cam = Camera.main;
