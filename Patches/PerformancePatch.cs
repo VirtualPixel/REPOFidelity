@@ -91,6 +91,9 @@ static class SceneOptimizer
 
     static void CaptureDistanceCullWatchlist()
     {
+        // restore any renderers we'd previously disabled before dropping references,
+        // otherwise F10 / flag-off would orphan them in the Off state.
+        RestoreDistanceCullWatchlist();
         _distanceCullWatchlist.Clear();
         if (!Settings.ShouldOptimize(Settings.PerfOpt.DistanceShadowCulling)) return;
 
