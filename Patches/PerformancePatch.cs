@@ -935,13 +935,13 @@ static class GrabberComponentCache
 {
     class CachedRenderers
     {
-        public Material beam;
-        public Material point1;
-        public Material point2;
-        public Material rotate;
-        public Light grabLight;
-        public Material orb0;
-        public Material orb1;
+        public Material? beam;
+        public Material? point1;
+        public Material? point2;
+        public Material? rotate;
+        public Light? grabLight;
+        public Material? orb0;
+        public Material? orb1;
         public bool valid;
     }
 
@@ -996,7 +996,7 @@ static class GrabberComponentCache
         return true;
     }
 
-    static void SetColor(Material mat, Color main, Color emission)
+    static void SetColor(Material? mat, Color main, Color emission)
     {
         if (mat == null) return;
         mat.color = main;

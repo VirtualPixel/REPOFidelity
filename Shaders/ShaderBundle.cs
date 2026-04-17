@@ -21,7 +21,7 @@ internal static class ShaderBundle
                 _allShaders = _bundle.LoadAllAssets<Shader>();
                 Plugin.Log.LogInfo($"Loaded {_allShaders.Length} shader(s) from bundle");
                 foreach (var s in _allShaders)
-                    Plugin.Log.LogDebug($"  Shader: {s.name}");
+                    if (s != null) Plugin.Log.LogDebug($"  Shader: {s.name}");
             }
         }
 

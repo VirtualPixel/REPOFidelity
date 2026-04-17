@@ -771,7 +771,8 @@ internal static class Settings
 
     internal static void AutoSelectPreset(float avgFpsRaw, float low1Fps, float low01Fps, bool cpuBound = false)
     {
-        int refresh = Mathf.Max(Screen.currentResolution.refreshRate, 60);
+        var rr = Screen.currentResolution.refreshRateRatio;
+        int refresh = Mathf.Max((int)Mathf.Round((float)rr.value), 60);
         float target = refresh;
 
         // Weighted composite — average dominates for steady scenes, lows

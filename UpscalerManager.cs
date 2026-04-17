@@ -112,7 +112,8 @@ internal class UpscalerManager : MonoBehaviour
         _useCameraCallback = false;
 
         // rebuild with new settings
-        Setup(_renderTextureMain, _camera);
+        if (_renderTextureMain != null && _camera != null)
+            Setup(_renderTextureMain, _camera);
 
         // reapply quality + AA settings
         QualityPatch.ApplyQualitySettings();
@@ -236,7 +237,7 @@ internal class UpscalerManager : MonoBehaviour
 
         Plugin.Log.LogInfo($"Upscaler: {_inputWidth}x{_inputHeight} -> {_outputWidth}x{_outputHeight}");
 
-        if (_upscaler != null)
+        if (_upscaler != null && _camera != null)
         {
             _upscaler.Initialize(_camera, _inputWidth, _inputHeight, _outputWidth, _outputHeight);
             Plugin.Log.LogInfo($"Upscaler active: {_upscaler.Name}");
@@ -725,7 +726,7 @@ internal class UpscalerManager : MonoBehaviour
                 // so 25% scale also reduces CPU load — making the ratio misleadingly low.
                 // Secondary check: if the CPU ceiling itself is below target, the CPU
                 // can't sustain the target framerate regardless of GPU load.
-                float targetFps = Mathf.Max(Screen.currentResolution.refreshRate, 60f);
+                float targetFps = Mathf.Max((float)Screen.currentResolution.refreshRateRatio.value, 60f);
                 bool translationLayer = Application.platform == RuntimePlatform.LinuxPlayer
                     || SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Vulkan;
 
