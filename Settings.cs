@@ -45,7 +45,17 @@ internal static class Settings
     internal static float Sharpening
     {
         get => D.sharpening;
-        set { D.sharpening = Mathf.Clamp(value, 0f, 1f); _file.Save(); OnSettingTweaked(); }
+        // per-frame uniform — skip the pipeline rebuild, still mark Custom.
+        set
+        {
+            D.sharpening = Mathf.Clamp(value, 0f, 1f);
+            _file.Save();
+            if (_initComplete && Preset != QualityPreset.Custom)
+            {
+                _file.SuppressEvents(() => D.preset = (int)QualityPreset.Custom);
+                _file.Save();
+            }
+        }
     }
     internal static AAMode AntiAliasingMode
     {

@@ -8,8 +8,9 @@ using UnityEngine.Rendering;
 
 namespace REPOFidelity;
 
-// F9 manual FPS averager — collects frame times, computes avg/1%/0.1% lows,
-// appends results + full settings snapshot to fps_averager.txt
+// F9 benchmark sweep — cycles through DLSS, FSR Temporal, and Off, running
+// two facing directions per mode. Appends the combined report to fps_averager.txt
+// and copies it to the clipboard.
 internal class FpsAverager : MonoBehaviour
 {
     internal static FpsAverager? Instance { get; private set; }
@@ -69,92 +70,110 @@ internal class FpsAverager : MonoBehaviour
     private IEnumerator Run()
     {
         Running = true;
-        const float totalDuration = Duration * 2 + WarmupSeconds * 2 + 1f; // for progress
 
-        // unlock cursor so user can click out/type during test
         var savedLockState = Cursor.lockState;
         var savedVisible = Cursor.visible;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
-        // --- Pass 1: current facing ---
-        Status = "PASS 1 settling...";
-        Progress = 0f;
-        Plugin.Log.LogInfo("FPS averager: pass 1 (current facing)");
-        for (int i = 0; i < 5; i++) yield return null;
-        yield return new WaitForSeconds(WarmupSeconds);
+        var modes = new List<(UpscaleMode mode, string label)>();
+        if (GPUDetector.IsUpscalerSupported(UpscaleMode.DLSS))
+            modes.Add((UpscaleMode.DLSS, "DLSS"));
+        if (GPUDetector.IsUpscalerSupported(UpscaleMode.FSR_Temporal))
+            modes.Add((UpscaleMode.FSR_Temporal, "FSR_Temporal"));
+        modes.Add((UpscaleMode.Off, "Off"));
 
-        var frames1 = new List<float>();
-        float elapsed = 0f;
-        while (elapsed < Duration)
+        var originalMode = Settings.UpscaleModeSetting;
+        float totalDuration = modes.Count * (Duration * 2 + WarmupSeconds * 2 + ModeSwitchSettle);
+        float elapsedAllModes = 0f;
+
+        var combinedReport = new StringBuilder();
+        combinedReport.AppendLine($"══ Benchmark Sweep {DateTime.Now:yyyy-MM-dd HH:mm:ss} ══ {SystemInfo.graphicsDeviceName} ══ {Screen.width}x{Screen.height} ══");
+        combinedReport.AppendLine();
+
+        foreach (var (mode, label) in modes)
         {
-            frames1.Add(Time.unscaledDeltaTime);
-            elapsed += Time.unscaledDeltaTime;
-            float remaining = Duration - elapsed;
-            Progress = Mathf.Clamp01(elapsed / totalDuration);
-            Status = $"PASS 1  {remaining:F0}s";
-            yield return null;
+            Status = $"→ {label} (settling)";
+            Plugin.Log.LogInfo($"FPS averager: switching to {label}");
+
+            Settings.UpscaleModeSetting = mode;
+            yield return new WaitForSeconds(ModeSwitchSettle);
+            elapsedAllModes += ModeSwitchSettle;
+
+            Status = $"{label} P1 settling...";
+            for (int i = 0; i < 5; i++) yield return null;
+            yield return new WaitForSeconds(WarmupSeconds);
+            elapsedAllModes += WarmupSeconds;
+
+            var frames1 = new List<float>();
+            float elapsed = 0f;
+            while (elapsed < Duration)
+            {
+                frames1.Add(Time.unscaledDeltaTime);
+                elapsed += Time.unscaledDeltaTime;
+                Progress = Mathf.Clamp01((elapsedAllModes + elapsed) / totalDuration);
+                Status = $"{label} P1  {Duration - elapsed:F0}s";
+                yield return null;
+            }
+            elapsedAllModes += Duration;
+            var s1 = GatherSceneMetrics();
+            var r1 = ComputeResult(frames1);
+
+            var cam = Camera.main;
+            Transform? rotTarget = null;
+            if (cam != null)
+            {
+                var avatar = cam.GetComponentInParent<PlayerAvatar>();
+                rotTarget = avatar != null ? avatar.transform : cam.transform;
+                rotTarget.Rotate(0f, 180f, 0f);
+            }
+
+            Status = $"{label} P2 settling...";
+            for (int i = 0; i < 5; i++) yield return null;
+            yield return new WaitForSeconds(WarmupSeconds);
+            elapsedAllModes += WarmupSeconds;
+
+            var frames2 = new List<float>();
+            elapsed = 0f;
+            while (elapsed < Duration)
+            {
+                frames2.Add(Time.unscaledDeltaTime);
+                elapsed += Time.unscaledDeltaTime;
+                Progress = Mathf.Clamp01((elapsedAllModes + elapsed) / totalDuration);
+                Status = $"{label} P2  {Duration - elapsed:F0}s";
+                yield return null;
+            }
+            elapsedAllModes += Duration;
+            var s2 = GatherSceneMetrics();
+            var r2 = ComputeResult(frames2);
+
+            if (rotTarget != null) rotTarget.Rotate(0f, 180f, 0f);
+
+            combinedReport.Append(BuildCombinedReport(r1, s1, r2, s2));
         }
-        var scene1 = GatherSceneMetrics();
-        var result1 = ComputeResult(frames1);
 
-        // --- Snap camera 180 ---
-        var cam = Camera.main;
-        Transform? rotTarget = null;
-        if (cam != null)
-        {
-            // rotate the player body, not just the camera, to avoid mouse-look snapping back
-            var avatar = cam.GetComponentInParent<PlayerAvatar>();
-            rotTarget = avatar != null ? avatar.transform : cam.transform;
-            rotTarget.Rotate(0f, 180f, 0f);
-        }
+        Settings.UpscaleModeSetting = originalMode;
 
-        // --- Pass 2: opposite facing ---
-        Status = "PASS 2 settling...";
-        Plugin.Log.LogInfo("FPS averager: pass 2 (opposite facing)");
-        for (int i = 0; i < 5; i++) yield return null;
-        yield return new WaitForSeconds(WarmupSeconds);
-
-        var frames2 = new List<float>();
-        elapsed = 0f;
-        while (elapsed < Duration)
-        {
-            frames2.Add(Time.unscaledDeltaTime);
-            elapsed += Time.unscaledDeltaTime;
-            float remaining = Duration - elapsed;
-            Progress = Mathf.Clamp01((Duration + WarmupSeconds + elapsed) / totalDuration);
-            Status = $"PASS 2  {remaining:F0}s";
-            yield return null;
-        }
-        var scene2 = GatherSceneMetrics();
-        var result2 = ComputeResult(frames2);
-
-        // --- Snap back ---
-        if (rotTarget != null)
-            rotTarget.Rotate(0f, 180f, 0f);
-
-        // --- Write combined report ---
-        var report = BuildCombinedReport(result1, scene1, result2, scene2);
+        var report = combinedReport.ToString();
         try
         {
             File.AppendAllText(OutputPath, report);
             GUIUtility.systemCopyBuffer = report;
-            Plugin.Log.LogInfo($"FPS averager: results appended to {OutputPath} (copied to clipboard)");
+            Plugin.Log.LogInfo($"FPS averager: swept {modes.Count} modes, appended to {OutputPath} (copied to clipboard)");
         }
         catch (Exception ex) { Plugin.Log.LogWarning($"FPS averager save failed: {ex.Message}"); }
 
-        Plugin.Log.LogInfo($"FPS averager: P1={result1.AvgFps:F1} P2={result2.AvgFps:F1}");
-
-        // restore cursor
         Cursor.lockState = savedLockState;
         Cursor.visible = savedVisible;
 
-        Status = $"P1:{result1.AvgFps:F0}  P2:{result2.AvgFps:F0}  gap:{result1.AvgFps - result2.AvgFps:+0;-0}";
+        Status = $"Done — {modes.Count} modes swept (clipboard)";
         Progress = 1f;
         Running = false;
         yield return new WaitForSeconds(5f);
         Status = "";
     }
+
+    private const float ModeSwitchSettle = 2.5f;
 
     private struct FpsResult
     {
@@ -181,7 +200,6 @@ internal class FpsAverager : MonoBehaviour
 
     private static float ComputePercentileLow(List<float> sorted, float percentile)
     {
-        // 1% low = average of the worst 1% of frame times, reported as FPS
         int count = Mathf.Max(1, Mathf.CeilToInt(sorted.Count * percentile));
         float worst = 0f;
         for (int i = sorted.Count - 1; i >= sorted.Count - count; i--)

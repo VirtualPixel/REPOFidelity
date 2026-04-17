@@ -262,9 +262,6 @@ internal class UpscalerManager : MonoBehaviour
         JitterX = (HaltonX[_jitterIndex] - 0.5f) / _inputWidth;
         JitterY = (HaltonY[_jitterIndex] - 0.5f) / _inputHeight;
 
-        // DLSS can't compensate for projection jitter through ngx_bridge
-        if (_upscaler is DLSSUpscaler) return;
-
         cam.ResetProjectionMatrix();
         _savedProjectionMatrix = cam.projectionMatrix;
         cam.nonJitteredProjectionMatrix = _savedProjectionMatrix;

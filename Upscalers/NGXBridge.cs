@@ -29,13 +29,7 @@ internal static class NGXBridge
     internal static extern int NGXBridge_InitD3D11(IntPtr device);
 
     [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int NGXBridge_IsDLSSAvailable();
-
-    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr NGXBridge_AllocParams();
-
-    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void NGXBridge_DestroyParams(IntPtr p);
+    internal static extern int NGXBridge_InitD3D12();
 
     [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NGXBridge_ParamSetInt(IntPtr p,
@@ -50,30 +44,30 @@ internal static class NGXBridge
         [MarshalAs(UnmanagedType.LPStr)] string name, float val);
 
     [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void NGXBridge_ParamSetResource(IntPtr p,
-        [MarshalAs(UnmanagedType.LPStr)] string name, IntPtr resource);
-
-    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr NGXBridge_CreateDLSS(IntPtr parameters);
-
-    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int NGXBridge_EvalDLSS(IntPtr handle, IntPtr parameters);
-
-    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void NGXBridge_ReleaseDLSS(IntPtr handle);
-
-    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NGXBridge_Shutdown();
 
     [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr NGXBridge_ExtractResource(IntPtr unityPtr);
+    internal static extern int NGXBridge_IsDLSSAvailable_D3D12();
 
     [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void NGXBridge_ParamSetVoidPtr(IntPtr p,
-        [MarshalAs(UnmanagedType.LPStr)] string name, IntPtr ptr);
+    internal static extern IntPtr NGXBridge_AllocParams_D3D12();
 
     [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr NGXBridge_GetParams();
+    internal static extern void NGXBridge_DestroyParams_D3D12(IntPtr p);
+
+    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr NGXBridge_CreateDLSS_D3D12(IntPtr parameters);
+
+    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NGXBridge_ReleaseDLSS_D3D12(IntPtr handle);
+
+    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int NGXBridge_EvalDLSS_D3D12(
+        IntPtr handle, IntPtr parameters,
+        IntPtr color, IntPtr depth, IntPtr motion, IntPtr output);
+
+    [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NGXBridge_ClearSharedCache();
 
     // --- Managed helpers ---
 

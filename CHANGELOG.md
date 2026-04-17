@@ -1,5 +1,12 @@
 ## 1.3.0
 
+- DLSS evaluation now runs on a private D3D12 device with D3D11↔D3D12 shared-texture interop, working around the D3D11 DLSS path being blocked by the driver on RTX 50-series (Blackwell). Existing RTX 20/30/40 cards use the same code path
+- DLSS gets projection-matrix jitter the same way FSR Temporal does — sub-pixel accumulation works, which is what the transformer actually needs to look sharp
+- DLSS now requests Preset E (CNN) instead of the transformer default — more forgiving of Unity's built-in-RP motion vectors which aren't perfectly jitter-clean
+- Fixed DLSS output flashing white the first frame after enable (output RT was undefined until DLSS wrote the first frame over it)
+- Fixed DLSS staying black when a scale change caused Unity to recycle an RT's native pointer into a new texture — shared-handle cache now cleared on re-init
+- Sharpening slider no longer rebuilds the whole upscaler pipeline every tick, since it's a per-frame shader uniform
+- F9 benchmark now sweeps DLSS → FSR Temporal → Off back-to-back in the same area, concatenates the three reports and copies the whole thing to the clipboard
 - Shadow budget system — caps how many small point lights cast shadows at once, closest to camera get priority. Fades shadow strength in/out for smooth transitions instead of pop-in. Configurable per preset (Potato=5, Ultra=25) or manually via Shadow Limit slider (0=unlimited)
 - Tiered shadow map resolution — directional lights use global resolution with cascades instead of a forced custom value, small decorative lights get 512 instead of 4096, infrastructure lights cap at 2048. Massive shadow cost reduction with no visible quality loss
 - Shadow cascades — Low/1, Medium/2, High+Ultra/4. Fixes directional light shadow quality (window lighting, outdoor shadows) which was previously stuck at 1 cascade

@@ -37,6 +37,7 @@ internal class DLSSUpscaler : IUpscaler
     private CommandBuffer? _mvCopyCmd;
     private int _evalFailCount;
     private int _evalSuccessLogged;
+    private bool _needsReset;
 
     public DLSSUpscaler(bool dlaaMode = false)
     {
@@ -90,11 +91,17 @@ internal class DLSSUpscaler : IUpscaler
 
             if (NGXBridge.NGXBridge_InitD3D11(devicePtr) == 0)
             {
-                Plugin.Log.LogWarning("DLSS: NGX init failed");
+                Plugin.Log.LogWarning("DLSS: NGX D3D11 base init failed");
                 return;
             }
 
-            _available = NGXBridge.NGXBridge_IsDLSSAvailable() != 0;
+            if (NGXBridge.NGXBridge_InitD3D12() == 0)
+            {
+                Plugin.Log.LogWarning("DLSS: NGX D3D12 interop init failed");
+                return;
+            }
+
+            _available = NGXBridge.NGXBridge_IsDLSSAvailable_D3D12() != 0;
             Plugin.Log.LogInfo($"DLSS: available = {_available}");
         }
         catch (DllNotFoundException)
@@ -120,7 +127,10 @@ internal class DLSSUpscaler : IUpscaler
         _outputWidth = outputWidth;
         _outputHeight = outputHeight;
 
-        // DLSS output needs UAV — game RT doesn't have it, so use our own
+        // Unity can recycle an RT's native ptr into a new resource; the native
+        // bridge caches shared handles by pointer, so drop the cache on re-init.
+        NGXBridge.NGXBridge_ClearSharedCache();
+
         if (_dlssOutputRT != null) { _dlssOutputRT.Release(); UnityEngine.Object.Destroy(_dlssOutputRT); }
         _dlssOutputRT = new RenderTexture(_outputWidth, _outputHeight, 0, RenderTextureFormat.ARGB32)
         {
@@ -129,9 +139,15 @@ internal class DLSSUpscaler : IUpscaler
         };
         _dlssOutputRT.Create();
 
+        // Avoid undefined first-frame flash.
+        var prev = RenderTexture.active;
+        RenderTexture.active = _dlssOutputRT;
+        GL.Clear(false, true, Color.black);
+        RenderTexture.active = prev;
+
         SetupCapture(_inputWidth, _inputHeight);
 
-        _evalParams = NGXBridge.NGXBridge_AllocParams();
+        _evalParams = NGXBridge.NGXBridge_AllocParams_D3D12();
         if (_evalParams == IntPtr.Zero) { Plugin.Log.LogError("DLSS: params alloc failed"); return; }
 
         NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "Width", (uint)_inputWidth);
@@ -139,10 +155,20 @@ internal class DLSSUpscaler : IUpscaler
         NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "OutWidth", (uint)_outputWidth);
         NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "OutHeight", (uint)_outputHeight);
         NGXBridge.NGXBridge_ParamSetInt(_evalParams, "PerfQualityValue", GetQualityMode());
-        NGXBridge.NGXBridge_ParamSetInt(_evalParams, "DLSS.Feature.Create.Flags",
-            (1 << 1) | (1 << 3)); // MVLowRes | DepthInverted
 
-        _dlssHandle = NGXBridge.NGXBridge_CreateDLSS(_evalParams);
+        // DLAA has full-res MVs; scaled modes get bit 1 = MV low-res flag.
+        int createFlags = _dlaaMode ? 0 : (1 << 1);
+        NGXBridge.NGXBridge_ParamSetInt(_evalParams, "DLSS.Feature.Create.Flags", createFlags);
+
+        // Preset E (CNN) — tolerates Unity's MV jitter better than the transformer default.
+        const int presetE = 5;
+        NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "DLSS.Hint.Render.Preset.DLAA",             (uint)presetE);
+        NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "DLSS.Hint.Render.Preset.Quality",          (uint)presetE);
+        NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "DLSS.Hint.Render.Preset.Balanced",         (uint)presetE);
+        NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "DLSS.Hint.Render.Preset.Performance",      (uint)presetE);
+        NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "DLSS.Hint.Render.Preset.UltraPerformance", (uint)presetE);
+
+        _dlssHandle = NGXBridge.NGXBridge_CreateDLSS_D3D12(_evalParams);
 
         if (_dlssHandle == IntPtr.Zero)
         {
@@ -150,6 +176,8 @@ internal class DLSSUpscaler : IUpscaler
             return;
         }
 
+        // A fresh feature has no temporal history; first eval needs Reset=1.
+        _needsReset = true;
         Plugin.Log.LogInfo($"DLSS initialized: {_inputWidth}x{_inputHeight} -> {_outputWidth}x{_outputHeight}");
     }
 
@@ -161,49 +189,58 @@ internal class DLSSUpscaler : IUpscaler
             return;
         }
 
-        // MINIMAL eval — just Color + Output + dimensions to isolate the error
-        NGXBridge.NGXBridge_ParamSetResource(_evalParams, "Color", source.GetNativeTexturePtr());
-        NGXBridge.NGXBridge_ParamSetResource(_evalParams, "Output",
-            _dlssOutputRT != null ? _dlssOutputRT.GetNativeTexturePtr() : destination.GetNativeTexturePtr());
-        if (_depthRT != null)
-            NGXBridge.NGXBridge_ParamSetResource(_evalParams, "Depth", _depthRT.GetNativeTexturePtr());
-        if (_motionVectorRT != null)
-            NGXBridge.NGXBridge_ParamSetResource(_evalParams, "MotionVectors", _motionVectorRT.GetNativeTexturePtr());
-        NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "DLSS.Render.Subrect.Dimensions.Width", (uint)source.width);
-        NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "DLSS.Render.Subrect.Dimensions.Height", (uint)source.height);
-        NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "MV.Scale.X", 1.0f);
-        NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "MV.Scale.Y", 1.0f);
-        NGXBridge.NGXBridge_ParamSetInt(_evalParams, "Reset", 1);
+        // DLSS was created for a specific input size — other render passes
+        // (secondary cameras, post-fx stages) hand us arbitrary sources.
+        // Pass those through untouched.
+        if (source.width != _inputWidth || source.height != _inputHeight)
+        {
+            Graphics.Blit(source, destination);
+            return;
+        }
 
-        int evalResult = NGXBridge.NGXBridge_EvalDLSS(_dlssHandle, _evalParams);
-        if (evalResult == 0)
+        NGXBridge.NGXBridge_ParamSetUInt(_evalParams,
+            "DLSS.Render.Subrect.Dimensions.Width", (uint)source.width);
+        NGXBridge.NGXBridge_ParamSetUInt(_evalParams,
+            "DLSS.Render.Subrect.Dimensions.Height", (uint)source.height);
+        // Unity MVs: UV-space, sign-flipped from DLSS's convention → pixel scale.
+        NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "MV.Scale.X", -(float)_inputWidth);
+        NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "MV.Scale.Y", -(float)_inputHeight);
+
+        // Jitter already baked into Unity MVs — pass 0 to avoid double-subtract.
+        NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "Jitter.Offset.X", 0f);
+        NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "Jitter.Offset.Y", 0f);
+        NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "Sharpness", 0f);
+        NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "FrameTimeDeltaInMsec", Time.unscaledDeltaTime * 1000f);
+        NGXBridge.NGXBridge_ParamSetInt(_evalParams, "Reset", _needsReset ? 1 : 0);
+
+        var outputRT = _dlssOutputRT ?? destination;
+        int ok = NGXBridge.NGXBridge_EvalDLSS_D3D12(
+            _dlssHandle, _evalParams,
+            source.GetNativeTexturePtr(),
+            _depthRT != null ? _depthRT.GetNativeTexturePtr() : IntPtr.Zero,
+            _motionVectorRT != null ? _motionVectorRT.GetNativeTexturePtr() : IntPtr.Zero,
+            outputRT.GetNativeTexturePtr());
+
+        if (ok == 0)
         {
             if (_evalFailCount++ < 5)
-            {
-                var srcPtr = source.GetNativeTexturePtr();
-                var dstPtr = destination.GetNativeTexturePtr();
-                var depthPtr = _depthRT?.GetNativeTexturePtr() ?? IntPtr.Zero;
-                var mvPtr = _motionVectorRT?.GetNativeTexturePtr() ?? IntPtr.Zero;
-                Plugin.Log.LogWarning($"DLSS eval failed (frame {_evalFailCount}) " +
-                    $"src={source.width}x{source.height}({source.format}) " +
-                    $"dst={(_dlssOutputRT?.width ?? destination.width)}x{(_dlssOutputRT?.height ?? destination.height)} " +
-                    $"depth={_depthRT?.width}x{_depthRT?.height} mv={_motionVectorRT?.width}x{_motionVectorRT?.height} " +
-                    $"subrect={_inputWidth}x{_inputHeight} create={_inputWidth}x{_inputHeight}->{_outputWidth}x{_outputHeight}");
-            }
+                Plugin.Log.LogWarning($"DLSS D3D12 eval failed (frame {_evalFailCount}) " +
+                    $"src={source.width}x{source.height} out={outputRT.width}x{outputRT.height}");
             Graphics.Blit(source, destination);
         }
         else
         {
-            // copy DLSS output to the actual destination
+            _needsReset = false;
             if (_dlssOutputRT != null)
                 Graphics.Blit(_dlssOutputRT, destination);
             if (_evalSuccessLogged++ < 3)
-                Plugin.Log.LogInfo($"DLSS eval OK — {source.width}x{source.height} -> {destination.width}x{destination.height}");
+                Plugin.Log.LogInfo($"DLSS D3D12 eval OK — {source.width}x{source.height} -> {destination.width}x{destination.height}");
         }
     }
 
     public void OnResolutionChanged(int inputWidth, int inputHeight, int outputWidth, int outputHeight)
     {
+        NGXBridge.NGXBridge_ClearSharedCache();
         CleanupFeature();
         if (_camera != null)
             Initialize(_camera, inputWidth, inputHeight, outputWidth, outputHeight);
@@ -216,7 +253,7 @@ internal class DLSSUpscaler : IUpscaler
         if (_dlssOutputRT != null) { _dlssOutputRT.Release(); UnityEngine.Object.Destroy(_dlssOutputRT); _dlssOutputRT = null; }
         if (_evalParams != IntPtr.Zero)
         {
-            NGXBridge.NGXBridge_DestroyParams(_evalParams);
+            NGXBridge.NGXBridge_DestroyParams_D3D12(_evalParams);
             _evalParams = IntPtr.Zero;
         }
     }
@@ -225,7 +262,7 @@ internal class DLSSUpscaler : IUpscaler
     {
         if (_dlssHandle != IntPtr.Zero)
         {
-            NGXBridge.NGXBridge_ReleaseDLSS(_dlssHandle);
+            NGXBridge.NGXBridge_ReleaseDLSS_D3D12(_dlssHandle);
             _dlssHandle = IntPtr.Zero;
         }
     }
@@ -240,7 +277,7 @@ internal class DLSSUpscaler : IUpscaler
         _depthCopyCmd = new CommandBuffer { name = "DLSS Depth" };
         _depthCopyCmd.Blit(BuiltinRenderTextureType.Depth, _depthRT);
 
-        _motionVectorRT = new RenderTexture(width, height, 0, RenderTextureFormat.RGFloat)
+        _motionVectorRT = new RenderTexture(width, height, 0, RenderTextureFormat.RGHalf)
             { filterMode = FilterMode.Point, enableRandomWrite = true };
         _motionVectorRT.Create();
         _mvCopyCmd = new CommandBuffer { name = "DLSS MV" };
