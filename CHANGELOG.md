@@ -1,3 +1,10 @@
+## 1.5.2
+
+- AudioLowPassLogic.CheckLogic was the largest per-frame allocator we could find on busy procedural maps. Each instance does Physics.OverlapSphere + Physics.RaycastAll + a fresh `new List<Collider>()` every 0.25s when the local player is within 20m — and a heavy map roll can have 170+ instances. That's ~700 calls/sec each leaking a Collider[], a RaycastHit[], and a List into gen0. Replaced with shared NonAlloc buffers and a reused list. Logic mirrors vanilla line-for-line, no behavior change. RaycastHit buffer sized at 64 to avoid silently dropping wall hits in dense PhysGrabObject piles
+- AudioListenerFollow.Update was rebuilding `LayerMask.GetMask(new string[] { "LowPassTrigger" })` and allocating a Collider[] from OverlapSphere on every 15Hz tick. Single instance so individually small, but a constant gen0 drip across the whole session. Layer mask is cached statically, OverlapSphere swapped to NonAlloc
+- PhysGrabObjectGrabArea.Update was calling `playerGrabbers.ToList()` every frame to support safe iteration. When no one's grabbing the object, this still allocates an empty List per instance per frame (~660/sec across a typical scene). Added a fast-path that skips the entire Update when both `playerGrabbing` and `listOfAllGrabbers` are empty — the original cleanup loops have nothing to do in that state anyway
+- These three patches are gated only on `ModEnabled` (not the `CpuPatchesActive` auto-gate) since they're pure NonAlloc swaps with no behavior change. They help systems that auto-decide to disable CPU patches because the rolling frame-time gate sits near the 8ms threshold
+
 ## 1.5.1
 
 - Flashlight shadow budget tick was calling `Object.FindObjectsOfType<FlashlightController>()` every 100ms — on a 7000+ object scene that's ~9ms per tick and the source of a lot of 0.1% low spikes. Cached the controller list on scene load / player spawn; per-tick cost dropped from 0.93ms/frame amortized to 0.001ms/frame on a large map. Worst-frame times dropped ~15ms in testing
