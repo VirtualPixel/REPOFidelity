@@ -47,6 +47,11 @@ internal static class QualityPatch
         QualitySettings.pixelLightCount = _vanillaPixelLights;
         QualitySettings.anisotropicFiltering = _vanillaAF;
         QualitySettings.globalTextureMipmapLimit = _vanillaTexMip;
+        if (UpscalerManager._vanillaSaved)
+        {
+            RenderSettings.fogStartDistance = UpscalerManager._vanillaFogStart;
+            RenderSettings.fogEndDistance = UpscalerManager._vanillaFogEnd;
+        }
         RestoreRangeTieredLightShadows();
     }
 
@@ -146,7 +151,7 @@ internal static class QualityPatch
             __instance.MainCamera.farClipPlane = clip;
         }
 
-        Plugin.Log.LogInfo($"Fog: {RenderSettings.fogStartDistance:F0}-{RenderSettings.fogEndDistance:F0}m, " +
+        Plugin.Log.LogDebug($"Fog: {RenderSettings.fogStartDistance:F0}-{RenderSettings.fogEndDistance:F0}m, " +
             $"clip: {__instance.MainCamera.farClipPlane:F0}m");
     }
 
@@ -299,8 +304,7 @@ internal static class QualityPatch
         int touched = 0;
         foreach (var light in Object.FindObjectsOfType<Light>())
         {
-            if (light.intensity <= 0f && light.shadows != LightShadows.None)
-                light.shadows = LightShadows.None;
+            // ApplyZeroIntensityShadows owns the intensity=0 kill (saved originals).
 
             // directional uses the global shadow resolution + cascades
             if (light.type == LightType.Directional)
@@ -333,7 +337,7 @@ internal static class QualityPatch
         }
 
         if (touched > 0)
-            Plugin.Log.LogInfo($"shadow-res: tiered {touched} lights (flashlights={_flashlightLights.Count}, cap={cap})");
+            Plugin.Log.LogDebug($"shadow-res: tiered {touched} lights (flashlights={_flashlightLights.Count}, cap={cap})");
     }
 
     private static void ApplyAnisotropicFiltering(int level)

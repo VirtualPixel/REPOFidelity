@@ -68,7 +68,7 @@ internal class TemporalUpscaler : IUpscaler
 
         SetupMotionVectorCapture(inputWidth, inputHeight);
 
-        Plugin.Log.LogInfo($"Temporal upscaler initialized: {inputWidth}x{inputHeight} -> {outputWidth}x{outputHeight}");
+        Plugin.Log.LogDebug($"Temporal upscaler initialized: {inputWidth}x{inputHeight} -> {outputWidth}x{outputHeight}");
     }
 
     public void OnRenderImage(RenderTexture source, RenderTexture destination)

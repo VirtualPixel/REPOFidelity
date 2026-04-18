@@ -92,7 +92,7 @@ internal class UpscalerManager : MonoBehaviour
     {
         if (_renderTextureMain == null || _camera == null) return;
 
-        Plugin.Log.LogInfo("Reinitializing upscaler pipeline...");
+        Plugin.Log.LogDebug("Reinitializing upscaler pipeline...");
 
         // tear down current state
         Camera.onPreRender -= OnPreRenderJitter;
@@ -191,7 +191,7 @@ internal class UpscalerManager : MonoBehaviour
 
 
 
-        Plugin.Log.LogInfo("Passthrough mode");
+        Plugin.Log.LogDebug("Passthrough mode");
     }
 
     private void SetupNativeScaling(RenderTextureMain rtMain)
@@ -201,7 +201,7 @@ internal class UpscalerManager : MonoBehaviour
 
 
 
-        Plugin.Log.LogInfo("NativeScaling mode");
+        Plugin.Log.LogDebug("NativeScaling mode");
     }
 
     private void SetupUpscaler(RenderTextureMain rtMain, Camera camera)
@@ -235,7 +235,7 @@ internal class UpscalerManager : MonoBehaviour
             gameRT.Create();
         }
 
-        Plugin.Log.LogInfo($"Upscaler: {_inputWidth}x{_inputHeight} -> {_outputWidth}x{_outputHeight}");
+        Plugin.Log.LogDebug($"Upscaler: {_inputWidth}x{_inputHeight} -> {_outputWidth}x{_outputHeight}");
 
         if (_upscaler != null && _camera != null)
         {
@@ -256,6 +256,7 @@ internal class UpscalerManager : MonoBehaviour
 
     private void OnPreRenderJitter(Camera cam)
     {
+        using var _ = ModTiming.Begin(MarkPreRenderJitter);
         if (cam != _camera || _upscaler == null || !Settings.ModEnabled) return;
         if (_inputWidth <= 0 || _inputHeight <= 0) return;
 
@@ -276,6 +277,7 @@ internal class UpscalerManager : MonoBehaviour
 
     private void OnPostRenderRestore(Camera cam)
     {
+        using var _ = ModTiming.Begin(MarkPostRenderRestore);
         if (cam != _camera || !_jitterApplied) return;
         cam.projectionMatrix = _savedProjectionMatrix;
         _jitterApplied = false;
@@ -283,6 +285,7 @@ internal class UpscalerManager : MonoBehaviour
 
     private void OnPostRenderCallback(Camera cam)
     {
+        using var _ = ModTiming.Begin(MarkPostRenderCallback);
         if (cam != _camera) return;
         ProcessFrame();
     }
@@ -302,6 +305,7 @@ internal class UpscalerManager : MonoBehaviour
 
     private void LateUpdate()
     {
+        using var _ = ModTiming.Begin(MarkLateUpdate);
         if (!Settings.ModEnabled || _renderTextureMain == null) return;
 
         // Passthrough: nothing to do
@@ -341,6 +345,7 @@ internal class UpscalerManager : MonoBehaviour
 
     private void ProcessFrame()
     {
+        using var _ = ModTiming.Begin(MarkProcessFrame);
         if (_renderTextureMain == null || _upscaler == null) return;
         if (_outputRT == null || !_outputRT.IsCreated()) return;
 
@@ -356,6 +361,7 @@ internal class UpscalerManager : MonoBehaviour
 
     private static void ApplyCAS(RenderTexture target)
     {
+        using var _ = ModTiming.Begin(MarkApplyCAS);
         if (target == null || !target.IsCreated()) return;
         var temp = RenderTexture.GetTemporary(target.width, target.height, 0, target.format);
         CASShader.Apply(target, temp, Settings.Sharpening);
@@ -366,16 +372,33 @@ internal class UpscalerManager : MonoBehaviour
     private float _shadowBudgetTimer;
     private const float ShadowBudgetInterval = 0.1f;
 
+    private const string MarkTick             = "REPOFidelity.Tick";
+    private const string MarkTickShadowBudget = "REPOFidelity.Tick.ShadowBudget";
+    private const string MarkTickDistCull     = "REPOFidelity.Tick.DistanceShadowCull";
+    private const string MarkTickFlashBudget  = "REPOFidelity.Tick.FlashlightBudget";
+    private const string MarkTickAvatarCull   = "REPOFidelity.Tick.PlayerAvatarShadowCull";
+    private const string MarkTickPointLight   = "REPOFidelity.Tick.PointLightShadowCull";
+    private const string MarkLateUpdate       = "REPOFidelity.LateUpdate";
+    private const string MarkProcessFrame     = "REPOFidelity.ProcessFrame";
+    private const string MarkApplyCAS         = "REPOFidelity.ApplyCAS";
+    private const string MarkPreRenderJitter  = "REPOFidelity.Cam.PreRenderJitter";
+    private const string MarkPostRenderRestore = "REPOFidelity.Cam.PostRenderRestore";
+    private const string MarkPostRenderCallback = "REPOFidelity.Cam.PostRenderCallback";
+
     private void Update()
     {
         _shadowBudgetTimer += Time.unscaledDeltaTime;
         if (_shadowBudgetTimer >= ShadowBudgetInterval)
         {
             _shadowBudgetTimer = 0f;
-            Patches.SceneOptimizer.UpdateShadowBudget(_camera);
-            Patches.SceneOptimizer.UpdateDistanceShadowCull(_camera);
-            Patches.SceneOptimizer.UpdateFlashlightShadowBudget(_camera);
-            Patches.SceneOptimizer.UpdatePlayerAvatarShadowCull(_camera);
+            using (ModTiming.Begin(MarkTick))
+            {
+                using (ModTiming.Begin(MarkTickShadowBudget)) Patches.SceneOptimizer.UpdateShadowBudget(_camera);
+                using (ModTiming.Begin(MarkTickDistCull))     Patches.SceneOptimizer.UpdateDistanceShadowCull(_camera);
+                using (ModTiming.Begin(MarkTickFlashBudget))  Patches.SceneOptimizer.UpdateFlashlightShadowBudget(_camera);
+                using (ModTiming.Begin(MarkTickAvatarCull))   Patches.SceneOptimizer.UpdatePlayerAvatarShadowCull(_camera);
+                using (ModTiming.Begin(MarkTickPointLight))   Patches.SceneOptimizer.UpdatePointLightShadowCull(_camera);
+            }
         }
 
         if (Input.GetKeyDown(KeyCode.F7) && Settings.ToggleKey != KeyCode.F7)
@@ -826,7 +849,7 @@ internal class UpscalerManager : MonoBehaviour
         Settings.ResolvedEffectiveFogEnd = _vanillaFogEnd * Settings.ResolvedFogMultiplier;
         Settings.ApplyFogClamps();
 
-        Plugin.Log.LogInfo($"Vanilla fog: start={_vanillaFogStart:F0}m end={_vanillaFogEnd:F0}m clip={_vanillaFarClip:F0}m (env #{_environmentSetupCount})");
+        Plugin.Log.LogDebug($"Vanilla fog: start={_vanillaFogStart:F0}m end={_vanillaFogEnd:F0}m clip={_vanillaFarClip:F0}m (env #{_environmentSetupCount})");
     }
 
     private void RestoreVanillaSettings()

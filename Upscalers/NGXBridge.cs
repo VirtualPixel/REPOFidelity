@@ -100,7 +100,7 @@ internal static class NGXBridge
             return false;
         }
 
-        Plugin.Log.LogInfo($"Preloaded ngx_bridge.dll from: {dllPath}");
+        Plugin.Log.LogDebug($"Preloaded ngx_bridge.dll from: {dllPath}");
         return true;
     }
 
@@ -108,7 +108,7 @@ internal static class NGXBridge
     {
         if (_logHooked) return;
         _logHooked = true;
-        _logDelegate = msg => Plugin.Log.LogInfo($"[NGX] {msg}");
+        _logDelegate = msg => Plugin.Log.LogDebug($"[NGX] {msg}");
         NGXBridge_SetLogCallback(_logDelegate);
     }
 }

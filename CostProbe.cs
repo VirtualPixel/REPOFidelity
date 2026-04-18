@@ -38,6 +38,17 @@ internal class CostProbe : MonoBehaviour
 
     private readonly Dictionary<Camera, CamTiming> _camTimings = new();
 
+    private int _savedVSyncCount;
+    private int _savedTargetFrameRate;
+    private bool _frameLimitUncapped;
+    private bool _presetRevertSuppressed;
+
+    private float _sweepStartTime;
+    private float _sweepExpectedDuration;
+    private float _sweepStartProgress;
+    private float _sweepEndProgress;
+    private bool _sweepSmoothActive;
+
     private class CamTiming
     {
         public readonly Stopwatch Sw = new();
@@ -57,6 +68,14 @@ internal class CostProbe : MonoBehaviour
         Instance.StartCoroutine(Instance.RunSafe());
     }
 
+    private IEnumerator WaitForAutotuneIfActive()
+    {
+        if (!UpscalerManager.BenchmarkActive) yield break;
+        Status = "Waiting for autotune to finish";
+        while (UpscalerManager.BenchmarkActive) yield return null;
+        yield return new WaitForSeconds(SettleSeconds);
+    }
+
     internal static void Abort()
     {
         if (!Running) return;
@@ -66,12 +85,50 @@ internal class CostProbe : MonoBehaviour
             Camera.onPreRender  -= Instance.OnCamPre;
             Camera.onPostRender -= Instance.OnCamPost;
             Instance._camTimings.Clear();
+            Instance.RestoreFrameLimit();
+            Instance.RestorePresetRevertSuppression();
         }
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
         Running = false;
         Status = "";
         Plugin.Log.LogInfo("Cost probe cancelled");
+    }
+
+    private void RestoreFrameLimit()
+    {
+        if (!_frameLimitUncapped) return;
+        QualitySettings.vSyncCount = _savedVSyncCount;
+        Application.targetFrameRate = _savedTargetFrameRate;
+        _frameLimitUncapped = false;
+    }
+
+    private void RestorePresetRevertSuppression()
+    {
+        if (!_presetRevertSuppressed) return;
+        Settings.PopPresetRevertSuppression();
+        _presetRevertSuppressed = false;
+    }
+
+    private static void AppendConfigFiles(StringBuilder report)
+    {
+        string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "";
+        AppendFileSection(report, "autotune.json", Path.Combine(dir, "autotune.json"));
+        AppendFileSection(report, "settings.json", Path.Combine(dir, "settings.json"));
+    }
+
+    private static void AppendFileSection(StringBuilder report, string label, string path)
+    {
+        report.AppendLine($"== {label} ==");
+        try
+        {
+            report.AppendLine(File.Exists(path) ? File.ReadAllText(path).TrimEnd() : "(missing)");
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine($"(read failed: {ex.Message})");
+        }
+        report.AppendLine();
     }
 
     // Keeps the game's input-disable timer topped up while the probe runs so the
@@ -84,6 +141,17 @@ internal class CostProbe : MonoBehaviour
         if (!Running) return;
         if (GameDirector.instance != null)
             GameDirector.instance.SetDisableInput(1f);
+
+        // Smooth the sweep progress bar — the discrete SweepProgress() cells
+        // jump in ~7% chunks otherwise. Interpolate wall-clock between the
+        // current cell's start value and the next cell's start value so the
+        // bar animates instead of snapping.
+        if (_sweepSmoothActive && _sweepExpectedDuration > 0f)
+        {
+            float t = Mathf.Clamp01((Time.unscaledTime - _sweepStartTime) / _sweepExpectedDuration);
+            float target = Mathf.Lerp(_sweepStartProgress, _sweepEndProgress, t);
+            if (target > Progress) Progress = target;
+        }
     }
 
     private IEnumerator RunSafe()
@@ -98,6 +166,8 @@ internal class CostProbe : MonoBehaviour
                 Plugin.Log.LogError($"Cost probe failed: {ex}");
                 Camera.onPreRender  -= OnCamPre;
                 Camera.onPostRender -= OnCamPost;
+                RestoreFrameLimit();
+                RestorePresetRevertSuppression();
                 Running = false;
                 Status = "ERROR";
                 yield break;
@@ -133,6 +203,8 @@ internal class CostProbe : MonoBehaviour
         Progress = 0f;
         _camTimings.Clear();
 
+        yield return WaitForAutotuneIfActive();
+
         var savedLockState = Cursor.lockState;
         var savedVisible   = Cursor.visible;
         Cursor.lockState = CursorLockMode.None;
@@ -145,6 +217,17 @@ internal class CostProbe : MonoBehaviour
         var origPreset = Settings.Preset;
         var origUpscaler = Settings.UpscaleModeSetting;
         var origFog = Settings.FogDistanceMultiplier;
+        var origModEnabled = Settings.ModEnabled;
+
+        // Force mod on for baseline so the breakdown reflects gameplay-with-mod
+        // cost. If the user left F10 off when they triggered the probe, baseline
+        // would just duplicate the Vanilla (F10) sweep cell.
+        if (!origModEnabled)
+        {
+            Settings.ModEnabled = true;
+            Patches.SceneOptimizer.Apply();
+            Patches.QualityPatch.ApplyQualitySettings();
+        }
 
         var report = new StringBuilder();
         report.AppendLine($"== REPOFidelity frame cost — {DateTime.Now:yyyy-MM-dd HH:mm:ss} (v{BuildInfo.Version}) ==");
@@ -189,6 +272,7 @@ internal class CostProbe : MonoBehaviour
         Camera.onPostRender += OnCamPost;
 
         yield return new WaitForSeconds(WarmupSeconds);
+        Progress = 0.03f;
 
         var timeTotals  = new double[timeRecs.Count];
         var countTotals = new long[countRecs.Count];
@@ -202,6 +286,10 @@ internal class CostProbe : MonoBehaviour
         long monoStart = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
         float worstFrameMs = 0f;
 
+        // Reset right before baseline so mod-internal timing only covers the
+        // baseline sample window, not the script-instrumentation or sweep phases.
+        ModTiming.Reset();
+
         var frames = new List<float>(2048);
         float elapsed = 0f;
         while (elapsed < SampleSeconds)
@@ -211,12 +299,14 @@ internal class CostProbe : MonoBehaviour
             elapsed += dt;
             float frameMs = dt * 1000f;
             if (frameMs > worstFrameMs) worstFrameMs = frameMs;
-            Progress = elapsed / SampleSeconds;
+            Progress = 0.03f + 0.22f * (elapsed / SampleSeconds);
             for (int i = 0; i < timeRecs.Count;  i++) timeTotals[i]  += timeRecs[i].rec.LastValue;
             for (int i = 0; i < countRecs.Count; i++) countTotals[i] += countRecs[i].rec.LastValue;
             for (int i = 0; i < memRecs.Count;   i++) memTotals[i]   += memRecs[i].rec.LastValue;
             yield return null;
         }
+
+        var modTimingSnapshot = ModTiming.Read().ToList();
 
         int gen0Delta = System.GC.CollectionCount(0) - gen0Start;
         int gen1Delta = System.GC.CollectionCount(1) - gen1Start;
@@ -224,6 +314,7 @@ internal class CostProbe : MonoBehaviour
 
         Camera.onPreRender  -= OnCamPre;
         Camera.onPostRender -= OnCamPost;
+        Progress = 0.25f;
 
         int fc = Mathf.Max(1, frames.Count);
         var timeStats  = new List<(string name, string cat, double ms)>(timeRecs.Count);
@@ -277,6 +368,35 @@ internal class CostProbe : MonoBehaviour
             if (++shown >= 80) break;
         }
         if (shown == 0) report.AppendLine("  (no profiler time markers captured — Unity build may strip them)");
+        report.AppendLine();
+
+        // ---- Mod-internal cost ----
+        double tickToMsMod = 1000.0 / Stopwatch.Frequency;
+        int baselineFrames = Mathf.Max(1, frames.Count);
+        var modRows = modTimingSnapshot
+            .Select(r => (name: r.name, ms: r.ticks * tickToMsMod / baselineFrames,
+                          callsPerFrame: (float)r.calls / baselineFrames, r.calls))
+            .Where(r => r.calls > 0)
+            .OrderByDescending(r => r.ms)
+            .ToList();
+
+        report.AppendLine($"== Mod-internal cost (Stopwatch spans over {SampleSeconds:F0}s baseline, ms/frame) ==");
+        if (modRows.Count == 0)
+        {
+            report.AppendLine("  (no mod spans hit — mod may be disabled or pipeline idle)");
+        }
+        else
+        {
+            report.AppendLine("  ms/frame   calls/f   name");
+            double modTotal = 0;
+            foreach (var r in modRows)
+            {
+                report.AppendLine($"  {r.ms,7:F3}    {r.callsPerFrame,5:F1}   {r.name.Substring("REPOFidelity.".Length)}");
+                modTotal += r.ms;
+            }
+            report.AppendLine($"  ──────");
+            report.AppendLine($"  {modTotal,7:F3}   (sum of instrumented mod spans)");
+        }
         report.AppendLine();
 
         // ---- Draw stats ----
@@ -437,6 +557,7 @@ internal class CostProbe : MonoBehaviour
             {
                 scriptElapsed += Time.unscaledDeltaTime;
                 scriptFrames++;
+                Progress = 0.28f + 0.09f * (scriptElapsed / ScriptSampleSeconds);
                 yield return null;
             }
 
@@ -479,8 +600,72 @@ internal class CostProbe : MonoBehaviour
         // Normalize to a reference config (Ultra + DLAA + fog 1.0×) so individual
         // sweep cells are comparable across users / lobbies / builds. The baseline
         // above was measured at the user's actual settings; the sweep below is the
-        // apples-to-apples comparison
-        Status = "Normalizing for sweep (Ultra + DLAA + fog 1.0x)";
+        // apples-to-apples comparison. Uncap the framerate so sweep cells reflect
+        // raw hardware cost rather than collapsing onto the user's FPS cap.
+        _savedVSyncCount = QualitySettings.vSyncCount;
+        _savedTargetFrameRate = Application.targetFrameRate;
+        QualitySettings.vSyncCount = 0;
+        Application.targetFrameRate = -1;
+        _frameLimitUncapped = true;
+
+        // Sweep cells mutate individual settings (UpscaleModeSetting, fog, etc.)
+        // which normally drops Preset to Custom. Suppress that so the user's
+        // Auto / Ultra / etc. preset survives the probe.
+        Settings.PushPresetRevertSuppression();
+        _presetRevertSuppressed = true;
+
+        Status = "Sweep: Auto / DLSS / FSR / Off / Potato / Vanilla";
+        report.AppendLine($"== Sweep (Auto = autotune's picks; rest normalized Ultra + DLAA + fog 1.0×, VSync off + uncapped, {UpscalerSampleSeconds}s each) ==");
+        var upscalers = new List<UpscaleMode>();
+        if (GPUDetector.IsUpscalerSupported(UpscaleMode.DLSS))         upscalers.Add(UpscaleMode.DLSS);
+        if (GPUDetector.IsUpscalerSupported(UpscaleMode.FSR_Temporal)) upscalers.Add(UpscaleMode.FSR_Temporal);
+        upscalers.Add(UpscaleMode.Off);
+
+        var presetLadder = new[]
+        {
+            QualityPreset.Potato,
+            QualityPreset.Low,
+            QualityPreset.Medium,
+            QualityPreset.High,
+            QualityPreset.Ultra,
+        };
+        var fogPasses = new[] { 1.1f, 0.3f };
+
+        var sweepResults = new List<(string label, float ms, float shadowD, float lightD, bool isActive)>();
+        int totalCells = 1 + upscalers.Count + presetLadder.Length * fogPasses.Length + 1;
+        int cellIdx = 0;
+        void SweepProgress()
+        {
+            cellIdx++;
+            Progress = 0.38f + 0.60f * ((float)cellIdx / totalCells);
+        }
+
+        // Wall-clock interpolation so the bar animates between cell completions
+        // instead of snapping every ~4.5s. Duration includes settle + sample per
+        // cell. Update() picks this up and lerps Progress.
+        _sweepStartProgress = 0.38f;
+        _sweepEndProgress = 0.98f;
+        _sweepExpectedDuration = totalCells * (SettleSeconds + UpscalerSampleSeconds);
+        _sweepStartTime = Time.unscaledTime;
+        _sweepSmoothActive = true;
+
+        // Auto cell uses autotune's actual resolved config, not the Ultra+DLAA
+        // normalization the rest of the sweep runs against — so users see the
+        // Auto frametime directly instead of interpolating between discrete presets.
+        Status = "Sweep: Auto (autotune's picks)";
+        Settings.ApplyPreset(QualityPreset.Auto);
+        Patches.QualityPatch.ApplyFogAndDrawDistance();
+        Patches.SceneOptimizer.Apply();
+        Patches.QualityPatch.ApplyQualitySettings();
+        yield return new WaitForSeconds(SettleSeconds);
+        Sample autoSample = default;
+        yield return SampleFrames(UpscalerSampleSeconds, v => autoSample = v);
+        sweepResults.Add(("Auto", autoSample.AvgMs,
+            Settings.ResolvedShadowDistance, Settings.ResolvedLightDistance,
+            origPreset == QualityPreset.Auto));
+        SweepProgress();
+
+        // Normalize for the remaining cells — Ultra + DLAA + fog 1.0×.
         Settings.ApplyPreset(QualityPreset.Ultra);
         Settings.ResolvedUpscaleMode = UpscaleMode.DLAA;
         Settings.ResolvedRenderScale = 100;
@@ -489,15 +674,6 @@ internal class CostProbe : MonoBehaviour
         Patches.SceneOptimizer.Apply();
         Patches.QualityPatch.ApplyQualitySettings();
         yield return new WaitForSeconds(SettleSeconds);
-
-        Status = "Sweep: DLSS / FSR / Off / Potato / Vanilla";
-        report.AppendLine($"== Sweep (normalized Ultra + DLAA + fog 1.0× baseline, {UpscalerSampleSeconds}s each) ==");
-        var upscalers = new List<UpscaleMode>();
-        if (GPUDetector.IsUpscalerSupported(UpscaleMode.DLSS))         upscalers.Add(UpscaleMode.DLSS);
-        if (GPUDetector.IsUpscalerSupported(UpscaleMode.FSR_Temporal)) upscalers.Add(UpscaleMode.FSR_Temporal);
-        upscalers.Add(UpscaleMode.Off);
-
-        var sweepResults = new List<(string label, float ms, float shadowD, float lightD, bool isActive)>();
 
         foreach (var mode in upscalers)
         {
@@ -508,20 +684,12 @@ internal class CostProbe : MonoBehaviour
             yield return SampleFrames(UpscalerSampleSeconds, v => s = v);
             sweepResults.Add(($"{mode}", s.AvgMs, Settings.ResolvedShadowDistance, Settings.ResolvedLightDistance,
                 mode == origUpscaler && origPreset == Settings.Preset));
+            SweepProgress();
         }
 
         // Preset × fog matrix — force fog to 1.1x (loosest allowed) and 0.3x (tightest),
         // walk all 5 presets at each. This shows frame-time-per-quality-tier AND the
         // fog-driven shadow/light clamp cascading through each preset.
-        var presetLadder = new[]
-        {
-            QualityPreset.Potato,
-            QualityPreset.Low,
-            QualityPreset.Medium,
-            QualityPreset.High,
-            QualityPreset.Ultra,
-        };
-        var fogPasses = new[] { 1.1f, 0.3f };
         Sample potatoSample = default;
         foreach (var fog in fogPasses)
         {
@@ -542,6 +710,7 @@ internal class CostProbe : MonoBehaviour
                 sweepResults.Add(($"{p}@{fog:F1}x", ps.AvgMs,
                     Settings.ResolvedShadowDistance, Settings.ResolvedLightDistance, false));
                 if (p == QualityPreset.Potato && Mathf.Approximately(fog, 1.1f)) potatoSample = ps;
+                SweepProgress();
             }
         }
 
@@ -556,16 +725,20 @@ internal class CostProbe : MonoBehaviour
         Sample vanillaSample = default;
         yield return SampleFrames(UpscalerSampleSeconds, v => vanillaSample = v);
         sweepResults.Add(("Vanilla (F10)", vanillaSample.AvgMs, QualitySettings.shadowDistance, 0f, false));
+        SweepProgress();
 
         // Restore — mirrors OptimizerBenchmark exit path. Re-apply mod's values on top
         // of the vanilla QualitySettings so we end exactly where we started.
-        Settings.ModEnabled = true;
+        Settings.ModEnabled = origModEnabled;
         Settings.Preset = origPreset;
         Settings.UpscaleModeSetting = origUpscaler;
         Settings.FogDistanceMultiplier = origFog;
         Patches.SceneOptimizer.Apply();
         Patches.QualityPatch.ApplyQualitySettings();
         Patches.QualityPatch.ApplyFogAndDrawDistance();
+        RestoreFrameLimit();
+        RestorePresetRevertSuppression();
+        _sweepSmoothActive = false;
         yield return new WaitForSeconds(SettleSeconds);
 
         float bestMs = sweepResults.Min(r => r.ms);
@@ -587,24 +760,75 @@ internal class CostProbe : MonoBehaviour
         // ---- Opportunities ----
         report.AppendLine("== Optimization opportunities (ranked by likely impact) ==");
         BuildOpportunities(report, timeStats, countStats, perFrameMem, scene, scriptTimings);
+        report.AppendLine();
+
+        // ---- Config dump ----
+        AppendConfigFiles(report);
 
         var text = report.ToString();
+        bool clipboardOk = false;
         try
         {
             File.AppendAllText(OutputPath, text);
-            GUIUtility.systemCopyBuffer = text;
-            Plugin.Log.LogInfo($"Cost probe: appended to {OutputPath} (copied to clipboard)");
         }
         catch (Exception ex) { Plugin.Log.LogWarning($"Cost probe save failed: {ex.Message}"); }
+
+        try
+        {
+            clipboardOk = TrySystemClipboard(text);
+        }
+        catch (Exception ex) { Plugin.Log.LogWarning($"Clipboard copy failed: {ex.Message}"); }
+
+        Plugin.Log.LogInfo(clipboardOk
+            ? $"Cost probe: appended to {OutputPath} (copied to clipboard)"
+            : $"Cost probe: appended to {OutputPath} (clipboard unavailable — read the file)");
 
         Cursor.lockState = savedLockState;
         Cursor.visible   = savedVisible;
 
-        Status = "Done (clipboard)";
+        Status = clipboardOk ? "Done (clipboard)" : "Done (file only)";
         Progress = 1f;
         Running = false;
         yield return new WaitForSeconds(5f);
         Status = "";
+    }
+
+    private static bool TrySystemClipboard(string text)
+    {
+        GUIUtility.systemCopyBuffer = text;
+        if (GUIUtility.systemCopyBuffer == text) return true;
+        if (Application.platform == RuntimePlatform.LinuxPlayer)
+            return TryLinuxClipboardFallback(text);
+        return false;
+    }
+
+    private static bool TryLinuxClipboardFallback(string text)
+    {
+        var tools = new[]
+        {
+            ("wl-copy", ""),
+            ("xclip", "-selection clipboard"),
+            ("xsel", "--clipboard --input"),
+        };
+        foreach (var (cmd, args) in tools)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo(cmd, args)
+                {
+                    RedirectStandardInput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                using var p = Process.Start(psi);
+                if (p == null) continue;
+                p.StandardInput.Write(text);
+                p.StandardInput.Close();
+                if (p.WaitForExit(2000) && p.ExitCode == 0) return true;
+            }
+            catch { }
+        }
+        return false;
     }
 
     // Harmony-driven timing for the per-script instrumentation pass.
@@ -881,7 +1105,16 @@ internal class CostProbe : MonoBehaviour
 
             var mf = r.GetComponent<MeshFilter>();
             if (mf != null && mf.sharedMesh != null)
-                m.TotalSceneTris += mf.sharedMesh.triangles.LongLength / 3;
+            {
+                // GetIndexCount reads GPU metadata; .triangles needs isReadable=true
+                // on the mesh, which game assets don't ship with — would throw a
+                // Unity error per renderer otherwise.
+                var mesh = mf.sharedMesh;
+                long indices = 0;
+                for (int sm = 0; sm < mesh.subMeshCount; sm++)
+                    indices += (long)mesh.GetIndexCount(sm);
+                m.TotalSceneTris += indices / 3;
+            }
         }
 
         m.SkinnedRenderers = UnityEngine.Object.FindObjectsOfType<SkinnedMeshRenderer>().Length;

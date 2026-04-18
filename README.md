@@ -146,12 +146,14 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 | Texture Quality | Full | Full | Locked to full — R.E.P.O.'s textures are too small for mip reduction to matter |
 | Anisotropic Filtering | Off / 4x / 8x / 16x | 8x | Texture sharpness at angles |
 | Light Distance | 10–100m | 50m | Max light render range |
-| Fog Distance | 1.0–1.1x | 1.0x | Fog end distance multiplier |
+| Fog Distance | 0.3–1.1x | 1.0x | Fog end distance multiplier. Below 1.0x pulls the fog wall in for extra savings |
 | Mod Toggle Key | F5–F10 | F10 | Disables mod entirely for vanilla comparison |
 
 **F10** (configurable) toggles the entire mod off for vanilla comparison — everything reverts including performance optimizations.
 
-**F11** runs the optimizer benchmark — measures vanilla vs GPU/GC optimizations vs full (GPU/GC + CPU patches). Results saved to `optimizer_benchmark.txt`.
+**F11** toggles the performance optimization layer on and off. Unlike F10, the visual layer (upscaler, AA, shadow quality) stays active — only the per-frame hacks (tiny renderer culls, shadow budget, CPU patches, etc.) revert to vanilla.
+
+**F9** runs the cost probe — a ~90s sweep that measures per-marker frame cost, per-camera render time, scene composition, and a preset × fog × upscaler comparison matrix normalized to Ultra + DLAA + fog 1.0×. Writes `frame_cost.txt` and copies the report to the clipboard. Off by default — enable `F9 Cost Probe` in the Graphics menu to arm it.
 
 ## Installation
 
@@ -180,7 +182,6 @@ Remove it. REPO Fidelity does everything REPO HD does:
 ## Known Issues
 
 - Switching presets rapidly can briefly flash a black frame
-- Tiny object shadow removal can't be restored mid-level (requires level reload)
 
 Report bugs on [GitHub](https://github.com/VirtualPixel/REPOFidelity/issues).
 

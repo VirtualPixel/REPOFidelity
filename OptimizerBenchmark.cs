@@ -22,6 +22,16 @@ internal class OptimizerBenchmark : MonoBehaviour
     private static bool _savedModEnabled;
     private static int _savedCpuMode;
 
+    private float _benchStartTime;
+    private float _benchExpectedDuration;
+
+    void Update()
+    {
+        if (!Running || _benchExpectedDuration <= 0f) return;
+        float target = Mathf.Clamp01((Time.unscaledTime - _benchStartTime) / _benchExpectedDuration);
+        if (target > Progress) Progress = target;
+    }
+
     internal static void Launch()
     {
         if (Running) return;
@@ -96,6 +106,9 @@ internal class OptimizerBenchmark : MonoBehaviour
         // 3 phases per pass: vanilla, gpu/gc, all-on
         int totalPhases = Passes * 3;
         int phase = 0;
+
+        _benchStartTime = Time.unscaledTime;
+        _benchExpectedDuration = totalPhases * (WarmupSeconds + MeasureSeconds);
 
         for (int pass = 0; pass < Passes; pass++)
         {

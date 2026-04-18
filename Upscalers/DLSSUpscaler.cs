@@ -88,7 +88,7 @@ internal class DLSSUpscaler : IUpscaler
                 Plugin.Log.LogWarning("DLSS: Could not extract D3D11 device");
                 return;
             }
-            Plugin.Log.LogInfo($"DLSS: D3D11 device: 0x{devicePtr:X}");
+            Plugin.Log.LogDebug($"DLSS: D3D11 device: 0x{devicePtr:X}");
 
             if (NGXBridge.NGXBridge_InitD3D11(devicePtr) == 0)
             {
@@ -103,7 +103,7 @@ internal class DLSSUpscaler : IUpscaler
             }
 
             _available = NGXBridge.NGXBridge_IsDLSSAvailable_D3D12() != 0;
-            Plugin.Log.LogInfo($"DLSS: available = {_available}");
+            Plugin.Log.LogDebug($"DLSS: available = {_available}");
         }
         catch (DllNotFoundException)
         {
@@ -177,7 +177,7 @@ internal class DLSSUpscaler : IUpscaler
 
         // A fresh feature has no temporal history; first eval needs Reset=1.
         _needsReset = true;
-        Plugin.Log.LogInfo($"DLSS initialized: {_inputWidth}x{_inputHeight} -> {_outputWidth}x{_outputHeight}");
+        Plugin.Log.LogDebug($"DLSS initialized: {_inputWidth}x{_inputHeight} -> {_outputWidth}x{_outputHeight}");
     }
 
     public void OnRenderImage(RenderTexture source, RenderTexture destination)
@@ -233,7 +233,7 @@ internal class DLSSUpscaler : IUpscaler
             if (_dlssOutputRT != null)
                 Graphics.Blit(_dlssOutputRT, destination);
             if (_evalSuccessLogged++ < 3)
-                Plugin.Log.LogInfo($"DLSS D3D12 eval OK — {source.width}x{source.height} -> {destination.width}x{destination.height}");
+                Plugin.Log.LogDebug($"DLSS D3D12 eval OK — {source.width}x{source.height} -> {destination.width}x{destination.height}");
         }
     }
 

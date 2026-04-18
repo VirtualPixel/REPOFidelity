@@ -225,37 +225,42 @@ internal static class Settings
     internal static int PerfExplosionShadows
     {
         get => D.perfExplosionShadows;
-        set { D.perfExplosionShadows = value; _file.Save(); }
+        set { D.perfExplosionShadows = value; _file.Save(); _file.NotifyChanged(); }
     }
     internal static int PerfItemLightShadows
     {
         get => D.perfItemLightShadows;
-        set { D.perfItemLightShadows = value; _file.Save(); }
+        set { D.perfItemLightShadows = value; _file.Save(); _file.NotifyChanged(); }
     }
     internal static int PerfAnimatedLightShadows
     {
         get => D.perfAnimatedLightShadows;
-        set { D.perfAnimatedLightShadows = value; _file.Save(); }
+        set { D.perfAnimatedLightShadows = value; _file.Save(); _file.NotifyChanged(); }
     }
     internal static int PerfParticleShadows
     {
         get => D.perfParticleShadows;
-        set { D.perfParticleShadows = value; _file.Save(); }
+        set { D.perfParticleShadows = value; _file.Save(); _file.NotifyChanged(); }
     }
     internal static int PerfTinyRendererCulling
     {
         get => D.perfTinyRendererCulling;
-        set { D.perfTinyRendererCulling = value; _file.Save(); }
+        set { D.perfTinyRendererCulling = value; _file.Save(); _file.NotifyChanged(); }
     }
     internal static int PerfDistanceShadowCulling
     {
         get => D.perfDistanceShadowCulling;
-        set { D.perfDistanceShadowCulling = value; _file.Save(); }
+        set { D.perfDistanceShadowCulling = value; _file.Save(); _file.NotifyChanged(); }
     }
     internal static int PerfFlashlightShadowBudget
     {
         get => D.perfFlashlightShadowBudget;
-        set { D.perfFlashlightShadowBudget = value; _file.Save(); }
+        set { D.perfFlashlightShadowBudget = value; _file.Save(); _file.NotifyChanged(); }
+    }
+    internal static int PerfPointLightShadows
+    {
+        get => D.perfPointLightShadows;
+        set { D.perfPointLightShadows = value; _file.Save(); _file.NotifyChanged(); }
     }
     internal static bool DiagnosticsEnabled
     {
@@ -283,6 +288,7 @@ internal static class Settings
                 PerfOpt.AnimatedLightShadows => D.perfAnimatedLightShadows,
                 PerfOpt.DistanceShadowCulling => D.perfDistanceShadowCulling,
                 PerfOpt.FlashlightShadowBudget => D.perfFlashlightShadowBudget,
+                PerfOpt.PointLightShadows => D.perfPointLightShadows,
                 _ => -1,
             };
             if (toggle == 0) return false;
@@ -315,6 +321,7 @@ internal static class Settings
             PerfOpt.AnimatedLightShadows => level >= 3,
             PerfOpt.DistanceShadowCulling => level >= 0, // always on when mod enabled
             PerfOpt.FlashlightShadowBudget => level >= 0, // always on — caps flashlight shadows
+            PerfOpt.PointLightShadows => level >= 2,
             _ => false,
         };
     }
@@ -328,6 +335,7 @@ internal static class Settings
         AnimatedLightShadows,
         DistanceShadowCulling,
         FlashlightShadowBudget,
+        PointLightShadows,
     }
 
     internal static UpscaleMode ResolvedUpscaleMode;
@@ -422,9 +430,23 @@ internal static class Settings
         _file.NotifyChanged();
     }
 
+    private static int _suppressTweakRevert;
+
+    // Lets internal bulk operations (probe sweep, restore paths) touch individual
+    // settings without the "tweak → Custom" fallback firing on every assignment.
+    // Counter so nested calls compose. Coroutine-friendly push/pop pair.
+    internal static void PushPresetRevertSuppression() => _suppressTweakRevert++;
+    internal static void PopPresetRevertSuppression() => _suppressTweakRevert = Math.Max(0, _suppressTweakRevert - 1);
+    internal static bool PresetRevertSuppressed => _suppressTweakRevert > 0;
+
     private static void OnSettingTweaked()
     {
         if (!_initComplete) return;
+        if (_suppressTweakRevert > 0)
+        {
+            _file.NotifyChanged();
+            return;
+        }
         if (Preset != QualityPreset.Custom)
         {
             _file.SuppressEvents(() => D.preset = (int)QualityPreset.Custom);
@@ -528,6 +550,12 @@ internal static class Settings
     // for casters partially inside the fog transition band.
     internal static void ApplyFogClamps()
     {
+        // Recompute from the captured vanilla baseline so a preset switch picks up
+        // its own fog multiplier instead of reading the stale value left behind
+        // by the previous preset (which clamped Ultra's 150m to 5.5m once).
+        if (UpscalerManager._vanillaSaved)
+            ResolvedEffectiveFogEnd = UpscalerManager._vanillaFogEnd * ResolvedFogMultiplier;
+
         float end = ResolvedEffectiveFogEnd;
         if (end <= 0f) return; // fog not yet captured; clamp will re-run when it is
         ResolvedShadowDistance = Mathf.Min(ResolvedShadowDistance, end * 1.1f);
@@ -823,6 +851,17 @@ internal static class Settings
                 aa = AAMode.Off;
                 Plugin.Log.LogInfo("CPU-bound + NVIDIA: using DLAA");
             }
+            else if (GPUDetector.IsUpscalerSupported(UpscaleMode.FSR_Temporal)
+                     && avgFpsRaw / target >= 1.10f)
+            {
+                // FSR Temporal at native scale gives better edge AA than SMAA
+                // but adds ~0.5-1 ms of CPU for the reprojection pass. Only
+                // pick it when the user has measured headroom to spare —
+                // tight-budget CPU-bound stays on SMAA.
+                upscaler = UpscaleMode.FSR_Temporal;
+                aa = AAMode.Off;
+                Plugin.Log.LogInfo($"CPU-bound + headroom: using FSR Temporal (headroom={avgFpsRaw / target:F2})");
+            }
             else
             {
                 upscaler = UpscaleMode.Off;
@@ -959,7 +998,10 @@ internal static class Settings
             if (budget > 1.5f) { sharp = 0.4f;                      }
         }
 
-        int perfLevel = shQ switch
+        // shQ is a visual choice, perfLevel is a perf-gating choice (see
+        // IsPerfOptEnabled). Keep them separate so CPU-bound users who still
+        // want Ultra shadows get the aggressive perf optimizations too.
+        int perfLevel = cpuBound ? 3 : shQ switch
         {
             ShadowQuality.Ultra => 0,
             ShadowQuality.High => 1,

@@ -89,7 +89,7 @@ internal class AutoTuneData
     public int perfLevel = 0;
 
     // bump this when autotune logic changes but version doesn't
-    internal const int AutoTuneRevision = 3;
+    internal const int AutoTuneRevision = 6;
     public int revision;
 
     internal bool IsStale()
@@ -147,6 +147,7 @@ internal class SettingsData
     public int perfTinyRendererCulling = -1;
     public int perfDistanceShadowCulling = -1;
     public int perfFlashlightShadowBudget = -1;
+    public int perfPointLightShadows = -1;
 
     // Opt-in F9 cost probe. When true, pressing F9 launches the full diagnostic
     // sweep (~90s) and copies the report to the clipboard. Off by default so
