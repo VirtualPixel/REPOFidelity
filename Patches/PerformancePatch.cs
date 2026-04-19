@@ -164,6 +164,7 @@ static class SceneOptimizer
     // ---
 
     static readonly List<Renderer> _distanceCullWatchlist = new();
+    static readonly Dictionary<Renderer, ShadowCastingMode> _distanceCullOrig = new();
 
     // flashlight shadow budget — only N closest flashlights keep their original shadow
     // mode, rest go to None. saves original mode per spotlight so F10 / flag-off revert
@@ -206,6 +207,7 @@ static class SceneOptimizer
             if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
             if (r.bounds.size.magnitude >= boundsCap) continue;
             _distanceCullWatchlist.Add(r);
+            _distanceCullOrig[r] = r.shadowCastingMode;
             count++;
         }
         if (count > 0)
@@ -251,7 +253,7 @@ static class SceneOptimizer
             float distSq = (r.transform.position - camPos).sqrMagnitude;
             bool isOff = r.shadowCastingMode == ShadowCastingMode.Off;
             if (isOff && distSq < hystOnSq)
-                r.shadowCastingMode = ShadowCastingMode.On;
+                r.shadowCastingMode = _distanceCullOrig.TryGetValue(r, out var orig) ? orig : ShadowCastingMode.On;
             else if (!isOff && distSq > thresholdSq)
                 r.shadowCastingMode = ShadowCastingMode.Off;
         }
@@ -264,8 +266,10 @@ static class SceneOptimizer
         for (int i = 0; i < _distanceCullWatchlist.Count; i++)
         {
             var r = _distanceCullWatchlist[i];
-            if (r != null) r.shadowCastingMode = ShadowCastingMode.On;
+            if (r == null) continue;
+            r.shadowCastingMode = _distanceCullOrig.TryGetValue(r, out var orig) ? orig : ShadowCastingMode.On;
         }
+        _distanceCullOrig.Clear();
     }
 
     // Collect every Point light that currently casts shadows so the per-frame

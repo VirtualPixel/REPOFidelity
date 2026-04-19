@@ -69,7 +69,7 @@ static class AudioListenerFollowNonAllocPatch
         if (!rotT) return false;
         __instance.transform.rotation = rotT.rotation;
 
-        if (!SemiFunc.FPSImpulse15()) return false;
+        if (!GameDirector.instance.fpsImpulse15) return false;
 
         if (_triggerMask < 0) _triggerMask = LayerMask.GetMask("LowPassTrigger");
         __instance.lowPassTrigger = null;
