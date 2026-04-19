@@ -93,11 +93,8 @@ static class SceneOptimizer
         int smrAudit = 0;
         foreach (var avatar in Object.FindObjectsOfType<PlayerAvatar>())
         {
-            // v0.4.0-tester: PlayerAvatarVisuals.localVisibility dynamically drives shadowCastingMode
-            // on the local avatar's renderers every frame (ShadowsOnly normally, On during showSelfOverride).
-            // ApplyLocalVisibility early-exits when localVisibility matches the pending mode, so any stale
-            // value we write via Restore sticks until the game's state actually changes — which manifests
-            // as the local body mesh rendering visible after an F10 toggle. Let the game own local avatars.
+            // Local avatar's shadow state is owned by PlayerAvatarVisuals.ApplyLocalVisibilityBody.
+            // Its early-exit gate means any write we do won't get re-asserted by the game — skip.
             if (avatar.isLocal) continue;
             foreach (var r in avatar.GetComponentsInChildren<Renderer>(true))
             {
@@ -163,6 +160,36 @@ static class SceneOptimizer
     static readonly Dictionary<Material, bool> _gpuInstancingOrig = new();
     static readonly Dictionary<ParticleSystem, ParticleSystemCullingMode> _particleCullOrig = new();
 
+    // Local-avatar renderers that must stay out of our scene-wide MeshRenderer scans.
+    // PlayerAvatar.playerAvatarVisuals and .flashlightController are inspector-linked
+    // fields whose transforms sit OUTSIDE PlayerAvatar.transform, so walking PlayerAvatar's
+    // children can't find them. Refresh before every scene scan.
+    static readonly HashSet<Renderer> _localAvatarRendererSet = new();
+
+    static void RefreshLocalAvatarRendererSet()
+    {
+        _localAvatarRendererSet.Clear();
+        foreach (var pa in Object.FindObjectsOfType<PlayerAvatar>())
+        {
+            if (!pa.isLocal) continue;
+            AddRenderersFromRoot(pa.playerAvatarVisuals?.transform);
+            AddRenderersFromRoot(pa.flashlightController?.transform);
+            var cosmetics = pa.playerAvatarVisuals?.playerCosmetics;
+            if (cosmetics != null)
+            {
+                AddRenderersFromRoot(cosmetics.transform);
+                AddRenderersFromRoot(cosmetics.playerCrown?.transform);
+            }
+        }
+    }
+
+    static void AddRenderersFromRoot(Transform? root)
+    {
+        if (root == null) return;
+        foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+            if (r != null) _localAvatarRendererSet.Add(r);
+    }
+
     // ---
     // distance-based shadow cull — small props (<2m bounds) disable shadow casting when
     // beyond fog-clamped shadow distance, re-enable when inside. runs every frame via
@@ -207,20 +234,14 @@ static class SceneOptimizer
         // pulls 5m props in too.
         float boundsCap = Settings.Preset == QualityPreset.Potato ? 5f : 3f;
 
+        RefreshLocalAvatarRendererSet();
+
         int count = 0;
         foreach (var r in Object.FindObjectsOfType<MeshRenderer>())
         {
             if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
             if (r.bounds.size.magnitude >= boundsCap) continue;
-            // v0.4.0-tester: our LevelGenerator.GenerateDone + PlayerAvatar.Start postfixes can fire
-            // before PlayerAvatarVisuals.Update runs its first ApplyLocalVisibilityBody, so local-avatar
-            // MeshRenderers (shadow-proxy flashlight, head/body proxies) are still in prefab state —
-            // typically shadowCastingMode = On. Capturing that and later stamping it back via Restore
-            // would leave the proxies rendering visibly, because ApplyLocalVisibility's early-exit gate
-            // never re-asserts ShadowsOnly once its localVisibility field already matches. Game owns
-            // this state; stay out of it.
-            var pa = r.GetComponentInParent<PlayerAvatar>();
-            if (pa != null && pa.isLocal) continue;
+            if (_localAvatarRendererSet.Contains(r)) continue;
             _distanceCullWatchlist.Add(r);
             _distanceCullOrig[r] = r.shadowCastingMode;
             count++;
@@ -686,23 +707,17 @@ static class SceneOptimizer
         // diagonal. Potato's 1m catches most small decorative props.
         float sizeCap = Settings.Preset == QualityPreset.Potato ? 1f : 0.5f;
 
+        RefreshLocalAvatarRendererSet();
+
         int count = 0;
         foreach (var r in Object.FindObjectsOfType<MeshRenderer>())
         {
             if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
-            if (r.bounds.size.magnitude < sizeCap)
-            {
-                // v0.4.0-tester: same timing risk as CaptureDistanceCullWatchlist — our Apply()
-                // can run during PlayerAvatar.Start before PlayerAvatarVisuals.Update cascades
-                // the canonical ShadowsOnly + PlayerVisualsLocal layer onto local-avatar children,
-                // so capturing here during the prefab-state window saves shadowCastingMode = On
-                // and the game's early-exit gate later prevents re-assertion.
-                var pa = r.GetComponentInParent<PlayerAvatar>();
-                if (pa != null && pa.isLocal) continue;
-                _tinyRendererOrig[r] = r.shadowCastingMode;
-                r.shadowCastingMode = ShadowCastingMode.Off;
-                count++;
-            }
+            if (r.bounds.size.magnitude >= sizeCap) continue;
+            if (_localAvatarRendererSet.Contains(r)) continue;
+            _tinyRendererOrig[r] = r.shadowCastingMode;
+            r.shadowCastingMode = ShadowCastingMode.Off;
+            count++;
         }
         if (count > 0)
             Plugin.Log.LogDebug($"disabled shadow casting on {count} tiny renderers");

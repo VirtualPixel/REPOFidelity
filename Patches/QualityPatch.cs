@@ -153,14 +153,13 @@ internal static class QualityPatch
         float viewDist = Settings.ResolvedViewDistance;
         if (viewDist > 0f)
         {
-            __instance.MainCamera.farClipPlane = viewDist;
+            UpscalerManager.SetModFarClip(__instance.MainCamera, viewDist);
         }
         else
         {
             float clip = RenderSettings.fogEndDistance + 10f;
-            if (UpscalerManager._vanillaSaved)
-                clip = Mathf.Max(clip, UpscalerManager._vanillaFarClip);
-            __instance.MainCamera.farClipPlane = clip;
+            clip = Mathf.Max(clip, UpscalerManager.GetVanillaFarClip(__instance.MainCamera));
+            UpscalerManager.SetModFarClip(__instance.MainCamera, clip);
         }
 
         Plugin.Log.LogDebug($"Fog: {RenderSettings.fogStartDistance:F0}-{RenderSettings.fogEndDistance:F0}m, " +
@@ -184,14 +183,13 @@ internal static class QualityPatch
         {
             if (viewDist > 0f)
             {
-                cam.farClipPlane = viewDist;
+                UpscalerManager.SetModFarClip(cam, viewDist);
             }
             else
             {
                 float clip = RenderSettings.fogEndDistance + 10f;
-                if (UpscalerManager._vanillaSaved)
-                    clip = Mathf.Max(clip, UpscalerManager._vanillaFarClip);
-                cam.farClipPlane = clip;
+                clip = Mathf.Max(clip, UpscalerManager.GetVanillaFarClip(cam));
+                UpscalerManager.SetModFarClip(cam, clip);
             }
         }
 

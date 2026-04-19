@@ -579,8 +579,7 @@ internal class UpscalerManager : MonoBehaviour
         {
             RenderSettings.fogStartDistance = _vanillaFogStart * fogMult;
             RenderSettings.fogEndDistance = _vanillaFogEnd * fogMult;
-            if (_camera != null)
-                _camera.farClipPlane = RenderSettings.fogEndDistance + 10f;
+            SetModFarClip(_camera, RenderSettings.fogEndDistance + 10f);
         }
         if (_vanillaSaved)
         {
@@ -831,10 +830,33 @@ internal class UpscalerManager : MonoBehaviour
     // Saved vanilla values for F10 restore — internal so QualityPatch can read them
     internal static float _vanillaFogStart;
     internal static float _vanillaFogEnd;
-    internal static float _vanillaFarClip;
     internal static bool _vanillaSaved;
     internal static int _environmentSetupCount;
     internal static float _lastEnvironmentSetupTime;
+
+    // Per-camera pre-mod farClipPlane. One static _vanillaFarClip was wrong because
+    // menu cam and gameplay cam have different vanilla clip ranges — captured one, stamped
+    // the other on F10 restore, hid the menu truck. Each camera records its own value on
+    // the first mod write.
+    internal static readonly System.Collections.Generic.Dictionary<Camera, float> _vanillaFarClipByCam = new();
+
+    // Use everywhere the mod wants to set cam.farClipPlane instead of a direct write.
+    // First write on a given camera records its current value for later restore.
+    internal static void SetModFarClip(Camera? cam, float newValue)
+    {
+        if (cam == null) return;
+        if (!_vanillaFarClipByCam.ContainsKey(cam))
+            _vanillaFarClipByCam[cam] = cam.farClipPlane;
+        cam.farClipPlane = newValue;
+    }
+
+    // Captured vanilla if we've touched this cam, else the current farClipPlane (still
+    // vanilla since we haven't written). Used by the fog-floor Mathf.Max in QualityPatch.
+    internal static float GetVanillaFarClip(Camera? cam)
+    {
+        if (cam == null) return 0f;
+        return _vanillaFarClipByCam.TryGetValue(cam, out var v) ? v : cam.farClipPlane;
+    }
 
     // v0.4.0-tester: Setup() no longer writes RenderSettings.fogStartDistance/fogEndDistance.
     // Instead it initializes instance fields (FogStartDistance/FogEndDistance) which FogLogic
@@ -844,8 +866,6 @@ internal class UpscalerManager : MonoBehaviour
     {
         _vanillaFogStart = env.FogStartDistance;
         _vanillaFogEnd = env.FogEndDistance;
-        if (Camera.main != null)
-            _vanillaFarClip = Camera.main.farClipPlane;
         _vanillaSaved = true;
         _environmentSetupCount++;
         _lastEnvironmentSetupTime = Time.unscaledTime;
@@ -853,7 +873,7 @@ internal class UpscalerManager : MonoBehaviour
         Settings.ResolvedEffectiveFogEnd = _vanillaFogEnd * Settings.ResolvedFogMultiplier;
         Settings.ApplyFogClamps();
 
-        Plugin.Log.LogDebug($"Vanilla fog: start={_vanillaFogStart:F0}m end={_vanillaFogEnd:F0}m clip={_vanillaFarClip:F0}m (env #{_environmentSetupCount})");
+        Plugin.Log.LogDebug($"Vanilla fog: start={_vanillaFogStart:F0}m end={_vanillaFogEnd:F0}m (env #{_environmentSetupCount})");
     }
 
     private void RestoreVanillaSettings()
@@ -862,9 +882,10 @@ internal class UpscalerManager : MonoBehaviour
         {
             RenderSettings.fogStartDistance = _vanillaFogStart;
             RenderSettings.fogEndDistance = _vanillaFogEnd;
-            if (_camera != null)
-                _camera.farClipPlane = _vanillaFarClip;
         }
+        foreach (var kv in _vanillaFarClipByCam)
+            if (kv.Key != null) kv.Key.farClipPlane = kv.Value;
+        _vanillaFarClipByCam.Clear();
 
         Plugin.Log.LogInfo("Vanilla settings restored");
     }
