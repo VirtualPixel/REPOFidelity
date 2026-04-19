@@ -188,7 +188,15 @@ internal static class Settings
     // auto-gate driven by rolling frame time (when CpuPatchMode == Auto / -1);
     // the public getter also masks on OptimizationsActive so F11 propagates
     private static bool _cpuPatchesActiveRaw = true;
-    internal static bool CpuPatchesActive => _cpuPatchesActiveRaw && OptimizationsActive;
+
+    // Probe override for the F7 individual-optimization sweep — when set, takes
+    // precedence over the auto-gate so the probe can deterministically force the
+    // state of CPU patches for a measurement window. Cleared back to null at the
+    // end of the probe (and on abort / exception).
+    internal static bool? CpuPatchesProbeOverride;
+
+    internal static bool CpuPatchesActive
+        => CpuPatchesProbeOverride ?? (_cpuPatchesActiveRaw && OptimizationsActive);
 
     private static float _cpuGateTimer;
     private static float _cpuGateAccum;

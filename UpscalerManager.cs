@@ -401,7 +401,17 @@ internal class UpscalerManager : MonoBehaviour
             }
         }
 
+        // F7 launches the per-optimization savings probe — for each toggleable opt,
+        // sample baseline / sample with-opt-off / restore. Output goes to clipboard
+        // + f7_individual_savings.txt. Used to fill the Beast/Crap PC tables in the
+        // studio pitch doc. Runs in any scene (including main menu) since the toggles
+        // are scene-relative not load-relative.
         if (Input.GetKeyDown(KeyCode.F7) && Settings.ToggleKey != KeyCode.F7)
+            IndividualOptProbe.Toggle();
+
+        // F8 — light diagnostics dump (was on F7 historically, moved to make room
+        // for the individual-opt probe)
+        if (Input.GetKeyDown(KeyCode.F8) && Settings.ToggleKey != KeyCode.F8)
             LightDiagnostics.Run();
 
         // F9 launches the full diagnostic sweep when the user has opted in via
