@@ -80,7 +80,7 @@ static class SceneOptimizer
 
     // per-player avatar renderers, plus force updateWhenOffscreen=false on SkinnedMesh
     // so Unity stops paying bone-matrix updates on invisible players
-    internal static void CapturePlayerAvatarRenderers()
+    static void CapturePlayerAvatarRenderers()
     {
         RestorePlayerAvatarRenderers();
         _playerAvatarRenderers.Clear();
@@ -132,7 +132,7 @@ static class SceneOptimizer
         }
     }
 
-    internal static void RestorePlayerAvatarRenderers()
+    static void RestorePlayerAvatarRenderers()
     {
         foreach (var kv in _playerAvatarShadowOrig)
             if (kv.Key != null) kv.Key.shadowCastingMode = kv.Value;
@@ -520,7 +520,7 @@ static class SceneOptimizer
         }
     }
 
-    internal static void ApplyZeroIntensityShadows(bool enable)
+    static void ApplyZeroIntensityShadows(bool enable)
     {
         foreach (var kv in _zeroIntensityOrig)
             if (kv.Key != null) kv.Key.shadows = kv.Value;
@@ -576,7 +576,7 @@ static class SceneOptimizer
     // off-screen and non-emitting systems still tick every frame unless culling is explicit.
     // a typical R.E.P.O. level has 230+ systems registered and 1 emitting — the other ~229
     // are pure overhead until this runs.
-    internal static void ApplyParticleAutoCull(bool enable)
+    static void ApplyParticleAutoCull(bool enable)
     {
         foreach (var kv in _particleCullOrig)
         {
@@ -605,7 +605,7 @@ static class SceneOptimizer
             Plugin.Log.LogDebug($"particle auto-cull: enabled on {count} systems");
     }
 
-    internal static void ApplyGpuInstancing(bool enable)
+    static void ApplyGpuInstancing(bool enable)
     {
         foreach (var kv in _gpuInstancingOrig)
             if (kv.Key != null) kv.Key.enableInstancing = kv.Value;
@@ -1133,7 +1133,7 @@ static class SkipGrabberGetComponent
 {
     static bool Prefix(PhysGrabber __instance, Color mainColor, Color emissionColor)
     {
-        if (!Settings.GcPatchesActive) return true;
+        if (!Settings.ModEnabled) return true;
         return !GrabberComponentCache.TryApplyColor(__instance, mainColor, emissionColor);
     }
 }
