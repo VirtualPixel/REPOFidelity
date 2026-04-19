@@ -57,7 +57,7 @@ internal static class QualityPatch
 
     internal static int ShadowResOrigCount => _shadowResOrig.Count;
 
-    private static void RestoreRangeTieredLightShadows()
+    internal static void RestoreRangeTieredLightShadows()
     {
         foreach (var kv in _shadowResOrig)
             if (kv.Key != null) kv.Key.shadowCustomResolution = kv.Value;
@@ -288,7 +288,7 @@ internal static class QualityPatch
     // resolution buckets are: <5m→256, 5-10m→512, 10-20m→1024, >20m→2048.
     // Flashlight gets 4096 on Ultra only (player-focused spotlight, keep pristine).
     // Potato caps the top bucket to 1024 for extra savings.
-    private static void ApplyRangeTieredLightShadows()
+    internal static void ApplyRangeTieredLightShadows()
     {
         // restore-before-apply — needed so F10 / F11 toggle and preset changes don't
         // layer clamps on top of clamps and drift away from the true original

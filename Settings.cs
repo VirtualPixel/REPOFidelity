@@ -189,14 +189,20 @@ internal static class Settings
     // the public getter also masks on OptimizationsActive so F11 propagates
     private static bool _cpuPatchesActiveRaw = true;
 
-    // Probe override for the F7 individual-optimization sweep — when set, takes
-    // precedence over the auto-gate so the probe can deterministically force the
-    // state of CPU patches for a measurement window. Cleared back to null at the
+    // Probe overrides for the F7 individual-optimization sweep — when set, take
+    // precedence over the normal gate so the probe can deterministically force the
+    // state of a feature for a measurement window. Cleared back to null at the
     // end of the probe (and on abort / exception).
     internal static bool? CpuPatchesProbeOverride;
+    internal static bool? GcPatchesProbeOverride;
 
     internal static bool CpuPatchesActive
         => CpuPatchesProbeOverride ?? (_cpuPatchesActiveRaw && OptimizationsActive);
+
+    // Gates the always-on PhysGrabber NonAlloc + ColorStateSetColor cache patches
+    // (S6/S7/S8 in the studio pitch). True unless the F7 probe forces it off.
+    internal static bool GcPatchesActive
+        => GcPatchesProbeOverride ?? ModEnabled;
 
     private static float _cpuGateTimer;
     private static float _cpuGateAccum;

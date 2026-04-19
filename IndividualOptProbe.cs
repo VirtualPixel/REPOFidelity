@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using REPOFidelity.Patches;
 using UnityEngine;
 
 namespace REPOFidelity;
@@ -72,11 +73,14 @@ internal class IndividualOptProbe : MonoBehaviour
     private static void RestoreAll()
     {
         Settings.CpuPatchesProbeOverride = null;
+        Settings.GcPatchesProbeOverride = null;
         Settings.AllocationFixesEnabled = true;
-        // Perf flags are restored by their per-toggle snapshot/restore in the loop.
-        // If the loop didn't reach the restore for a flag, that flag stays where
-        // the loop left it — accept that risk in exchange for not corrupting the
-        // user's settings on a graceful path.
+        // Re-apply scene-time mutations the F7 sweep may have inverted (GPU instancing,
+        // particle culling, zero-intensity shadows, range-tiered shadow res, player
+        // avatar shadow capture). Calling SceneOptimizer.Apply re-runs all of them
+        // honouring current Settings, which is the right state to leave the scene in.
+        SceneOptimizer.Apply();
+        QualityPatch.ApplyRangeTieredLightShadows();
     }
 
     private readonly struct OptEntry
@@ -156,6 +160,49 @@ internal class IndividualOptProbe : MonoBehaviour
             () => Settings.PerfPointLightShadows,
             () => Settings.PerfPointLightShadows = 0,
             v => Settings.PerfPointLightShadows = v),
+
+        new OptEntry("S6/S7/S8 (PhysGrabber GC NonAlloc + color cache)",
+            "RayCheck NonAlloc discovery, ForceGrabPhysObject NonAlloc, ColorStateSetColor cache",
+            () => Settings.GcPatchesProbeOverride.HasValue ? (Settings.GcPatchesProbeOverride.Value ? 1 : 0) : -1,
+            () => Settings.GcPatchesProbeOverride = false,
+            v => Settings.GcPatchesProbeOverride = v == -1 ? null : (bool?)(v == 1)),
+
+        new OptEntry("S14 (GPU instancing auto-enable on materials)",
+            "Scene scan to set enableInstancing=true on every shared material",
+            // Snapshot is fixed: applied state. Toggle inverts via direct call.
+            () => 1,
+            () => SceneOptimizer.ApplyGpuInstancing(false),
+            _ => SceneOptimizer.ApplyGpuInstancing(true)),
+
+        new OptEntry("S13 (ParticleSystem.cullingMode = Automatic)",
+            "Force every particle system to Automatic culling (off-screen / non-emitting skip Update)",
+            () => 1,
+            () => SceneOptimizer.ApplyParticleAutoCull(false),
+            _ => SceneOptimizer.ApplyParticleAutoCull(true)),
+
+        new OptEntry("S19 (zero-intensity light shadow disable)",
+            "Lights with intensity == 0 (mines, off lights) skip shadow casting",
+            () => 1,
+            () => SceneOptimizer.ApplyZeroIntensityShadows(false),
+            _ => SceneOptimizer.ApplyZeroIntensityShadows(true)),
+
+        new OptEntry("S15 (range-tiered shadow map resolution)",
+            "Per-light shadowCustomResolution bucketed by range (256/512/1024/2048)",
+            () => 1,
+            () => QualityPatch.RestoreRangeTieredLightShadows(),
+            _ => QualityPatch.ApplyRangeTieredLightShadows()),
+
+        new OptEntry("S12 + S22 (player avatar updateWhenOffscreen + shadow distance)",
+            "SkinnedMeshRenderer.updateWhenOffscreen=false + per-frame shadowCastingMode toggle past fog",
+            () => 1,
+            () => SceneOptimizer.RestorePlayerAvatarRenderers(),
+            _ => SceneOptimizer.CapturePlayerAvatarRenderers()),
+
+        new OptEntry("A8 (small light shadow budget with fade)",
+            "Closest-N small point lights at full strength, rest fade out smoothly (per-preset cap)",
+            () => Settings.ShadowBudget,
+            () => Settings.ShadowBudget = 0,
+            v => Settings.ShadowBudget = v),
     };
 
     private IEnumerator RunSafe()

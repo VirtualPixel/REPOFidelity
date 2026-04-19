@@ -47,7 +47,7 @@ static class RayCheckDiscoveryPatch
     // this isn't perfect but it's safe — grab and climb logic is untouched.
     static void Prefix(PhysGrabber __instance, bool _grab)
     {
-        if (!Settings.ModEnabled) return;
+        if (!Settings.GcPatchesActive) return;
         if (_grab) return;
         if (__instance.playerAvatar.isDisabled || __instance.playerAvatar.deadSet) return;
 
@@ -116,7 +116,7 @@ static class ForceGrabPatch
 {
     static bool Prefix(PhysGrabber __instance, PhysGrabObject _physObject)
     {
-        if (!Settings.ModEnabled) return true;
+        if (!Settings.GcPatchesActive) return true;
         if (__instance.playerCamera == null || _physObject == null) return true;
         Vector3 dir = _physObject.midPoint - __instance.playerCamera.transform.position;
         int count = Physics.RaycastNonAlloc(__instance.playerCamera.transform.position,

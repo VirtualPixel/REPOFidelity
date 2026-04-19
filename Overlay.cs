@@ -105,6 +105,20 @@ internal static class Overlay
             return;
         }
 
+        // F7 individual-opt probe — same suppress-everything-else treatment
+        if (IndividualOptProbe.Running || !string.IsNullOrEmpty(IndividualOptProbe.Status))
+        {
+            _lines.Add(new LineData(IndividualOptProbe.Status, Col.Info));
+            if (IndividualOptProbe.Running)
+            {
+                _showProgress = true;
+                _progress = IndividualOptProbe.Progress;
+                _progressColor = new Color(0.95f, 0.7f, 0.4f);
+            }
+            _nativeActive = TryUpdateNative();
+            return;
+        }
+
         if (!Settings.ModEnabled)
             _lines.Add(new LineData($"FIDELITY OFF ({Settings.ToggleKey})  {_smoothFps:F0} FPS  {_smoothMs:F1}ms", Col.Warn));
         else if (!Settings.OptimizationsEnabled)
