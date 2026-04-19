@@ -67,6 +67,18 @@ internal class IndividualOptProbe : MonoBehaviour
         Plugin.Log.LogInfo("F7 individual-opt probe cancelled");
     }
 
+    // Keep the game's input-disable timer topped up while the probe runs — the
+    // player must not walk around / move the camera mid-measurement. F7 still
+    // aborts through raw Input.GetKeyDown so the disable doesn't trap the player.
+    // GameDirector.SetDisableInput decays to false within ~1s of the last call,
+    // so no explicit cleanup is needed on Abort / natural finish.
+    void Update()
+    {
+        if (!Running) return;
+        if (GameDirector.instance != null)
+            GameDirector.instance.SetDisableInput(1f);
+    }
+
     // Defensive restore — called from abort / exception / natural finish.
     // Each toggle has its own restore in the Toggle struct, but if we're partway
     // through and crash, this one-shot resets everything to "as if probe never ran".
