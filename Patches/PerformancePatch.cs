@@ -212,6 +212,15 @@ static class SceneOptimizer
         {
             if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
             if (r.bounds.size.magnitude >= boundsCap) continue;
+            // v0.4.0-tester: our LevelGenerator.GenerateDone + PlayerAvatar.Start postfixes can fire
+            // before PlayerAvatarVisuals.Update runs its first ApplyLocalVisibilityBody, so local-avatar
+            // MeshRenderers (shadow-proxy flashlight, head/body proxies) are still in prefab state —
+            // typically shadowCastingMode = On. Capturing that and later stamping it back via Restore
+            // would leave the proxies rendering visibly, because ApplyLocalVisibility's early-exit gate
+            // never re-asserts ShadowsOnly once its localVisibility field already matches. Game owns
+            // this state; stay out of it.
+            var pa = r.GetComponentInParent<PlayerAvatar>();
+            if (pa != null && pa.isLocal) continue;
             _distanceCullWatchlist.Add(r);
             _distanceCullOrig[r] = r.shadowCastingMode;
             count++;
@@ -683,6 +692,13 @@ static class SceneOptimizer
             if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
             if (r.bounds.size.magnitude < sizeCap)
             {
+                // v0.4.0-tester: same timing risk as CaptureDistanceCullWatchlist — our Apply()
+                // can run during PlayerAvatar.Start before PlayerAvatarVisuals.Update cascades
+                // the canonical ShadowsOnly + PlayerVisualsLocal layer onto local-avatar children,
+                // so capturing here during the prefab-state window saves shadowCastingMode = On
+                // and the game's early-exit gate later prevents re-assertion.
+                var pa = r.GetComponentInParent<PlayerAvatar>();
+                if (pa != null && pa.isLocal) continue;
                 _tinyRendererOrig[r] = r.shadowCastingMode;
                 r.shadowCastingMode = ShadowCastingMode.Off;
                 count++;
