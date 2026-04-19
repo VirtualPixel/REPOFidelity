@@ -93,6 +93,12 @@ static class SceneOptimizer
         int smrAudit = 0;
         foreach (var avatar in Object.FindObjectsOfType<PlayerAvatar>())
         {
+            // v0.4.0-tester: PlayerAvatarVisuals.localVisibility dynamically drives shadowCastingMode
+            // on the local avatar's renderers every frame (ShadowsOnly normally, On during showSelfOverride).
+            // ApplyLocalVisibility early-exits when localVisibility matches the pending mode, so any stale
+            // value we write via Restore sticks until the game's state actually changes — which manifests
+            // as the local body mesh rendering visible after an F10 toggle. Let the game own local avatars.
+            if (avatar.isLocal) continue;
             foreach (var r in avatar.GetComponentsInChildren<Renderer>(true))
             {
                 if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
