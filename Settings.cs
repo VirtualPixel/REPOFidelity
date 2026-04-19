@@ -165,6 +165,11 @@ internal static class Settings
     // skip — the mod's visual features (upscaler, AA) stay active, only the
     // performance layer reverts to vanilla. Session-only, defaults on.
     internal static bool OptimizationsEnabled = true;
+
+    // Kill switch for the allocation patches in Patches/AllocationFixes.cs. Session-only.
+    // Probe flips it for the A/B baseline so it can isolate the patches without touching
+    // SceneOptimizer state.
+    internal static bool AllocationFixesEnabled = true;
     internal static bool OptimizationsActive => ModEnabled && OptimizationsEnabled;
 
     internal static bool CpuBound => _autoTune.IsStale() || _autoTune.cpuBound;
@@ -183,6 +188,7 @@ internal static class Settings
     // auto-gate driven by rolling frame time (when CpuPatchMode == Auto / -1);
     // the public getter also masks on OptimizationsActive so F11 propagates
     private static bool _cpuPatchesActiveRaw = true;
+
     internal static bool CpuPatchesActive => _cpuPatchesActiveRaw && OptimizationsActive;
 
     private static float _cpuGateTimer;

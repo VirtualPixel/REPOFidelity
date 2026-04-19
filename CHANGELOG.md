@@ -1,3 +1,9 @@
+## 1.5.2
+
+- Fixed: menu/preview avatars (pause-menu portrait, expression wheel) had their cosmetic Updates (PlayerExpression, PlayerAvatarEyelids, AnimNoise, FlashlightLightAim/Tilt, PlayerDeathEffects, PlayerReviveEffects, OverchargeVisuals) incorrectly throttled by the per-player fog-distance gate from 1.4.0. Preview avatars sit at world positions like `(0,0,-2000)` — far enough from `Camera.main` that the gate flagged them past-fog and skipped their Updates, freezing the preview's expressions / eyelids / bone poses. Surfaced as a regression at low framerate (where the cpuPatches auto-gate flips on most often). Throttle now early-bails for any transform without a `PlayerAvatar` in its parent chain
+- PhysGrabObjectGrabArea.Update was calling `playerGrabbers.ToList()` every frame even when nothing was actively grabbing the object — that's an empty List per instance per frame, all gen0 garbage. Added a fast-path that skips the entire Update when both `playerGrabbing` and `listOfAllGrabbers` are empty. Per-call cost dropped from ~0.6 µs to ~0.2 µs
+- AudioListenerFollow.Update was rebuilding `LayerMask.GetMask(new string[] { "LowPassTrigger" })` and allocating a Collider[] from OverlapSphere on every 15Hz tick. Layer mask cached statically, OverlapSphere swapped to NonAlloc
+
 ## 1.5.1
 
 - Flashlight shadow budget tick was calling `Object.FindObjectsOfType<FlashlightController>()` every 100ms — on a 7000+ object scene that's ~9ms per tick and the source of a lot of 0.1% low spikes. Cached the controller list on scene load / player spawn; per-tick cost dropped from 0.93ms/frame amortized to 0.001ms/frame on a large map. Worst-frame times dropped ~15ms in testing

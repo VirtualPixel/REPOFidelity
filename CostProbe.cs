@@ -87,6 +87,7 @@ internal class CostProbe : MonoBehaviour
             Instance._camTimings.Clear();
             Instance.RestoreFrameLimit();
             Instance.RestorePresetRevertSuppression();
+            Settings.AllocationFixesEnabled = true;
         }
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
@@ -168,6 +169,7 @@ internal class CostProbe : MonoBehaviour
                 Camera.onPostRender -= OnCamPost;
                 RestoreFrameLimit();
                 RestorePresetRevertSuppression();
+                Settings.AllocationFixesEnabled = true;
                 Running = false;
                 Status = "ERROR";
                 yield break;
@@ -356,6 +358,67 @@ internal class CostProbe : MonoBehaviour
         long monoDeltaKb = (monoEnd - monoStart) / 1024;
         float gcPerSec = gen0Delta / (float)SampleSeconds;
         report.AppendLine($"GC:           gen0={gen0Delta} gen1={gen1Delta} over {SampleSeconds:F0}s  ({gcPerSec:F2}/s)  mono Δ={monoDeltaKb:+0;-0} KB");
+        report.AppendLine();
+
+        // ---- A/B compare: alternating patches on/off, same scene ----
+        // Temporary diagnostic. Main baseline above was sample #1 (ON). Run three more
+        // in OFF-ON-OFF order, average each side, surface cache-warmup order bias via
+        // ON#2 vs ON#1.
+        var abMs = new float[4] { baseline.AvgMs, 0, 0, 0 };
+        var abFps = new float[4] { baseline.AvgFps, 0, 0, 0 };
+        var abWorst = new float[4] { worstFrameMs, 0, 0, 0 };
+        var abGen1Arr = new int[4] { gen1Delta, 0, 0, 0 };
+        var abMonoArr = new long[4] { monoDeltaKb, 0, 0, 0 };
+        bool[] abOn = { true, false, true, false };
+
+        for (int s = 1; s < 4; s++)
+        {
+            Status = $"A/B sample {s + 1}/4 (patches {(abOn[s] ? "ON" : "OFF")})";
+            Settings.AllocationFixesEnabled = abOn[s];
+            yield return new WaitForSeconds(SettleSeconds);
+
+            int g1Start = System.GC.CollectionCount(1);
+            long mStart = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
+            float worst = 0f;
+            var fr = new List<float>(2048);
+            float el = 0f;
+            while (el < SampleSeconds)
+            {
+                float dt = Time.unscaledDeltaTime;
+                fr.Add(dt);
+                el += dt;
+                float ms = dt * 1000f;
+                if (ms > worst) worst = ms;
+                Progress = 0.25f + 0.04f * ((s - 1) + el / SampleSeconds);
+                yield return null;
+            }
+            var samp = ComputeSample(fr);
+            abMs[s] = samp.AvgMs;
+            abFps[s] = samp.AvgFps;
+            abWorst[s] = worst;
+            abGen1Arr[s] = System.GC.CollectionCount(1) - g1Start;
+            abMonoArr[s] = (UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() - mStart) / 1024;
+        }
+        Settings.AllocationFixesEnabled = true;
+
+        float onAvg = (abMs[0] + abMs[2]) / 2f;
+        float offAvg = (abMs[1] + abMs[3]) / 2f;
+        float onWorstAvg = (abWorst[0] + abWorst[2]) / 2f;
+        float offWorstAvg = (abWorst[1] + abWorst[3]) / 2f;
+        long onMonoAvg = (abMonoArr[0] + abMonoArr[2]) / 2;
+        long offMonoAvg = (abMonoArr[1] + abMonoArr[3]) / 2;
+        float orderBias = abMs[2] - abMs[0];
+
+        report.AppendLine("== A/B compare (allocation patches on/off, ON-OFF-ON-OFF, same scene) ==");
+        for (int s = 0; s < 4; s++)
+        {
+            string label = abOn[s] ? "ON " : "OFF";
+            report.AppendLine($"  #{s + 1} {label}:  {abMs[s]:F2} ms ({abFps[s]:F0} fps)  worst={abWorst[s]:F1}  gen1={abGen1Arr[s]}  mono Δ={abMonoArr[s]:+0;-0} KB");
+        }
+        report.AppendLine($"  ON  avg :  {onAvg:F2} ms   worst {onWorstAvg:F1}   mono {onMonoAvg:+0;-0} KB");
+        report.AppendLine($"  OFF avg :  {offAvg:F2} ms   worst {offWorstAvg:F1}   mono {offMonoAvg:+0;-0} KB");
+        report.AppendLine($"  Patches effect (OFF − ON): {(offAvg - onAvg):+0.00;-0.00} ms   worst {(offWorstAvg - onWorstAvg):+0.0;-0.0} ms   mono {(offMonoAvg - onMonoAvg):+0;-0} KB  (positive = patches helped)");
+        report.AppendLine($"  Order bias check (ON#2 − ON#1): {orderBias:+0.00;-0.00} ms  (large negative = consistent second-window-faster bias, treat OFF − ON delta with caution)");
         report.AppendLine();
 
         // ---- Every profiler marker, ranked ----
