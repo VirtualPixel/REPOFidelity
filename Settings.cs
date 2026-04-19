@@ -165,6 +165,12 @@ internal static class Settings
     // skip — the mod's visual features (upscaler, AA) stay active, only the
     // performance layer reverts to vanilla. Session-only, defaults on.
     internal static bool OptimizationsEnabled = true;
+
+    // Independent kill switch for the per-frame allocation patches in
+    // Patches/AllocationFixes.cs. Defaults on. Probe flips it during the A/B
+    // baseline so we can isolate their effect on the same procedural map without
+    // touching SceneOptimizer state. Session-only, no settings.json persistence.
+    internal static bool AllocationFixesEnabled = true;
     internal static bool OptimizationsActive => ModEnabled && OptimizationsEnabled;
 
     internal static bool CpuBound => _autoTune.IsStale() || _autoTune.cpuBound;

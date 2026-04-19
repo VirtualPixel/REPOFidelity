@@ -24,7 +24,7 @@ static class GrabAreaIdleSkipPatch
 {
     static bool Prefix(PhysGrabObjectGrabArea __instance)
     {
-        if (!Settings.ModEnabled) return true;
+        if (!Settings.ModEnabled || !Settings.AllocationFixesEnabled) return true;
 
         // vanilla bails immediately for non-master clients — match that early-out
         if (!SemiFunc.IsMasterClientOrSingleplayer()) return false;
@@ -61,7 +61,7 @@ static class AudioLowPassNonAllocPatch
 
     static bool Prefix(AudioLowPassLogic __instance)
     {
-        if (!Settings.ModEnabled) return true;
+        if (!Settings.ModEnabled || !Settings.AllocationFixesEnabled) return true;
 
         __instance.LowPass = true;
         bool spectateDeath = SpectateCamera.instance &&
@@ -189,7 +189,7 @@ static class AudioListenerFollowNonAllocPatch
 
     static bool Prefix(AudioListenerFollow __instance)
     {
-        if (!Settings.ModEnabled) return true;
+        if (!Settings.ModEnabled || !Settings.AllocationFixesEnabled) return true;
         if (!__instance.TargetPositionTransform) return false;
 
         bool deathCam = SpectateCamera.instance &&

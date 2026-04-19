@@ -87,6 +87,7 @@ internal class CostProbe : MonoBehaviour
             Instance._camTimings.Clear();
             Instance.RestoreFrameLimit();
             Instance.RestorePresetRevertSuppression();
+            Settings.AllocationFixesEnabled = true;
         }
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
@@ -168,6 +169,7 @@ internal class CostProbe : MonoBehaviour
                 Camera.onPostRender -= OnCamPost;
                 RestoreFrameLimit();
                 RestorePresetRevertSuppression();
+                Settings.AllocationFixesEnabled = true;
                 Running = false;
                 Status = "ERROR";
                 yield break;
@@ -356,6 +358,48 @@ internal class CostProbe : MonoBehaviour
         long monoDeltaKb = (monoEnd - monoStart) / 1024;
         float gcPerSec = gen0Delta / (float)SampleSeconds;
         report.AppendLine($"GC:           gen0={gen0Delta} gen1={gen1Delta} over {SampleSeconds:F0}s  ({gcPerSec:F2}/s)  mono Δ={monoDeltaKb:+0;-0} KB");
+        report.AppendLine();
+
+        // ---- A/B comparison: same scene, allocation patches off vs on ----
+        // Temporary diagnostic: flip Settings.AllocationFixesEnabled, sample again,
+        // restore. The previous baseline (above) already captured "patches on" data,
+        // so we only need the inverse half here. Same procedural map → variance
+        // factored out, the delta is purely the patches' contribution.
+        Status = "Sampling baseline with allocation patches OFF (A/B compare)";
+        Settings.AllocationFixesEnabled = false;
+        yield return new WaitForSeconds(SettleSeconds);
+
+        int abGen0Start = System.GC.CollectionCount(0);
+        int abGen1Start = System.GC.CollectionCount(1);
+        long abMonoStart = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
+        float abWorstMs = 0f;
+        var abFrames = new List<float>(2048);
+        float abElapsed = 0f;
+        while (abElapsed < SampleSeconds)
+        {
+            float dt = Time.unscaledDeltaTime;
+            abFrames.Add(dt);
+            abElapsed += dt;
+            float frameMs = dt * 1000f;
+            if (frameMs > abWorstMs) abWorstMs = frameMs;
+            Progress = 0.25f + 0.05f * (abElapsed / SampleSeconds);
+            yield return null;
+        }
+        Settings.AllocationFixesEnabled = true;
+
+        var abSample = ComputeSample(abFrames);
+        int abGen0 = System.GC.CollectionCount(0) - abGen0Start;
+        int abGen1 = System.GC.CollectionCount(1) - abGen1Start;
+        long abMonoKb = (UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() - abMonoStart) / 1024;
+
+        report.AppendLine("== A/B compare (allocation patches on vs off, same scene) ==");
+        report.AppendLine($"  patches ON :  {baseline.AvgMs:F2} ms ({baseline.AvgFps:F0} fps)  worstFrame={worstFrameMs:F1}  gen1={gen1Delta}  mono Δ={monoDeltaKb:+0;-0} KB");
+        report.AppendLine($"  patches OFF:  {abSample.AvgMs:F2} ms ({abSample.AvgFps:F0} fps)  worstFrame={abWorstMs:F1}  gen1={abGen1}  mono Δ={abMonoKb:+0;-0} KB");
+        float dMs = abSample.AvgMs - baseline.AvgMs;
+        float dWorst = abWorstMs - worstFrameMs;
+        long dMono = abMonoKb - monoDeltaKb;
+        int dGen1 = abGen1 - gen1Delta;
+        report.AppendLine($"  delta (off−on): {dMs:+0.00;-0.00} ms   worst {dWorst:+0.0;-0.0} ms   gen1 {dGen1:+0;-0}   mono {dMono:+0;-0} KB  (positive = patches helped)");
         report.AppendLine();
 
         // ---- Every profiler marker, ranked ----
