@@ -71,6 +71,7 @@ static class SceneOptimizer
         CaptureDistanceCullWatchlist();
         CapturePlayerAvatarRenderers();
         CaptureFlashlightControllers();
+        CaptureShadowBudgetWatchlist();
 
         // synchronous flashlight-budget revert so F10 diagnostic sees OK immediately
         // (tick-based restore would lag by up to 100ms behind the post-disable log)
@@ -416,6 +417,10 @@ static class SceneOptimizer
     // closest N to the camera get shadows with faded strength transitions.
     // ---
 
+    // dim short-range point lights (item glows, valuables, props). Captured once
+    // per level so the 100ms tick can iterate a cached list instead of walking
+    // every Light in the scene — the scene-wide scan allocates on busy maps.
+    static readonly List<Light> _shadowBudgetWatchlist = new();
     static readonly List<(Light light, float dist)> _budgetCandidates = new();
     static readonly Dictionary<int, float> _shadowStrengths = new();
     const float FadeSpeed = 3f;
@@ -423,6 +428,21 @@ static class SceneOptimizer
     internal static void ResetShadowBudget()
     {
         _shadowStrengths.Clear();
+    }
+
+    static void CaptureShadowBudgetWatchlist()
+    {
+        _shadowBudgetWatchlist.Clear();
+        if (!Settings.OptimizationsActive) return;
+
+        foreach (var light in Object.FindObjectsOfType<Light>())
+        {
+            if (light.type != LightType.Point) continue;
+            if (light.intensity >= 1f || light.range >= 5f) continue;
+            _shadowBudgetWatchlist.Add(light);
+        }
+        if (_shadowBudgetWatchlist.Count > 0)
+            Plugin.Log.LogDebug($"shadow budget watchlist: {_shadowBudgetWatchlist.Count} item glow lights");
     }
 
     internal static void UpdateShadowBudget(Camera? cam)
@@ -449,14 +469,13 @@ static class SceneOptimizer
 
         _budgetCandidates.Clear();
 
-        foreach (var light in Object.FindObjectsOfType<Light>())
+        // iterate cached watchlist, drop destroyed refs in place
+        for (int i = _shadowBudgetWatchlist.Count - 1; i >= 0; i--)
         {
+            var light = _shadowBudgetWatchlist[i];
+            if (light == null) { _shadowBudgetWatchlist.RemoveAt(i); continue; }
             if (!light.enabled || !light.gameObject.activeInHierarchy) continue;
             if (light.intensity <= 0f) continue;
-
-            // only manage item glow lights — skip infrastructure
-            if (light.type != LightType.Point || light.intensity >= 1f || light.range >= 5f)
-                continue;
 
             float dist = Vector3.Distance(camPos, light.transform.position);
 
@@ -484,11 +503,11 @@ static class SceneOptimizer
     static void RestoreManagedLights()
     {
         if (_shadowStrengths.Count == 0) return;
-        foreach (var light in Object.FindObjectsOfType<Light>())
+        for (int i = _shadowBudgetWatchlist.Count - 1; i >= 0; i--)
         {
+            var light = _shadowBudgetWatchlist[i];
+            if (light == null) { _shadowBudgetWatchlist.RemoveAt(i); continue; }
             if (!light.enabled || !light.gameObject.activeInHierarchy) continue;
-            if (light.type != LightType.Point || light.intensity >= 1f || light.range >= 5f)
-                continue;
             light.shadows = LightShadows.Soft;
             light.shadowStrength = 1f;
         }
