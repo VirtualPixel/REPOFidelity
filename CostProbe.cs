@@ -360,11 +360,10 @@ internal class CostProbe : MonoBehaviour
         report.AppendLine($"GC:           gen0={gen0Delta} gen1={gen1Delta} over {SampleSeconds:F0}s  ({gcPerSec:F2}/s)  mono Δ={monoDeltaKb:+0;-0} KB");
         report.AppendLine();
 
-        // ---- A/B comparison: same scene, alternating patches on/off ----
-        // Temporary diagnostic: the main baseline (above) was sample #1 with patches ON.
-        // Now run three more samples in OFF-ON-OFF order so we have two of each, and
-        // can detect second-window-faster order bias by comparing ON#1 vs ON#2.
-        // Average over ON / OFF gives a more robust delta than a single pair.
+        // ---- A/B compare: alternating patches on/off, same scene ----
+        // Temporary diagnostic. Main baseline above was sample #1 (ON). Run three more
+        // in OFF-ON-OFF order, average each side, surface cache-warmup order bias via
+        // ON#2 vs ON#1.
         var abMs = new float[4] { baseline.AvgMs, 0, 0, 0 };
         var abFps = new float[4] { baseline.AvgFps, 0, 0, 0 };
         var abWorst = new float[4] { worstFrameMs, 0, 0, 0 };

@@ -358,6 +358,7 @@ static class ClearCpuCachesOnLevel
         SemiFuncCachePatch.ClearCache();
         EnemyDirectorThrottlePatch.ResetCache();
         PlayerCosmeticThrottle.ResetCamera();
+        PlayerCosmeticThrottle.ClearAvatarCache();
     }
 }
 
@@ -369,9 +370,24 @@ static class PlayerCosmeticThrottle
 {
     static Camera? _cam;
 
+    // Per-transform "is this on a real PlayerAvatar in the world" cache.
+    // PlayerAvatarMenu previews (pause-menu portrait, expression wheel) live at world
+    // positions like (0,0,-2000) — far enough from Camera.main that the distance gate
+    // would falsely throttle them and freeze the preview's blendshapes / eyelids.
+    // World avatars have a PlayerAvatar in their parent chain; menu previews don't.
+    static readonly Dictionary<Transform, bool> _isWorldAvatar = new();
+
     internal static bool ShouldSkip(Transform t)
     {
         if (!Settings.CpuPatchesActive) return false;
+
+        if (!_isWorldAvatar.TryGetValue(t, out bool isWorld))
+        {
+            isWorld = t.GetComponentInParent<PlayerAvatar>() != null;
+            _isWorldAvatar[t] = isWorld;
+        }
+        if (!isWorld) return false;
+
         float fogEnd = Settings.ResolvedEffectiveFogEnd;
         if (fogEnd <= 0f) return false;
 
@@ -385,6 +401,7 @@ static class PlayerCosmeticThrottle
     }
 
     internal static void ResetCamera() => _cam = null;
+    internal static void ClearAvatarCache() => _isWorldAvatar.Clear();
 }
 
 [HarmonyPatch(typeof(PlayerAvatarEyelids), "Update")]

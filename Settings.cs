@@ -166,10 +166,9 @@ internal static class Settings
     // performance layer reverts to vanilla. Session-only, defaults on.
     internal static bool OptimizationsEnabled = true;
 
-    // Independent kill switch for the per-frame allocation patches in
-    // Patches/AllocationFixes.cs. Defaults on. Probe flips it during the A/B
-    // baseline so we can isolate their effect on the same procedural map without
-    // touching SceneOptimizer state. Session-only, no settings.json persistence.
+    // Kill switch for the allocation patches in Patches/AllocationFixes.cs. Session-only.
+    // Probe flips it for the A/B baseline so it can isolate the patches without touching
+    // SceneOptimizer state.
     internal static bool AllocationFixesEnabled = true;
     internal static bool OptimizationsActive => ModEnabled && OptimizationsEnabled;
 

@@ -4,25 +4,17 @@ using UnityEngine;
 namespace REPOFidelity.Patches;
 
 // ---
-// Per-frame allocations from gameplay scripts that aren't gated by CpuPatchesActive.
-// These are pure NonAlloc swaps + idle-skip fast paths — no behavior change, so they
-// run as long as the mod is on, regardless of the CPU-patch auto-gate.
-//
-// Note: the AudioLowPassLogic.CheckLogic full-method-replacement was tried in an
-// earlier 1.5.2 iteration and reverted. Even though it removed real allocations,
-// Harmony Prefix dispatch overhead on a 4Hz × 170-instance call site exceeded the
-// allocation savings on fast CPUs (5090/9950x A/B sample showed -0.14ms with the
-// patch). NonAlloc swaps via Harmony are only a net win when the original method
-// is expensive enough to amortize the dispatch — CheckLogic is too cheap per call.
+// Per-frame allocation cuts in gameplay scripts. Pure NonAlloc swaps and idle-skip
+// fast paths — no behavior change, so they run as long as the mod is on regardless
+// of the CpuPatchesActive auto-gate.
 // ---
 
 
 // PhysGrabObjectGrabArea.Update calls playerGrabbers.ToList() every frame to allow
 // safe iteration over the grabber list while modifying others. When no one's grabbing,
-// the .ToList() still allocates an empty List per instance per frame — 11 instances
-// in a typical scene is ~660 throwaway lists/sec straight into gen0.
-// Fast-path: skip the whole Update when this object has no grabbers and no stale
-// grabber bookkeeping. The original cleanup loops have nothing to do in that state.
+// the .ToList() still allocates an empty List per instance per frame. Skip the whole
+// Update when this object has no grabbers and no stale grabber bookkeeping — the
+// original cleanup loops have nothing to do in that state.
 [HarmonyPatch(typeof(PhysGrabObjectGrabArea), "Update")]
 static class GrabAreaIdleSkipPatch
 {
@@ -46,10 +38,9 @@ static class GrabAreaIdleSkipPatch
 }
 
 
-// AudioListenerFollow runs once per frame — single instance, but allocates a
-// `new string[] { "LowPassTrigger" }` for LayerMask.GetMask plus a Collider[]
-// from OverlapSphere on every check tick (15Hz). Pennies on the dollar individually
-// but live for the whole session, so a constant gen0 drip.
+// AudioListenerFollow.Update rebuilds LayerMask.GetMask(new string[] { "LowPassTrigger" })
+// and allocates a Collider[] from OverlapSphere on every 15Hz tick. Single instance,
+// but constant for the whole session. Cache the mask, swap OverlapSphere to NonAlloc.
 [HarmonyPatch(typeof(AudioListenerFollow), "Update")]
 static class AudioListenerFollowNonAllocPatch
 {
