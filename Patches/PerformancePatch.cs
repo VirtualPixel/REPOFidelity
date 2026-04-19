@@ -31,16 +31,6 @@ static class ItemLightShadowPatch
     }
 }
 
-[HarmonyPatch(typeof(FlashlightController), "Start")]
-static class FlashlightShadowPatch
-{
-    static void Postfix(FlashlightController __instance)
-    {
-        if (Settings.ShouldOptimize(Settings.PerfOpt.ItemLightShadows) && __instance.spotlight != null)
-            __instance.spotlight.shadows = LightShadows.None;
-    }
-}
-
 // spectate camera forces shadow distance to 90m — always cap this,
 // it's wasteful on every preset for a zoomed death cam
 // v0.4.0-tester: SpectateCamera's state-machine tick moved from Update() to
@@ -65,6 +55,7 @@ static class SceneOptimizer
 {
     internal static void Apply()
     {
+        using var _ = ModTiming.Begin("REPOFidelity.SceneOptimizer.Apply");
         _shadowStrengths.Clear();
         ApplyGpuInstancing(Settings.OptimizationsActive);
         ApplyZeroIntensityShadows(Settings.OptimizationsActive);
@@ -77,10 +68,13 @@ static class SceneOptimizer
         // scan existing lights in the scene so switching presets mid-level works
         SetItemLightShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ItemLightShadows));
         SetExplosionLightShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ExplosionShadows));
+        ApplyPointLightShadowCull(Settings.ShouldOptimize(Settings.PerfOpt.PointLightShadows));
 
         // must run AFTER other passes — renderers they've set to Off should stay out of the watchlist
         CaptureDistanceCullWatchlist();
         CapturePlayerAvatarRenderers();
+        CaptureFlashlightControllers();
+        CaptureShadowBudgetWatchlist();
 
         // synchronous flashlight-budget revert so F10 diagnostic sees OK immediately
         // (tick-based restore would lag by up to 100ms behind the post-disable log)
@@ -113,7 +107,7 @@ static class SceneOptimizer
             }
         }
         if (smrAudit > 0)
-            Plugin.Log.LogInfo($"player avatar: forced updateWhenOffscreen=false on {smrAudit} skinned meshes");
+            Plugin.Log.LogDebug($"player avatar: forced updateWhenOffscreen=false on {smrAudit} skinned meshes");
     }
 
     internal static void UpdatePlayerAvatarShadowCull(Camera? cam)
@@ -174,8 +168,15 @@ static class SceneOptimizer
     // flashlight shadow budget — only N closest flashlights keep their original shadow
     // mode, rest go to None. saves original mode per spotlight so F10 / flag-off revert
     static readonly Dictionary<Light, LightShadows> _flashlightBudgetOrig = new();
+    static readonly List<FlashlightController> _flashlightControllers = new();
+    static readonly List<Light> _pointLightWatchlist = new();
+    static readonly Dictionary<Light, LightShadows> _pointLightShadowOrig = new();
     static readonly List<(Light light, float distSq)> _flashlightSorted = new();
-    const int FlashlightBudgetN = 4;
+
+    // Potato cuts everything, flashlight cast included. Other presets keep
+    // the closest 4 — it's the player's primary light source.
+    static int ResolveFlashlightBudgetN() =>
+        Settings.Preset == QualityPreset.Potato ? 0 : 4;
 
     // player avatar renderers — skinned meshes for each player. Distant players'
     // avatars still cast into the directional shadow map; gate that by distance.
@@ -191,19 +192,31 @@ static class SceneOptimizer
         // otherwise F10 / flag-off would orphan them in the Off state.
         RestoreDistanceCullWatchlist();
         _distanceCullWatchlist.Clear();
+        _distanceCullCursor = 0;
         if (!Settings.ShouldOptimize(Settings.PerfOpt.DistanceShadowCulling)) return;
+
+        // Mid-sized props past shadow distance have no visible contribution —
+        // bump the cap above the original 2m to catch more of them. Potato
+        // pulls 5m props in too.
+        float boundsCap = Settings.Preset == QualityPreset.Potato ? 5f : 3f;
 
         int count = 0;
         foreach (var r in Object.FindObjectsOfType<MeshRenderer>())
         {
             if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
-            if (r.bounds.size.magnitude >= 2f) continue;
+            if (r.bounds.size.magnitude >= boundsCap) continue;
             _distanceCullWatchlist.Add(r);
             count++;
         }
         if (count > 0)
-            Plugin.Log.LogInfo($"distance cull watchlist: {count} small renderers");
+            Plugin.Log.LogDebug($"distance cull watchlist: {count} small renderers");
     }
+
+    // Cursor into the watchlist — picks up where the last tick left off so a
+    // 5000-renderer list takes ~5 ticks (~500ms) to fully re-evaluate instead
+    // of scanning every entry on every 100ms tick.
+    static int _distanceCullCursor;
+    const int DistanceCullChunkSize = 1000;
 
     internal static void UpdateDistanceShadowCull(Camera? cam)
     {
@@ -216,14 +229,23 @@ static class SceneOptimizer
             return;
         }
 
-        float threshold = Settings.ResolvedShadowDistance * 0.7f;
+        // Potato cuts at 50% of shadow distance instead of 70%.
+        float factor = Settings.Preset == QualityPreset.Potato ? 0.5f : 0.7f;
+        float threshold = Settings.ResolvedShadowDistance * factor;
         float thresholdSq = threshold * threshold;
         float hystOn = threshold * 0.9f;
         float hystOnSq = hystOn * hystOn;
         var camPos = cam.transform.position;
 
-        for (int i = 0; i < _distanceCullWatchlist.Count; i++)
+        int count = _distanceCullWatchlist.Count;
+        int chunk = Mathf.Min(DistanceCullChunkSize, count);
+        if (_distanceCullCursor >= count) _distanceCullCursor = 0;
+
+        for (int n = 0; n < chunk; n++)
         {
+            int i = _distanceCullCursor + n;
+            if (i >= count) i -= count;
+
             var r = _distanceCullWatchlist[i];
             if (r == null) continue;
             float distSq = (r.transform.position - camPos).sqrMagnitude;
@@ -233,6 +255,8 @@ static class SceneOptimizer
             else if (!isOff && distSq > thresholdSq)
                 r.shadowCastingMode = ShadowCastingMode.Off;
         }
+
+        _distanceCullCursor = (_distanceCullCursor + chunk) % count;
     }
 
     static void RestoreDistanceCullWatchlist()
@@ -242,6 +266,79 @@ static class SceneOptimizer
             var r = _distanceCullWatchlist[i];
             if (r != null) r.shadowCastingMode = ShadowCastingMode.On;
         }
+    }
+
+    // Collect every Point light that currently casts shadows so the per-frame
+    // update pass can toggle them on distance. Small short-range lights (<=3m)
+    // are skipped — their cubemap cost is already trivial and the draw-call
+    // churn from toggling them is worse than just letting them render.
+    static void ApplyPointLightShadowCull(bool enable)
+    {
+        RestorePointLightShadows();
+        _pointLightWatchlist.Clear();
+
+        if (!enable) return;
+
+        foreach (var light in Object.FindObjectsOfType<Light>())
+        {
+            if (light.type != LightType.Point) continue;
+            if (light.shadows == LightShadows.None) continue;
+            if (light.range <= 3f) continue;
+            _pointLightWatchlist.Add(light);
+        }
+        if (_pointLightWatchlist.Count > 0)
+            Plugin.Log.LogDebug($"point-light watchlist: {_pointLightWatchlist.Count} shadowed point lights");
+    }
+
+    internal static void UpdatePointLightShadowCull(Camera? cam)
+    {
+        if (cam == null || _pointLightWatchlist.Count == 0) return;
+
+        if (!Settings.ShouldOptimize(Settings.PerfOpt.PointLightShadows))
+        {
+            RestorePointLightShadows();
+            return;
+        }
+
+        // Tie the threshold to the same fog-scaled distance the rest of the
+        // shadow-cull logic uses. Adding the light's own range means a 10m-range
+        // lamp is kept alive until the player is 10m past the fog wall, which
+        // is about when its contribution becomes invisible anyway.
+        float fogEnd = Settings.ResolvedEffectiveFogEnd;
+        if (fogEnd <= 0f) return;
+        var camPos = cam.transform.position;
+
+        for (int i = 0; i < _pointLightWatchlist.Count; i++)
+        {
+            var light = _pointLightWatchlist[i];
+            if (light == null) continue;
+
+            float off = fogEnd + light.range;
+            float on  = off * 0.9f; // 10% hysteresis band to stop boundary flicker
+            float distSq = (light.transform.position - camPos).sqrMagnitude;
+            bool isOff = light.shadows == LightShadows.None;
+
+            if (isOff && distSq < on * on)
+            {
+                if (_pointLightShadowOrig.TryGetValue(light, out var original))
+                {
+                    light.shadows = original;
+                    _pointLightShadowOrig.Remove(light);
+                }
+            }
+            else if (!isOff && distSq > off * off)
+            {
+                _pointLightShadowOrig[light] = light.shadows;
+                light.shadows = LightShadows.None;
+            }
+        }
+    }
+
+    static void RestorePointLightShadows()
+    {
+        foreach (var kv in _pointLightShadowOrig)
+            if (kv.Key != null) kv.Key.shadows = kv.Value;
+        _pointLightShadowOrig.Clear();
     }
 
     // cap concurrent flashlight shadow maps. N × 2048² shadow maps at 20 players
@@ -258,8 +355,10 @@ static class SceneOptimizer
 
         _flashlightSorted.Clear();
         var camPos = cam.transform.position;
-        foreach (var fl in Object.FindObjectsOfType<FlashlightController>())
+        for (int i = _flashlightControllers.Count - 1; i >= 0; i--)
         {
+            var fl = _flashlightControllers[i];
+            if (fl == null) { _flashlightControllers.RemoveAt(i); continue; }
             var light = fl.spotlight;
             if (light == null) continue;
             if (!light.isActiveAndEnabled) continue;
@@ -274,12 +373,13 @@ static class SceneOptimizer
         float fogEnd = Settings.ResolvedEffectiveFogEnd;
         float fogCutoffSq = fogEnd > 0f ? (fogEnd * 1.1f) * (fogEnd * 1.1f) : float.PositiveInfinity;
 
+        int budgetN = ResolveFlashlightBudgetN();
         int withinBudget = 0;
         for (int i = 0; i < _flashlightSorted.Count; i++)
         {
             var (light, distSq) = _flashlightSorted[i];
             bool pastFog = distSq > fogCutoffSq;
-            bool slotAvailable = withinBudget < FlashlightBudgetN;
+            bool slotAvailable = withinBudget < budgetN;
 
             if (!pastFog && slotAvailable)
             {
@@ -306,11 +406,24 @@ static class SceneOptimizer
         _flashlightBudgetOrig.Clear();
     }
 
+    // Refreshed on scene load and player spawn. The per-tick shadow-budget pass
+    // iterates this list instead of scanning the whole scene every 0.1s.
+    static void CaptureFlashlightControllers()
+    {
+        _flashlightControllers.Clear();
+        foreach (var fl in Object.FindObjectsOfType<FlashlightController>())
+            _flashlightControllers.Add(fl);
+    }
+
     // ---
     // shadow budget — limits how many small point lights cast shadows at once.
     // closest N to the camera get shadows with faded strength transitions.
     // ---
 
+    // dim short-range point lights (item glows, valuables, props). Captured once
+    // per level so the 100ms tick can iterate a cached list instead of walking
+    // every Light in the scene — the scene-wide scan allocates on busy maps.
+    static readonly List<Light> _shadowBudgetWatchlist = new();
     static readonly List<(Light light, float dist)> _budgetCandidates = new();
     static readonly Dictionary<int, float> _shadowStrengths = new();
     const float FadeSpeed = 3f;
@@ -318,6 +431,21 @@ static class SceneOptimizer
     internal static void ResetShadowBudget()
     {
         _shadowStrengths.Clear();
+    }
+
+    static void CaptureShadowBudgetWatchlist()
+    {
+        _shadowBudgetWatchlist.Clear();
+        if (!Settings.OptimizationsActive) return;
+
+        foreach (var light in Object.FindObjectsOfType<Light>())
+        {
+            if (light.type != LightType.Point) continue;
+            if (light.intensity >= 1f || light.range >= 5f) continue;
+            _shadowBudgetWatchlist.Add(light);
+        }
+        if (_shadowBudgetWatchlist.Count > 0)
+            Plugin.Log.LogDebug($"shadow budget watchlist: {_shadowBudgetWatchlist.Count} item glow lights");
     }
 
     internal static void UpdateShadowBudget(Camera? cam)
@@ -344,14 +472,13 @@ static class SceneOptimizer
 
         _budgetCandidates.Clear();
 
-        foreach (var light in Object.FindObjectsOfType<Light>())
+        // iterate cached watchlist, drop destroyed refs in place
+        for (int i = _shadowBudgetWatchlist.Count - 1; i >= 0; i--)
         {
+            var light = _shadowBudgetWatchlist[i];
+            if (light == null) { _shadowBudgetWatchlist.RemoveAt(i); continue; }
             if (!light.enabled || !light.gameObject.activeInHierarchy) continue;
             if (light.intensity <= 0f) continue;
-
-            // only manage item glow lights — skip infrastructure
-            if (light.type != LightType.Point || light.intensity >= 1f || light.range >= 5f)
-                continue;
 
             float dist = Vector3.Distance(camPos, light.transform.position);
 
@@ -379,11 +506,11 @@ static class SceneOptimizer
     static void RestoreManagedLights()
     {
         if (_shadowStrengths.Count == 0) return;
-        foreach (var light in Object.FindObjectsOfType<Light>())
+        for (int i = _shadowBudgetWatchlist.Count - 1; i >= 0; i--)
         {
+            var light = _shadowBudgetWatchlist[i];
+            if (light == null) { _shadowBudgetWatchlist.RemoveAt(i); continue; }
             if (!light.enabled || !light.gameObject.activeInHierarchy) continue;
-            if (light.type != LightType.Point || light.intensity >= 1f || light.range >= 5f)
-                continue;
             light.shadows = LightShadows.Soft;
             light.shadowStrength = 1f;
         }
@@ -423,9 +550,17 @@ static class SceneOptimizer
 
         if (!enable) return;
 
+        // Flashlights hit intensity=0 in the pause-menu Hidden state. Killing
+        // the shadow here leaves it dead after the user turns it back on —
+        // the budget owns them.
+        var flashlights = new HashSet<Light>();
+        foreach (var fl in Object.FindObjectsOfType<FlashlightController>())
+            if (fl.spotlight != null) flashlights.Add(fl.spotlight);
+
         int count = 0;
         foreach (var light in Object.FindObjectsOfType<Light>())
         {
+            if (flashlights.Contains(light)) continue;
             if (light.intensity <= 0f && light.shadows != LightShadows.None)
             {
                 _zeroIntensityOrig[light] = light.shadows;
@@ -434,7 +569,7 @@ static class SceneOptimizer
             }
         }
         if (count > 0)
-            Plugin.Log.LogInfo($"disabled shadows on {count} zero-intensity lights");
+            Plugin.Log.LogDebug($"disabled shadows on {count} zero-intensity lights");
     }
 
     static void SetParticleShadows(bool on)
@@ -457,7 +592,7 @@ static class SceneOptimizer
             }
         }
         if (count > 0)
-            Plugin.Log.LogInfo($"{(on ? "restored" : "disabled")} shadows on {count} particle renderers");
+            Plugin.Log.LogDebug($"{(on ? "restored" : "disabled")} shadows on {count} particle renderers");
     }
 
     // off-screen and non-emitting systems still tick every frame unless culling is explicit.
@@ -489,7 +624,7 @@ static class SceneOptimizer
             }
         }
         if (count > 0)
-            Plugin.Log.LogInfo($"particle auto-cull: enabled on {count} systems");
+            Plugin.Log.LogDebug($"particle auto-cull: enabled on {count} systems");
     }
 
     static void ApplyGpuInstancing(bool enable)
@@ -517,7 +652,7 @@ static class SceneOptimizer
             }
         }
         if (count > 0)
-            Plugin.Log.LogInfo($"enabled GPU instancing on {count} materials");
+            Plugin.Log.LogDebug($"enabled GPU instancing on {count} materials");
     }
 
     static void ApplyTinyRendererCull(bool enable)
@@ -528,11 +663,15 @@ static class SceneOptimizer
 
         if (!enable) return;
 
+        // Permanent shadow-caster kill for anything smaller than this bounds
+        // diagonal. Potato's 1m catches most small decorative props.
+        float sizeCap = Settings.Preset == QualityPreset.Potato ? 1f : 0.5f;
+
         int count = 0;
         foreach (var r in Object.FindObjectsOfType<MeshRenderer>())
         {
             if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
-            if (r.bounds.size.magnitude < 0.3f)
+            if (r.bounds.size.magnitude < sizeCap)
             {
                 _tinyRendererOrig[r] = r.shadowCastingMode;
                 r.shadowCastingMode = ShadowCastingMode.Off;
@@ -540,7 +679,7 @@ static class SceneOptimizer
             }
         }
         if (count > 0)
-            Plugin.Log.LogInfo($"disabled shadow casting on {count} tiny renderers");
+            Plugin.Log.LogDebug($"disabled shadow casting on {count} tiny renderers");
     }
 
     static void SetItemLightShadows(bool on)
@@ -550,13 +689,7 @@ static class SceneOptimizer
             if (il.itemLight == null) continue;
             il.itemLight.shadows = on ? LightShadows.Soft : LightShadows.None;
         }
-
-        // flashlight is a separate component with its own Light
-        foreach (var fl in Object.FindObjectsOfType<FlashlightController>())
-        {
-            if (fl.spotlight == null) continue;
-            fl.spotlight.shadows = on ? LightShadows.Soft : LightShadows.None;
-        }
+        // Flashlights are handled by UpdateFlashlightShadowBudget; don't touch here.
     }
 
     static void SetExplosionLightShadows(bool on)
@@ -588,7 +721,7 @@ static class SceneOptimizer
             }
         }
         if (count > 0)
-            Plugin.Log.LogInfo($"disabled shadows on {count} animated lights");
+            Plugin.Log.LogDebug($"disabled shadows on {count} animated lights");
     }
 
     // "LEAK" if any dict is non-empty post-disable, "OK" otherwise. Note
@@ -602,7 +735,7 @@ static class SceneOptimizer
         int mutations = _tinyRendererOrig.Count + _animatedLightOrig.Count
                       + _zeroIntensityOrig.Count + _gpuInstancingOrig.Count
                       + _particleCullOrig.Count + shadowRes + avatarRt + avatarPpl
-                      + _flashlightBudgetOrig.Count
+                      + _flashlightBudgetOrig.Count + _pointLightShadowOrig.Count
                       + _playerAvatarShadowOrig.Count + _playerAvatarSmrUpdateOrig.Count;
         string prefix = mutations == 0 ? "OK" : "LEAK";
         Plugin.Log.LogInfo(
@@ -616,6 +749,7 @@ static class SceneOptimizer
             $"avatarRt={avatarRt} " +
             $"avatarPpl={avatarPpl} " +
             $"flashBudget={_flashlightBudgetOrig.Count} " +
+            $"pointLight={_pointLightShadowOrig.Count} " +
             $"playerShadow={_playerAvatarShadowOrig.Count} " +
             $"playerSmr={_playerAvatarSmrUpdateOrig.Count} " +
             $"watchlist={_distanceCullWatchlist.Count}");
@@ -726,7 +860,7 @@ static class PlayerAvatarMenuAAPatch
                     newPpl.antialiasingMode = PostProcessLayer.Antialiasing.SubpixelMorphologicalAntialiasing;
                     newPpl.fastApproximateAntialiasing.keepAlpha = true;
                     _pplState[cam] = new PplState { AttachedByUs = true, OriginalAa = PostProcessLayer.Antialiasing.None };
-                    Plugin.Log.LogInfo($"avatar preview: attached PostProcessLayer with SMAA to '{cam.name}'");
+                    Plugin.Log.LogDebug($"avatar preview: attached PostProcessLayer with SMAA to '{cam.name}'");
                 }
                 else
                 {
@@ -766,7 +900,7 @@ static class PlayerAvatarMenuAAPatch
                 rt.antiAliasing = TargetMsaa;
                 if (wasCreated) rt.Create();
 
-                Plugin.Log.LogInfo($"avatar preview: RT '{rt.name}' bumped {_rtOrig[rt].w}x{_rtOrig[rt].h} " +
+                Plugin.Log.LogDebug($"avatar preview: RT '{rt.name}' bumped {_rtOrig[rt].w}x{_rtOrig[rt].h} " +
                     $"aa={_rtOrig[rt].aa} → {newW}x{newH} aa={TargetMsaa}");
             }
         }
