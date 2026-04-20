@@ -1,3 +1,7 @@
+## 1.5.3
+
+- `RoomVolumeCheck.CheckSet` replacement: overlap + swept-path + sticky + rest-skip. Vanilla samples `Physics.OverlapBox` at a single point at 10Hz, so fast movement (tumble wings, fly) can skip a whole room between ticks. The miss reads as a false "not in any room" state: breaks per-room ambience / reverb, flickers truck-safety and enemy-AI room awareness, and costs the player the scouting-points credit when the game eventually adds that. Replaced with a four-tier check — rest-skip when the player is stationary, `OverlapBoxNonAlloc` for the common case, `BoxCastNonAlloc` sweep from last position to catch seam crossings, and sticky carry-over for brief coverage gaps where the player flies above the room's collider ceiling (the sweep can't catch those because Unity's cast APIs skip the starting collider). Ungated — rest-skip makes the common case strictly cheaper than vanilla, so the patch now runs regardless of frame time. Over a 26-minute play session the old NonAlloc-only patch would have had 4022 false-empty ticks; the new patch had zero. Per-tick CPU average on a 5090 dropped from 3.26 µs (vanilla allocating path) to 0.57 µs (new authoritative path), and the `Collider[]` allocation on every call is gone
+
 ## 1.5.2
 
 - Shadow-budget tick was calling `Object.FindObjectsOfType<Light>()` every 100ms — same pattern as the 1.5.1 flashlight-controller scan. Cached the item-glow list on scene load alongside the other watchlists; per-tick scan gone
