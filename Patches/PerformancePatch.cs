@@ -226,9 +226,14 @@ static class SceneOptimizer
             return;
         }
 
-        // Potato cuts at 50% of shadow distance instead of 70%.
-        float factor = Settings.Preset == QualityPreset.Potato ? 0.5f : 0.7f;
-        float threshold = Settings.ResolvedShadowDistance * factor;
+        // past fully-foggy, same yardstick as the avatar / flashlight-budget paths.
+        // the old ResolvedShadowDistance × 0.7f sat inside the visible fog fade band
+        // once Settings.ApplyFogClamps had already pulled shadow distance down to
+        // fogEnd × 1.1, so small props popped their shadows where you could still see
+        // them. Potato yanks right at fogEnd; everything else sits 10% past.
+        float fogEnd = Settings.ResolvedEffectiveFogEnd;
+        if (fogEnd <= 0f) return;
+        float threshold = fogEnd * (Settings.Preset == QualityPreset.Potato ? 1.0f : 1.1f);
         float thresholdSq = threshold * threshold;
         float hystOn = threshold * 0.9f;
         float hystOnSq = hystOn * hystOn;
