@@ -854,13 +854,19 @@ static class PlayerAvatarMenuAAPatch
         // 8-player lobby would otherwise eat real ms on menu-style rendering.
         if (__instance.expressionAvatar) return;
 
-        // bail in multi-avatar contexts (e.g. truck lobby with N players). Bumping
-        // N previews to 1024² + MSAA + SMAA scales linearly with lobby size — not
-        // worth the sharpness win for small UI portraits
-        int nonExpressionCount = 0;
+        // bail when multiple menu PAMs are visible at once — bumping each to 1024² +
+        // MSAA + SMAA scales linearly (truck lobby with 8+ slots is the classic case).
+        // Filter on parentPage being alive AND in active hierarchy so dying PAMs from
+        // a pause→customize transition (one extra Update tick before self-destruct)
+        // drop out, plus world / icon variants which never get a parentPage in Awake.
+        // Cap at 2 leaves room for a real pause+customize overlay.
+        int liveMenuCount = 0;
         foreach (var m in Object.FindObjectsOfType<PlayerAvatarMenu>())
         {
-            if (!m.expressionAvatar && ++nonExpressionCount > 1) return;
+            if (m.expressionAvatar || m.worldAvatar || m.iconMakerAvatar) continue;
+            if (m.parentPage == null) continue;
+            if (!m.parentPage.gameObject.activeInHierarchy) continue;
+            if (++liveMenuCount > 2) return;
         }
 
         if (__instance.cameraAndStuff == null) return;
