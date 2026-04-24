@@ -842,9 +842,15 @@ internal class UpscalerManager : MonoBehaviour
 
     // Use everywhere the mod wants to set cam.farClipPlane instead of a direct write.
     // First write on a given camera records its current value for later restore.
+    // Skip during SpectateCamera death state — vanilla EnvironmentDirector.FogLogic
+    // (t20 line 248) does the same. StateDeath sets near=70 / far=90; stamping a
+    // smaller far on top of that 70m near inverts the frustum and the death cam
+    // renders white. Resumes when death state ends.
     internal static void SetModFarClip(Camera? cam, float newValue)
     {
         if (cam == null) return;
+        if (SpectateCamera.instance != null
+            && SpectateCamera.instance.CheckState(SpectateCamera.State.Death)) return;
         if (!_vanillaFarClipByCam.ContainsKey(cam))
             _vanillaFarClipByCam[cam] = cam.farClipPlane;
         cam.farClipPlane = newValue;
