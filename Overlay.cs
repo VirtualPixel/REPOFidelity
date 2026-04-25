@@ -109,6 +109,8 @@ internal static class Overlay
             _lines.Add(new LineData($"FIDELITY OFF ({Settings.ToggleKey})  {_smoothFps:F0} FPS  {_smoothMs:F1}ms", Col.Warn));
         else if (!Settings.OptimizationsEnabled)
             _lines.Add(new LineData($"OPTIMIZATIONS OFF (F11)  {_smoothFps:F0} FPS  {_smoothMs:F1}ms", Col.Warn));
+        else if (Settings.CpuPatchesF11Disabled)
+            _lines.Add(new LineData($"CPU PATCHES OFF (F11)  {_smoothFps:F0} FPS  {_smoothMs:F1}ms", Col.Warn));
 
         if (Settings.ModEnabled && Settings.DebugOverlay)
         {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.IO;
 using UnityEngine;
 
@@ -9,6 +10,10 @@ internal enum UpscaleMode { Auto, DLAA, DLSS, FSR4, FSR_Temporal, FSR, Off }
 internal enum AAMode { Auto, TAA, SMAA, FXAA, Off }
 internal enum ShadowQuality { Low, Medium, High, Ultra }
 internal enum TextureRes { Full, Half, Quarter }
+
+// What F11 toggles. Lets the one key cover multiple diagnostic switches
+// without eating more keybinds.
+internal enum F11Target { FullOptLayer, CpuPatches, LightDiagnostics }
 
 internal static class Settings
 {
@@ -137,10 +142,27 @@ internal static class Settings
         get => D.extractionFlickerFix;
         set { D.extractionFlickerFix = value; _file.Save(); OnSettingTweaked(); }
     }
+    // 0 = use the game's per-player default; otherwise vertical FOV in degrees.
+    // Horizontal FOV expands automatically with Screen.aspect (HOR+).
+    internal static int VerticalFovOverride
+    {
+        get => D.verticalFovOverride;
+        set { D.verticalFovOverride = Mathf.Clamp(value, 0, 110); _file.Save(); OnSettingTweaked(); }
+    }
+    internal static bool UltrawideUiFix
+    {
+        get => D.ultrawideUiFix;
+        set { D.ultrawideUiFix = value; _file.Save(); OnSettingTweaked(); }
+    }
     internal static KeyCode ToggleKey
     {
         get => (KeyCode)D.toggleKey;
         set { D.toggleKey = (int)value; _file.Save(); }
+    }
+    internal static F11Target F11TargetSetting
+    {
+        get => (F11Target)D.f11Target;
+        set { D.f11Target = (int)value; _file.Save(); }
     }
     internal static bool DebugOverlay
     {
@@ -172,6 +194,11 @@ internal static class Settings
     internal static bool AllocationFixesEnabled = true;
     internal static bool OptimizationsActive => ModEnabled && OptimizationsEnabled;
 
+    // Session-only F11 A/B flag — default off. Lives outside OptimizationsEnabled
+    // so the user can A/B just the CPU patches without nuking the whole opt layer.
+    internal static bool CpuPatchesF11Disabled;
+
+
     internal static bool CpuBound => _autoTune.IsStale() || _autoTune.cpuBound;
 
     // --- CPU optimizations ---
@@ -189,7 +216,8 @@ internal static class Settings
     // the public getter also masks on OptimizationsActive so F11 propagates
     private static bool _cpuPatchesActiveRaw = true;
 
-    internal static bool CpuPatchesActive => _cpuPatchesActiveRaw && OptimizationsActive;
+    internal static bool CpuPatchesActive =>
+        _cpuPatchesActiveRaw && OptimizationsActive && !CpuPatchesF11Disabled;
 
     private static float _cpuGateTimer;
     private static float _cpuGateAccum;
@@ -366,6 +394,12 @@ internal static class Settings
 
     internal static bool AutoTuneNeedsBenchmark => _autoTune.IsStale();
 
+    // Like IsStale but excludes resolution changes. Auto-benchmark fires only on a fresh
+    // GPU or a mod-revision bump; resolution-driven staleness waits for a manual re-run.
+    internal static bool AutoTuneNeedsInitialBenchmark =>
+        _autoTune.revision < AutoTuneData.AutoTuneRevision
+        || _autoTune.gpuName != SystemInfo.graphicsDeviceName;
+
     internal static void Init()
     {
         string dir = Path.GetDirectoryName(
@@ -379,6 +413,52 @@ internal static class Settings
 
         _initComplete = true;
         MigrateOldConfig(dir);
+        ValidateResolutionForCurrentMonitor();
+    }
+
+    // Reset persisted D.resWidth/D.resHeight if they don't fit the current monitor.
+    // Without this, a config saved on one panel can drop the next launch on a different
+    // panel into Unity's 720p fallback with no obvious recovery path.
+    static void ValidateResolutionForCurrentMonitor()
+    {
+        int sysW = Display.main != null ? Display.main.systemWidth : 0;
+        int sysH = Display.main != null ? Display.main.systemHeight : 0;
+        if (sysW <= 0 || sysH <= 0) return;
+
+        if (D.resWidth <= 0 || D.resHeight <= 0)
+        {
+            D.resWidth = sysW;
+            D.resHeight = sysH;
+            _file.Save();
+            return;
+        }
+
+        float savedAspect = (float)D.resWidth / D.resHeight;
+        float monitorAspect = (float)sysW / sysH;
+        if (Mathf.Abs(savedAspect - monitorAspect) > 0.05f)
+        {
+            Plugin.Log.LogWarning($"[settings] resolution {D.resWidth}x{D.resHeight} (aspect {savedAspect:F2}) mismatches monitor {sysW}x{sysH} (aspect {monitorAspect:F2}); resetting to native");
+            D.resWidth = sysW;
+            D.resHeight = sysH;
+            _file.Save();
+            Screen.SetResolution(sysW, sysH, Screen.fullScreenMode);
+            return;
+        }
+
+        // Same aspect but persisted resolution is less than half the panel's pixel
+        // count - typically Unity fallback state from a failed mode-set on a previous
+        // launch. Could also be a deliberate low-res choice; the false positive here
+        // is acceptable given the recovery path it provides.
+        long savedPixels = (long)D.resWidth * D.resHeight;
+        long nativePixels = (long)sysW * sysH;
+        if (savedPixels < nativePixels / 2)
+        {
+            Plugin.Log.LogWarning($"[settings] resolution {D.resWidth}x{D.resHeight} is <50% of monitor native {sysW}x{sysH}; resetting to native");
+            D.resWidth = sysW;
+            D.resHeight = sysH;
+            _file.Save();
+            Screen.SetResolution(sysW, sysH, Screen.fullScreenMode);
+        }
     }
 
     private static void LoadAutoTune()
@@ -605,22 +685,43 @@ internal static class Settings
 
     internal static string[] GetAvailableResolutions(out int currentIndex)
     {
-        var native = Screen.currentResolution;
+        // Display.main.systemWidth/Height is the panel's native; Screen.currentResolution
+        // is whatever Unity has currently applied. Need the former so the dropdown lists
+        // the actual native aspect even when the game is currently running at a smaller
+        // resolution from a previous SetResolution call.
+        int sysW = Display.main != null && Display.main.systemWidth > 0
+            ? Display.main.systemWidth : Screen.currentResolution.width;
+        int sysH = Display.main != null && Display.main.systemHeight > 0
+            ? Display.main.systemHeight : Screen.currentResolution.height;
+        var native = new Resolution { width = sysW, height = sysH };
         float nativeAspect = (float)native.width / native.height;
         int minHeight = 720;
 
         var seen = new System.Collections.Generic.HashSet<string>();
         var results = new System.Collections.Generic.List<string>();
 
+        // OS-reported resolutions in native aspect. Tolerance is loose enough to catch
+        // small reporting variance (3440x1440 is 2.3889; 2560x1080 is 2.3704) but tight
+        // enough to keep 16:9 entries off a 21:9 monitor's picker.
         foreach (var r in Screen.resolutions)
         {
             if (r.height < minHeight) continue;
             float aspect = (float)r.width / r.height;
-            if (Mathf.Abs(aspect - nativeAspect) > 0.02f) continue;
-
+            if (Mathf.Abs(aspect - nativeAspect) > 0.05f) continue;
             string key = $"{r.width}x{r.height}";
-            if (!seen.Add(key)) continue;
-            results.Add(key);
+            if (seen.Add(key)) results.Add(key);
+        }
+
+        // synthesize native-aspect downscales so 21:9 / 32:9 monitors aren't stuck with
+        // only the two or three entries Windows reports in those buckets. width snapped to
+        // 8 keeps Direct3D / DLSS happy with the resulting render-target dimensions.
+        foreach (float scale in new[] { 0.50f, 0.6667f, 0.75f, 0.8333f })
+        {
+            int w = Mathf.RoundToInt(native.width * scale / 8f) * 8;
+            int h = Mathf.RoundToInt(w / nativeAspect / 8f) * 8;
+            if (h < minHeight) continue;
+            string key = $"{w}x{h}";
+            if (seen.Add(key)) results.Add(key);
         }
 
         string nativeKey = $"{native.width}x{native.height}";
@@ -651,10 +752,30 @@ internal static class Settings
         D.resHeight = h;
         _file.Save();
 
-        Screen.SetResolution(w, h, Screen.fullScreen);
-        OnChanged();
-
+        // fullScreenMode preserves the user's borderless/exclusive choice. The deprecated
+        // bool overload routes to ExclusiveFullScreen which can fall back to 720p if the
+        // requested mode isn't natively supported at the panel's current refresh.
+        Screen.SetResolution(w, h, Screen.fullScreenMode);
         Plugin.Log.LogInfo($"Resolution: {w}x{h}");
+
+        // Screen.SetResolution applies on the next frame, so a synchronous OnChanged
+        // would have downstream gates (IsUltrawide etc.) read stale dimensions. Defer
+        // until Screen.width/Screen.height match the request.
+        if (Plugin.Instance != null)
+            Plugin.Instance.StartCoroutine(WaitForResolutionThenChange(w, h));
+        else
+            OnChanged();
+    }
+
+    static IEnumerator WaitForResolutionThenChange(int targetW, int targetH)
+    {
+        // 30 frames (~0.5s @ 60fps) is well past the 1-3 frames most platforms need.
+        for (int i = 0; i < 30; i++)
+        {
+            if (Screen.width == targetW && Screen.height == targetH) break;
+            yield return null;
+        }
+        OnChanged();
     }
 
     internal static int MinRenderScale(UpscaleMode mode) => mode switch

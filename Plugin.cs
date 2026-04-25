@@ -38,7 +38,15 @@ public class Plugin : BaseUnityPlugin
         Settings.ResolveAutoDefaults();
 
         _harmony = new Harmony(PluginGuid);
-        _harmony.PatchAll(Assembly.GetExecutingAssembly());
+        // Patch each class individually so one bad HarmonyPatch annotation
+        // (wrong method name, stale game version, etc.) can't abort the rest
+        // of Awake — menu integration and DLSS setup must still run.
+        foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
+        {
+            try { _harmony.CreateClassProcessor(type).Patch(); }
+            catch (System.Exception ex) { Log.LogWarning($"Harmony patch failed for {type.Name}: {ex.Message}"); }
+        }
+
 
         Log.LogInfo($"REPO Fidelity v{BuildInfo.Version} loaded");
         Log.LogInfo($"GPU: {GPUDetector.GpuName} ({GPUDetector.Vendor}, Tier: {GPUDetector.Tier}, VRAM: {GPUDetector.VramMb}MB)");

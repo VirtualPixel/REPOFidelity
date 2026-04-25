@@ -401,9 +401,6 @@ internal class UpscalerManager : MonoBehaviour
             }
         }
 
-        if (Input.GetKeyDown(KeyCode.F7) && Settings.ToggleKey != KeyCode.F7)
-            LightDiagnostics.Run();
-
         // F9 launches the full diagnostic sweep when the user has opted in via
         // the config file — off by default so normal play doesn't trigger a 90s
         // probe. Gated to gameplay levels only (menus have no scene to measure);
@@ -414,22 +411,17 @@ internal class UpscalerManager : MonoBehaviour
             && (CostProbe.Running || IsInGameplayLevel()))
             CostProbe.Toggle();
 
-        // F11 toggles the optimization layer only — upscaler / AA stay on.
-        // When off, every shadow / physics / render hack reverts to vanilla;
-        // F10 cuts the whole mod instead
+        // F11 dispatches on the user's F11 Target setting. Lets one key cover
+        // multiple A/B diagnostic switches without burning more keybinds.
         if (Input.GetKeyDown(KeyCode.F11) && Settings.ToggleKey != KeyCode.F11)
-        {
-            Settings.OptimizationsEnabled = !Settings.OptimizationsEnabled;
-            Plugin.Log.LogInfo($"Optimizations {(Settings.OptimizationsEnabled ? "ENABLED" : "DISABLED")}");
-            if (!Settings.OptimizationsEnabled)
-                Patches.SceneOptimizer.LogRestoreState("pre-opt-disable");
-            Patches.SceneOptimizer.Apply();
-            Patches.QualityPatch.ApplyQualitySettings();
-            if (!Settings.OptimizationsEnabled)
-                Patches.SceneOptimizer.LogRestoreState("post-opt-disable");
-        }
+            DispatchF11();
 
-        if (!_benchmarkActive && !_togglePending && Input.GetKeyDown(Settings.ToggleKey))
+        // F10-compare aspect override and main-menu fog tightening. Both self-gated.
+        Patches.UltrawideCompareResolution.TickEnforcement();
+        Patches.UltrawideMenuTweaks.Tick();
+
+        if (!_benchmarkActive && !_togglePending && !MenuIntegration.IsGraphicsPageOpen
+            && Input.GetKeyDown(Settings.ToggleKey))
         {
             bool enabling = !Settings.ModEnabled;
 
@@ -463,6 +455,11 @@ internal class UpscalerManager : MonoBehaviour
                 if (_camera != null)
                     _camera.layerCullDistances = new float[32];
 
+                // F10 vanilla-16:9 compare. HandleToggle self-gates internally; never
+                // gate on UltrawideUiFix at this call site - on enable, UltrawideUiFix is
+                // false (compare turned it off) and gating here would block the restore.
+                Patches.UltrawideCompareResolution.HandleToggle(enabling: false);
+
                 Patches.SceneOptimizer.LogRestoreState("post-disable");
             }
             else
@@ -470,6 +467,8 @@ internal class UpscalerManager : MonoBehaviour
                 // enabling: defer by 2 frames so the glitch covers the RT rebuild
                 _togglePending = true;
                 StartCoroutine(DeferredEnable());
+
+                Patches.UltrawideCompareResolution.HandleToggle(enabling: true);
             }
         }
 
@@ -485,7 +484,11 @@ internal class UpscalerManager : MonoBehaviour
             Settings.BenchmarkMode = false;
         }
 
-        if (Settings.AutoTuneNeedsBenchmark && !_benchmarkActive && !_autoBenchmark
+        // ModEnabled gate keeps a torn-down upscaler from getting re-poked during F10.
+        // NeedsInitialBenchmark (not NeedsBenchmark) so resolution changes don't
+        // auto-fire a benchmark every time; user runs it manually if they want fresh
+        // tuning at the new resolution.
+        if (Settings.ModEnabled && Settings.AutoTuneNeedsInitialBenchmark && !_benchmarkActive && !_autoBenchmark
             && _vanillaSaved && IsInGameplayLevel()
             && LevelGenerator.Instance != null && LevelGenerator.Instance.Generated
             && Time.unscaledTime - _lastEnvironmentSetupTime >= 10f)
@@ -545,6 +548,33 @@ internal class UpscalerManager : MonoBehaviour
         glitch.PlayShort();
     }
 
+    private static void DispatchF11()
+    {
+        switch (Settings.F11TargetSetting)
+        {
+            case F11Target.FullOptLayer:
+                Settings.OptimizationsEnabled = !Settings.OptimizationsEnabled;
+                Plugin.Log.LogInfo($"F11: Optimizations {(Settings.OptimizationsEnabled ? "ENABLED" : "DISABLED")}");
+                if (!Settings.OptimizationsEnabled)
+                    Patches.SceneOptimizer.LogRestoreState("pre-opt-disable");
+                Patches.SceneOptimizer.Apply();
+                Patches.QualityPatch.ApplyQualitySettings();
+                if (!Settings.OptimizationsEnabled)
+                    Patches.SceneOptimizer.LogRestoreState("post-opt-disable");
+                break;
+
+            case F11Target.CpuPatches:
+                Settings.CpuPatchesF11Disabled = !Settings.CpuPatchesF11Disabled;
+                Plugin.Log.LogInfo($"F11: CPU patches {(Settings.CpuPatchesF11Disabled ? "DISABLED" : "ENABLED")}");
+                break;
+
+            case F11Target.LightDiagnostics:
+                Plugin.Log.LogInfo("F11: Running light diagnostics");
+                LightDiagnostics.Run();
+                break;
+        }
+    }
+
     private System.Collections.IEnumerator DeferredEnable()
     {
         // wait 2 frames so the glitch effect covers the RT rebuild
@@ -575,7 +605,11 @@ internal class UpscalerManager : MonoBehaviour
         }
 
         float fogMult = Settings.ResolvedFogMultiplier;
-        if (_vanillaSaved && fogMult != 1f)
+        // _vanillaFogStart/End were captured at the last gameplay EnvironmentDirector
+        // setup, so applying them on a menu re-enable would write gameplay fog values
+        // into menu RenderSettings (and UltrawideMenuTweaks would then capture those
+        // wrong values as "menu vanilla").
+        if (_vanillaSaved && fogMult != 1f && !SemiFunc.MenuLevel())
         {
             RenderSettings.fogStartDistance = _vanillaFogStart * fogMult;
             RenderSettings.fogEndDistance = _vanillaFogEnd * fogMult;
@@ -593,6 +627,12 @@ internal class UpscalerManager : MonoBehaviour
         // Start already ran on existing PlayerAvatarMenus; postfix won't re-fire
         Patches.PlayerAvatarMenuAAPatch.ReapplyAll();
         _togglePending = false;
+
+        // The settings-driven canvas refresh that fires on F10-enable can race the
+        // 2-frame DeferredEnable wait, so re-run after DeferredEnable's body has set
+        // ModEnabled = true.
+        if (Settings.UltrawideUiFix)
+            Patches.UltrawideCanvasFix.RefreshAll();
     }
 
     private void HandleResolutionChange()

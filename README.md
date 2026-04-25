@@ -1,8 +1,8 @@
 # REPO Fidelity — HD Graphics & Performance Mod for R.E.P.O.
 
-Better than REPO HD. Better than vanilla. Graphics overhaul that goes both ways — **squeeze more FPS on potato PCs** or **push visuals on high-end rigs**. Auto-detects your hardware and picks the best settings. Full in-game settings menu. DLSS, FSR, SMAA, shadow control, the works.
+Better than REPO HD. Better than vanilla. Graphics overhaul that goes both ways — **squeeze more FPS on potato PCs** or **push visuals on high-end rigs**. Auto-detects your hardware and picks the best settings. Full in-game settings menu. DLSS, FSR, SMAA, shadow control, **21:9 / 32:9 ultrawide support**, FOV slider, the works.
 
-**Replaces REPO HD.** Everything it does, plus DLSS, auto-benchmark, CPU/GPU-aware tuning, performance optimizations, and way more control. If you have REPO HD installed, remove it.
+**Replaces REPO HD.** Everything it does, plus DLSS, auto-benchmark, CPU/GPU-aware tuning, performance optimizations, ultrawide / aspect-ratio fixes, and way more control. If you have REPO HD installed, remove it.
 
 ## Vanilla vs REPO Fidelity
 
@@ -106,6 +106,14 @@ Surface detail on the vase and sharper edges on the clown figure. Shadows render
 - CPU patches auto-enable based on frame time — active when your system needs them, dormant when it doesn't
 - All optimizations scale with preset — Ultra keeps full visual quality
 
+**Ultrawide & Field of View**
+- **21:9 / 32:9 ultrawide support** — world view fills the full screen instead of being squashed into a centered 16:9 box, post-processing (vignette, bloom, screen flashes) extends across the full aspect, HUD positioning untouched so other mods that hook the UI hierarchy still work
+- **Aspect-aware default FOV** — 16:9 stays at vanilla, 21:9 lerps up to ~80°, 32:9 hits 90°. Slider override (0–110°) wins when set
+- **Vertical FOV slider** with smooth animation between values
+- **Title-screen polish on ultrawide** — menu camera narrows to hide the world edge past the truck, fog tightens to keep distant scene assets fading inside fog rather than popping at the rolling-treadmill despawn line
+- **F10 vanilla 16:9 compare view** for side-by-side comparison without losing your saved resolution
+- **Resolution dropdown** lists native-aspect modes plus synthesized 50/67/75/83% downscales so 21:9 / 32:9 panels aren't stuck with two or three Windows-reported entries
+
 **Smart Auto-Benchmark**
 - Runs on first launch, stores results in `autotune.json` — separate from your settings
 - Re-runs automatically when the mod updates or your hardware/resolution changes
@@ -147,6 +155,8 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 | Anisotropic Filtering | Off / 4x / 8x / 16x | 8x | Texture sharpness at angles |
 | Light Distance | 10–100m | 50m | Max light render range |
 | Fog Distance | 0.3–1.1x | 1.0x | Fog end distance multiplier. Below 1.0x pulls the fog wall in for extra savings |
+| Vertical FOV | 0–110° | 0 (auto) | Camera FOV. 0 picks an aspect-aware default (vanilla on 16:9, ~80° on 21:9, 90° on 32:9). Any non-zero value overrides |
+| Ultra-Wide UI Fix | On / Off | On | Fills the screen with the world view on aspects above 16:9. Toggle off to keep vanilla 16:9 letterbox |
 | Mod Toggle Key | F5–F10 | F10 | Disables mod entirely for vanilla comparison |
 
 **F10** (configurable) toggles the entire mod off for vanilla comparison — everything reverts including performance optimizations.

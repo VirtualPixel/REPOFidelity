@@ -50,9 +50,12 @@ static class SpectateShadowPatch
 
 static class SceneOptimizer
 {
+
     internal static void Apply()
     {
         using var _ = ModTiming.Begin("REPOFidelity.SceneOptimizer.Apply");
+        long _ftm = FrameTimeMeter.Begin();
+
         _shadowStrengths.Clear();
         ApplyGpuInstancing(Settings.OptimizationsActive);
         ApplyZeroIntensityShadows(Settings.OptimizationsActive);
@@ -77,6 +80,8 @@ static class SceneOptimizer
         // (tick-based restore would lag by up to 100ms behind the post-disable log)
         if (!Settings.ShouldOptimize(Settings.PerfOpt.FlashlightShadowBudget))
             RestoreFlashlightBudget();
+
+        FrameTimeMeter.End(FrameTimeMeter.SceneApply, _ftm);
     }
 
     // per-player avatar renderers, plus force updateWhenOffscreen=false on SkinnedMesh
