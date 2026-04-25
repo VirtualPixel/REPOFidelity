@@ -1,8 +1,8 @@
 {
     "name": "REPOFidelity",
-    "version_number": "1.5.3",
+    "version_number": "1.6.0",
     "website_url": "https://github.com/VirtualPixel/REPOFidelity",
-    "description": "HD graphics + performance mod. DLSS, FSR, SMAA, shadow control, auto-benchmark. Better than REPO HD. Potato to Ultra presets. CPU/GPU-aware tuning. Full settings menu.",
+    "description": "HD graphics + ultrawide + FOV. DLSS, FSR, SMAA, FOV slider, 21:9 / 32:9 ultra-wide support, aspect-ratio fix, shadow control, auto-benchmark. Drop-in REPO HD replacement. Auto-tuned presets, CPU/GPU-aware.",
     "dependencies": [
         "BepInEx-BepInExPack-5.4.2305",
         "nickklmao-MenuLib-2.5.1"

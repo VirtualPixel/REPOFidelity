@@ -61,9 +61,12 @@ internal static class FrameTimeMeter
     internal static readonly Meter SemiFuncCache = new("SemiFunc Cache", "SemiFunc");
     internal static readonly Meter PhysGrabObjectFix = new("PhysGrabObject Fix", "PhysGrab");
     internal static readonly Meter LightManagerBatch = new("LightManager Batch", "LightMgr");
+    // SceneOptimizer.Apply is event-driven (level gen, respawn, preset change) — per-frame
+    // average stays near zero, worst-frame is the useful metric when hunting spikes.
+    internal static readonly Meter SceneApply = new("SceneOptimizer Apply", "SceneApl");
 
     internal static readonly Meter[] All = {
         EnemyDirector, RoomVolumeCheck, SemiFuncCache,
-        PhysGrabObjectFix, LightManagerBatch
+        PhysGrabObjectFix, LightManagerBatch, SceneApply
     };
 }

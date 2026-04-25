@@ -24,6 +24,8 @@ internal static class MenuIntegration
     private static REPOToggle? _motionBlurToggle, _caToggle, _lensToggle, _grainToggle;
     private static REPOToggle? _flickerToggle, _overlayToggle, _diagnosticsToggle;
     private static REPOSlider? _windowModeSlider, _resolutionSlider, _fpsSlider, _gammaSlider;
+    private static REPOSlider? _fovSlider;
+    private static REPOToggle? _ultrawideUiToggle;
     private static REPOToggle? _vsyncToggle, _bloomToggle, _glitchToggle;
     private static REPOSlider? _perfExplosionSlider, _perfItemLightSlider;
     private static REPOSlider? _perfAnimLightSlider, _perfParticleSlider, _perfTinySlider, _perfPointLightSlider;
@@ -92,10 +94,15 @@ internal static class MenuIntegration
     [HarmonyPatch(typeof(MenuPageSettings), nameof(MenuPageSettings.ButtonEventBack))]
     public static void PrefixBack() => ClosePage();
 
+    // UpscalerManager gates the F10 toggle on this so the mod-disable swap can't fire
+    // while the graphics page is open (which would leave UI state half-applied).
+    internal static bool IsGraphicsPageOpen { get; private set; }
+
     private static void ClosePage()
     {
         try { _page?.ClosePage(true); } catch { }
         StopTicker();
+        IsGraphicsPageOpen = false;
     }
 
     private static void OpenPage()
@@ -105,6 +112,7 @@ internal static class MenuIntegration
         SyncAll();
         RefreshDynamicLabels();
         StartTicker();
+        IsGraphicsPageOpen = true;
     }
 
     private static void StartTicker()
@@ -208,6 +216,13 @@ internal static class MenuIntegration
         }, out _fpsSlider);
         AddIntSlider("Gamma", "Brightness", 0, 100, 40, "",
             v => GameSet(DataDirector.Setting.Gamma, v, () => GraphicsManager.instance.UpdateGamma()), out _gammaSlider);
+        // 0 = use the game's per-player default (70). The number we set is vertical
+        // FOV; horizontal FOV expands automatically with monitor aspect (HOR+).
+        AddIntSlider("Vertical FOV (0 = game default)", "Higher = wider view; lower = zoomed in",
+            0, 110, Settings.VerticalFovOverride, "°",
+            v => ModSet(() => Settings.VerticalFovOverride = v), out _fovSlider);
+        AddModToggle("Ultra-Wide UI Fix", Settings.UltrawideUiFix,
+            b => ModSet(() => Settings.UltrawideUiFix = b), out _ultrawideUiToggle);
 
         // Quality
         AddLabel("Quality");
@@ -364,6 +379,16 @@ internal static class MenuIntegration
             keyOpts, keyOpts[keyIdx], s => {
                 int i = Array.IndexOf(keyOpts, s);
                 if (i >= 0) Settings.ToggleKey = keyVals[i];
+            }, out _);
+
+        var f11Opts = new[] { "Full Opt Layer", "CPU Patches", "Light Diagnostics" };
+        var f11Vals = new[] { F11Target.FullOptLayer, F11Target.CpuPatches, F11Target.LightDiagnostics };
+        int f11Idx = Array.IndexOf(f11Vals, Settings.F11TargetSetting);
+        if (f11Idx < 0) f11Idx = 0;
+        AddStringSlider("F11 Target", "Which feature F11 toggles for A/B",
+            f11Opts, f11Opts[f11Idx], s => {
+                int i = Array.IndexOf(f11Opts, s);
+                if (i >= 0) Settings.F11TargetSetting = f11Vals[i];
             }, out _);
     }
 
@@ -522,6 +547,8 @@ internal static class MenuIntegration
         _flickerToggle?.SetState(Settings.ExtractionPointFlicker, false);
         _overlayToggle?.SetState(Settings.DebugOverlay, false);
         _diagnosticsToggle?.SetState(Settings.DiagnosticsEnabled, false);
+        SetNum(_fovSlider, Settings.VerticalFovOverride);
+        _ultrawideUiToggle?.SetState(Settings.UltrawideUiFix, false);
         SyncPerf(_perfExplosionSlider, Settings.PerfExplosionShadows);
         SyncPerf(_perfItemLightSlider, Settings.PerfItemLightShadows);
         SyncPerf(_perfAnimLightSlider, Settings.PerfAnimatedLightShadows);

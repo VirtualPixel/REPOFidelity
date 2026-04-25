@@ -88,14 +88,16 @@ internal class AutoTuneData
     public int anisotropicFiltering = 16;
     public int perfLevel = 0;
 
-    // bump this when autotune logic changes but version doesn't
-    internal const int AutoTuneRevision = 6;
+    // bump this when autotune logic changes (algorithm tweak, new perf gating, etc).
+    // a bump forces every installed user through autotune once on first launch after the
+    // mod update. mod-version changes alone do NOT force a re-tune — only revision bumps,
+    // GPU changes, or resolution changes do.
+    internal const int AutoTuneRevision = 7;
     public int revision;
 
     internal bool IsStale()
     {
-        return version != BuildInfo.Version
-            || revision < AutoTuneRevision
+        return revision < AutoTuneRevision
             || gpuName != SystemInfo.graphicsDeviceName
             || (resWidth > 0 && (resWidth != Screen.width || resHeight != Screen.height));
     }
@@ -136,6 +138,15 @@ internal class SettingsData
     public bool filmGrain = true;
     public bool extractionFlickerFix = true;
 
+    // ultra-wide / FOV
+    // 0 = use the game's per-player default (70). Otherwise interpreted as
+    // the vertical FOV the camera should run at — Unity's HOR+ behaviour
+    // expands horizontal FOV from there based on Screen.aspect.
+    public int verticalFovOverride = 0;
+    // auto-correct CanvasScaler.matchWidthOrHeight to height-match when
+    // Screen.aspect runs above ~16:9, so menus don't stretch on ultra-wide.
+    public bool ultrawideUiFix = true;
+
     public int shadowBudget = -1;
 
     // performance — these default to -1 (auto, driven by preset).
@@ -163,6 +174,7 @@ internal class SettingsData
 
     // debug
     public int toggleKey = (int)KeyCode.F10;
+    public int f11Target = (int)F11Target.FullOptLayer;
     public bool debugOverlay = false;
     public bool benchmark = false;
     public bool autoConfigured = false;
