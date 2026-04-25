@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <Authors>Vippy</Authors>
     <!-- Fourth component = tester iteration. BepInEx rejects SemVer pre-release tags. -->
-    <Version>1.6.0.1</Version>
+    <Version>1.6.0.2</Version>
     <TesterManagedDir>D:\SteamLibrary\steamapps\common\REPO\REPO_Data\Managed</TesterManagedDir>
     <OutputPath>C:\Users\wells\AppData\Roaming\com.kesomannen.gale\repo\profiles\Development-Tester\BepInEx\plugins\REPOFidelity\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>

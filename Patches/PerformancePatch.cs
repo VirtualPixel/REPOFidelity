@@ -723,6 +723,10 @@ static class SceneOptimizer
         foreach (var r in Object.FindObjectsOfType<MeshRenderer>())
         {
             if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
+            // ShadowsOnly proxies (e.g. flashlight shadow caster) flip to a visible
+            // mesh if forced Off. Distance-cull restores per-frame, tiny-cull is
+            // permanent — leave them alone.
+            if (r.shadowCastingMode == ShadowCastingMode.ShadowsOnly) continue;
             if (r.bounds.size.magnitude >= sizeCap) continue;
             if (_localAvatarRendererSet.Contains(r)) continue;
             _tinyRendererOrig[r] = r.shadowCastingMode;
