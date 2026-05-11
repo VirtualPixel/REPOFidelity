@@ -1,8 +1,10 @@
 # REPO Fidelity — HD Graphics & Performance Mod for R.E.P.O.
 
-Better than REPO HD. Better than vanilla. Graphics overhaul that goes both ways — **squeeze more FPS on potato PCs** or **push visuals on high-end rigs**. Auto-detects your hardware and picks the best settings. Full in-game settings menu. DLSS, FSR, SMAA, shadow control, **21:9 / 32:9 ultrawide support**, FOV slider, the works.
+Better than REPO HD. Better than vanilla. Graphics overhaul that goes both ways — **squeeze more FPS on potato PCs** or **push visuals on high-end rigs**. Auto-detects your hardware and picks the best settings. Full in-game settings menu. DLSS, FSR, SMAA, shadow control, **21:9 / 32:9 / 16:10 / 4:3 aspect-ratio support**, FOV slider, the works.
 
 **Replaces REPO HD.** Everything it does, plus DLSS, auto-benchmark, CPU/GPU-aware tuning, performance optimizations, ultrawide / aspect-ratio fixes, and way more control. If you have REPO HD installed, remove it.
+
+> **v1.6.3 — 16:10 / 4:3 / 5:4 aspect support.** The same un-squashed world-view path that's been there for 21:9 / 32:9 since 1.6.0 now also kicks in for narrower-than-16:9 panels. If your monitor is 1920×1200, 1680×1050, or any 4:3 / 5:4 mode and the game was letterboxing top and bottom, that's gone. Plus a fix for the `<` `>` arrows on the in-game graphics sliders — clicks now register, they were silently dead before.
 
 ## Vanilla vs REPO Fidelity
 
@@ -107,8 +109,8 @@ Surface detail on the vase and sharper edges on the clown figure. Shadows render
 - All optimizations scale with preset — Ultra keeps full visual quality
 
 **Ultrawide & Field of View**
-- **21:9 / 32:9 ultrawide support** — world view fills the full screen instead of being squashed into a centered 16:9 box, post-processing (vignette, bloom, screen flashes) extends across the full aspect, HUD positioning untouched so other mods that hook the UI hierarchy still work
-- **Aspect-aware default FOV** — 16:9 stays at vanilla, 21:9 lerps up to ~80°, 32:9 hits 90°. Slider override (0–110°) wins when set
+- **Full aspect-ratio support — 21:9, 32:9, 16:10, 4:3, 5:4** — world view fills the full screen instead of being squashed into a centered 16:9 box. Wider panels lose the side letterbox; narrower panels lose the top/bottom letterbox. Post-processing (vignette, bloom, screen flashes) extends across the full aspect, HUD positioning untouched so other mods that hook the UI hierarchy still work
+- **Aspect-aware default FOV** — 16:9 stays at vanilla, 21:9 lerps up to ~80°, 32:9 hits 90°. 16:10 and narrower keep vanilla FOV (already covers what HOR+ shows). Slider override (0–110°) wins when set
 - **Vertical FOV slider** with smooth animation between values
 - **Title-screen polish on ultrawide** — menu camera narrows to hide the world edge past the truck, fog tightens to keep distant scene assets fading inside fog rather than popping at the rolling-treadmill despawn line
 - **F10 vanilla 16:9 compare view** for side-by-side comparison without losing your saved resolution

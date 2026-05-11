@@ -2,7 +2,6 @@ using System;
 using HarmonyLib;
 using MenuLib;
 using MenuLib.MonoBehaviors;
-using MenuLib.Structs;
 using UnityEngine;
 
 namespace REPOFidelity;
@@ -109,6 +108,10 @@ internal static class MenuIntegration
     {
         if (_page == null) CreatePage();
         _page!.OpenPage(openOnTop: true);
+        // MenuLib's OpenMenuPage sets addedPageOnTop=false unconditionally; without
+        // this the game's MenuManager filter skips RegisterHover on our page's stock
+        // MenuButtons (the < > on every REPOSlider), so arrow hover/click is dead.
+        _page!.menuPage.addedPageOnTop = true;
         SyncAll();
         RefreshDynamicLabels();
         StartTicker();
@@ -182,7 +185,6 @@ internal static class MenuIntegration
         _page = MenuAPI.CreateREPOPopupPage("Graphics",
             shouldCachePage: true, pageDimmerVisibility: false, spacing: 2f,
             localPosition: new Vector2(0f, 0f));
-        _page.maskPadding = new Padding(0, 0, 0, 0);
 
         // Live status line — bottleneck, fps, render resolution
         _page.AddElementToScrollView(sv =>

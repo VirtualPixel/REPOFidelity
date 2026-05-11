@@ -6,11 +6,25 @@
     <Nullable>enable</Nullable>
     <Authors>Vippy</Authors>
     <!-- Fourth component = tester iteration. BepInEx rejects SemVer pre-release tags. -->
-    <Version>1.6.0.2</Version>
-    <TesterManagedDir>D:\SteamLibrary\steamapps\common\REPO\REPO_Data\Managed</TesterManagedDir>
-    <OutputPath>C:\Users\wells\AppData\Roaming\com.kesomannen.gale\repo\profiles\Development-Tester\BepInEx\plugins\REPOFidelity\</OutputPath>
+    <Version>1.6.3</Version>
+    <RootNamespace>REPOFidelity</RootNamespace>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <UserHome Condition="'$(UserHome)' == '' and '$(HOME)' != ''">$(HOME)</UserHome>
+    <UserHome Condition="'$(UserHome)' == '' and '$(USERPROFILE)' != ''">$(USERPROFILE)</UserHome>
+    <GalePluginsDir Condition="'$(GalePluginsDir)' == ''">$(UserHome)/.local/share/com.kesomannen.gale/repo/profiles/Developer/BepInEx/plugins</GalePluginsDir>
+    <OutputPath>$(GalePluginsDir)/REPOFidelity/</OutputPath>
+  </PropertyGroup>
+
+  <!-- Game install path. Override with -p:RepoManagedDir=... or set REPO_MANAGED_DIR. -->
+  <PropertyGroup>
+    <RepoManagedDir Condition="'$(RepoManagedDir)' == '' and '$(REPO_MANAGED_DIR)' != ''">$(REPO_MANAGED_DIR)</RepoManagedDir>
+    <RepoManagedDir Condition="'$(RepoManagedDir)' == '' and Exists('$(UserHome)/.local/share/Steam/steamapps/common/REPO/REPO_Data/Managed')">$(UserHome)/.local/share/Steam/steamapps/common/REPO/REPO_Data/Managed</RepoManagedDir>
+    <RepoManagedDir Condition="'$(RepoManagedDir)' == '' and Exists('C:/Program Files (x86)/Steam/steamapps/common/REPO/REPO_Data/Managed')">C:/Program Files (x86)/Steam/steamapps/common/REPO/REPO_Data/Managed</RepoManagedDir>
+    <RepoManagedDir Condition="'$(RepoManagedDir)' == '' and Exists('D:/SteamLibrary/steamapps/common/REPO/REPO_Data/Managed')">D:/SteamLibrary/steamapps/common/REPO/REPO_Data/Managed</RepoManagedDir>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -20,22 +34,6 @@
       https://nuget.windows10ce.com/nuget/v3/index.json
     </RestoreAdditionalProjectSources>
   </PropertyGroup>
-
-  <Target Name="GenerateBuildInfo" BeforeTargets="BeforeBuild">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\prebuild.ps1&quot; -Version $(Version)" />
-  </Target>
-
-  <Target Name="CopyShaderBundle" AfterTargets="Build">
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\repofidelity_shaders"
-          DestinationFolder="$(OutputPath)"
-          SkipUnchangedFiles="true"
-          Condition="Exists('$(MSBuildProjectDirectory)\repofidelity_shaders')" />
-  </Target>
-
-  <!-- PackageMod target disabled on tester-update branch: no public release zip. -->
-  <Target Name="PackageMod" AfterTargets="CopyShaderBundle">
-    <Message Text="[tester-update] Skipping Thunderstore packaging for $(Version)" Importance="high" />
-  </Target>
 
   <ItemGroup>
     <Compile Remove="UnityShaderProject\**" />
@@ -51,47 +49,127 @@
     <Publicize Include="UnityEngine.NVIDIAModule" />
   </ItemGroup>
 
-  <!-- Tester direct-DLL references (not on NuGet; offline only) -->
+  <!-- Direct game DLL references. -->
   <ItemGroup>
     <Reference Include="Assembly-CSharp">
-      <HintPath>$(TesterManagedDir)\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(RepoManagedDir)/Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Assembly-CSharp-firstpass">
-      <HintPath>$(TesterManagedDir)\Assembly-CSharp-firstpass.dll</HintPath>
+      <HintPath>$(RepoManagedDir)/Assembly-CSharp-firstpass.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="PhotonUnityNetworking">
-      <HintPath>$(TesterManagedDir)\PhotonUnityNetworking.dll</HintPath>
+      <HintPath>$(RepoManagedDir)/PhotonUnityNetworking.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Photon3Unity3D">
-      <HintPath>$(TesterManagedDir)\Photon3Unity3D.dll</HintPath>
+      <HintPath>$(RepoManagedDir)/Photon3Unity3D.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="PhotonRealtime">
-      <HintPath>$(TesterManagedDir)\PhotonRealtime.dll</HintPath>
+      <HintPath>$(RepoManagedDir)/PhotonRealtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.UI">
-      <HintPath>$(TesterManagedDir)\UnityEngine.UI.dll</HintPath>
+      <HintPath>$(RepoManagedDir)/UnityEngine.UI.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Unity.Postprocessing.Runtime">
-      <HintPath>$(TesterManagedDir)\Unity.Postprocessing.Runtime.dll</HintPath>
+      <HintPath>$(RepoManagedDir)/Unity.Postprocessing.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Unity.TextMeshPro">
-      <HintPath>$(TesterManagedDir)\Unity.TextMeshPro.dll</HintPath>
+      <HintPath>$(RepoManagedDir)/Unity.TextMeshPro.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
 
   <ItemGroup>
     <Reference Include="MenuLib">
-      <HintPath>$(OutputPath)\..\nickklmao-MenuLib\MenuLib.dll</HintPath>
+      <HintPath>$(GalePluginsDir)/nickklmao-MenuLib/MenuLib.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+
+  <Target Name="GenerateBuildInfo" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <BuildInfoContent>// &lt;auto-generated/&gt;
+namespace REPOFidelity
+{
+    internal static class BuildInfo
+    {
+        public const string Version = "$(Version)"%3B
+    }
+}
+</BuildInfoContent>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(MSBuildProjectDirectory)/BuildInfo.g.cs" Lines="$(BuildInfoContent)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+
+  <Target Name="CopyShaderBundle" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/repofidelity_shaders"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(MSBuildProjectDirectory)/repofidelity_shaders')" />
+  </Target>
+
+  <UsingTask TaskName="UpdateManifestVersion" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <ManifestPath ParameterType="System.String" Required="true" />
+      <NewVersion ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var enc = new UTF8Encoding(false);
+        var content = File.ReadAllText(ManifestPath, enc);
+        var updated = Regex.Replace(content, "\"version_number\"\\s*:\\s*\"[^\"]*\"", "\"version_number\": \"" + NewVersion + "\"");
+        if (updated != content) File.WriteAllText(ManifestPath, updated, enc);
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="PackageMod" AfterTargets="CopyShaderBundle">
+    <PropertyGroup>
+      <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)'))</RepoRoot>
+      <BuildZipParent>$(RepoRoot)/BuildZip</BuildZipParent>
+      <StageDir>$(BuildZipParent)/REPOFidelity</StageDir>
+      <OutputZip>$(BuildZipParent)/REPOFidelity.zip</OutputZip>
+      <SourceManifest>$(RepoRoot)/manifest.json</SourceManifest>
+      <SourceIcon>$(RepoRoot)/icon.png</SourceIcon>
+      <SourceReadme>$(RepoRoot)/README.md</SourceReadme>
+      <SourceChangelog>$(RepoRoot)/CHANGELOG.md</SourceChangelog>
+      <BuiltDll>$(OutputPath)REPOFidelity.dll</BuiltDll>
+      <DlssSrc>$(OutputPath)nvngx_dlss.dll</DlssSrc>
+      <ShaderBundleSrc>$(OutputPath)repofidelity_shaders</ShaderBundleSrc>
+      <NgxBridgeSrc>$(OutputPath)ngx_bridge.dll</NgxBridgeSrc>
+    </PropertyGroup>
+
+    <UpdateManifestVersion ManifestPath="$(SourceManifest)" NewVersion="$(Version)" />
+
+    <RemoveDir Directories="$(StageDir)" />
+    <MakeDir Directories="$(StageDir)" />
+
+    <Copy SourceFiles="$(BuiltDll)" DestinationFolder="$(StageDir)" />
+    <Copy SourceFiles="$(SourceReadme);$(SourceChangelog);$(SourceManifest)" DestinationFolder="$(StageDir)" />
+    <Copy SourceFiles="$(SourceIcon)" DestinationFolder="$(StageDir)" Condition="Exists('$(SourceIcon)')" />
+    <Copy SourceFiles="$(DlssSrc)" DestinationFolder="$(StageDir)" Condition="Exists('$(DlssSrc)')" />
+    <Copy SourceFiles="$(ShaderBundleSrc)" DestinationFolder="$(StageDir)" Condition="Exists('$(ShaderBundleSrc)')" />
+    <Copy SourceFiles="$(NgxBridgeSrc)" DestinationFolder="$(StageDir)" Condition="Exists('$(NgxBridgeSrc)')" />
+
+    <Warning Text="nvngx_dlss.dll not found in output - DLSS will use fallback download"
+             Condition="!Exists('$(DlssSrc)')" />
+    <Warning Text="icon.png not found - add before uploading"
+             Condition="!Exists('$(SourceIcon)')" />
+
+    <Delete Files="$(OutputZip)" />
+    <ZipDirectory SourceDirectory="$(StageDir)" DestinationFile="$(OutputZip)" Overwrite="true" />
+
+    <Message Importance="high" Text="[PackageMod] DLL  -> $(OutputPath)" />
+    <Message Importance="high" Text="[PackageMod] Zip  -> $(OutputZip) (v$(Version))" />
+  </Target>
 
 </Project>

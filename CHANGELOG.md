@@ -1,3 +1,23 @@
+## 1.6.3
+
+- 16:10 / 4:3 / 5:4 panels now get the same un-squashed world view 21:9 / 32:9 panels have had since 1.6.0. Vanilla on a 16:10 panel renders the camera's HOR+ output into the game's fixed 750×418 (16:9) `Render Texture Main` RawImage and letterboxes top and bottom. The underlay path was already there for the wider case but gated only on `aspect > 1.85`; added a symmetric `aspect < 1.768` lower threshold (16:9 = 1.7777..., so 1.768 catches anything definitively narrower while leaving exact 16:9 untouched) so the underlay engages for narrower-than-16:9 panels too. Same path solves both directions: bind world camera RT to a full-screen RawImage on the `sortOrder=0` underlay canvas, hide the game's `mainImage` + `Background`, mirror the post-FX RT onto a sibling at full-screen size. FOV bump, menu-camera narrowing, and main-menu fog tightening stay 16:9+ only — those compensate for the world edge that wider FOV reveals on the truck scene, which a 16:10 panel doesn't expose
+- Fixed dead arrow hover/click on every `REPOSlider`'s `<` `>` buttons in the graphics popup. MenuLib's `OpenMenuPage` writes `addedPageOnTop = false` unconditionally, and the game's `MenuManager` filter then skips `RegisterHover` on stock `MenuButton`s under that flag — slider arrows registered no hover state and clicks did nothing. Re-stamping `addedPageOnTop = true` after `OpenPage` restores the standard hover + click path. Drag still worked through the slider's own input handler, so this only affected users clicking the arrows instead of dragging
+
+---
+
+## 1.6.2
+
+- Updated for R.E.P.O. v0.4. 1.6.1 had the recompile but missed the v0.4-specific shadow-proxy fix — the game now ships shadow-only proxy renderers on the local avatar (body, head, flashlight) and the previous distance-cull / tiny-renderer cull passes stamped `ShadowCastingMode.On` over them, leaving the body and flashlight visible in first-person. Death cam also flashed a white frame because the mod's fog postfix was stamping `fogEnd + 10` over the death camera's 70m near plane and inverting the frustum. Both fixed plus two related cleanups — full per-fix detail in the 1.5.3 entries below
+- Patches retargeted for v0.4: shadow distance cap moved from `SpectateCamera.Update` to `LateUpdate` (game moved its state-machine tick), fog multiplier moved to a `FogLogic` postfix so room-to-room `RoomFog` transitions stay scaled, and `RoomVolumeCheck.CheckSet` replacement mirrors v0.4's new scouting-point credit + tutorial extraction reminder. Existing shadow cap, fog multiplier, and optimized room-volume check behave the same on v0.4 as they did on v0.3
+
+---
+
+## 1.6.1
+
+- v0.4 recompile (superseded by 1.6.2 — 1.6.1 was missing the shadow-proxy and death-cam fixes)
+
+---
+
 ## 1.6.0
 
 - Ultra-wide support (21:9, 32:9, anything above 16:9). Vanilla on a 21:9 panel renders the world at HOR+ camera aspect into the game's fixed 750×418 (16:9) `Render Texture Main` RawImage, so the world image is squashed horizontally and the screen sides are filled with a full-screen black `Background` image. The mod adds a separate `sortOrder=0` Canvas with a full-screen RawImage bound to the same world RT, hides the game's `Background` and `Render Texture Main` so they don't overdraw, and mirrors the post-processing pass (`Render Texture Overlay`) onto a sibling RawImage at full-screen size so vignette / bloom / screen flashes cover the full aspect. Game's UI canvas (HUD, buttons, menus) is left untouched at `sortOrder=1` and renders on top — mods that hook those by GameObject path or component continue to find their targets unchanged

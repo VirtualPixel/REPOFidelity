@@ -345,7 +345,11 @@ internal static class UltrawideCompareResolution
 // mirrored onto a sibling RawImage at full-screen size so post-FX cover the full aspect.
 internal static class UltrawideCanvasFix
 {
-    const float Threshold = 1.85f;
+    // Wider than this triggers the underlay for the 21:9 / 32:9 case (kills horizontal letterbox).
+    const float WideThreshold = 1.85f;
+    // Narrower than this triggers the underlay for the 16:10 / 4:3 / 5:4 case (kills vertical letterbox).
+    // 16:9 = 1.7777..., so 1.768 catches anything definitively narrower while leaving exact 16:9 untouched.
+    const float NarrowThreshold = 1.768f;
 
     static GameObject? _ultrawideUnderlay;
     static GameObject? _underlayCanvasGo;
@@ -364,13 +368,30 @@ internal static class UltrawideCanvasFix
 
     internal static void RefreshAll()
     {
-        bool active = Settings.ModEnabled && Settings.UltrawideUiFix && IsUltrawide();
+        bool active = Settings.ModEnabled && Settings.UltrawideUiFix && RequiresAspectFix();
         if (!active) { RestoreAll(); return; }
         EnsureUltrawideUnderlay();
     }
 
+    // Wider than 16:9 (21:9, 32:9). Used by callers that specifically want the wider case
+    // (e.g. menu camera narrowing, FOV bump, F10 vanilla-compare).
     internal static bool IsUltrawide()
-        => Screen.height > 0 && (float)Screen.width / Screen.height > Threshold;
+        => Screen.height > 0 && (float)Screen.width / Screen.height > WideThreshold;
+
+    // True when the panel's aspect doesn't match the game's fixed 16:9 inner box.
+    // Vanilla letterboxes the world view to a centred 16:9 RawImage:
+    //   Wider panels (21:9 / 32:9): letterbox lives on the LEFT and RIGHT.
+    //   Narrower panels (16:10 / 4:3 / 5:4): letterbox lives on the TOP and BOTTOM.
+    // Same underlay path solves both — bind the world camera RT to a full-screen RawImage,
+    // hide the game's inner mainImage and the surrounding Background, mirror post-FX.
+    // The world camera's HOR+ default already tracks Screen.aspect, so the worldRT contents
+    // render at panel aspect; displaying that RT full-screen un-stretches it correctly.
+    internal static bool RequiresAspectFix()
+    {
+        if (Screen.height == 0) return false;
+        float aspect = (float)Screen.width / Screen.height;
+        return aspect > WideThreshold || aspect < NarrowThreshold;
+    }
 
     static void EnsureUltrawideUnderlay()
     {
