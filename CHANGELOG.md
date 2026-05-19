@@ -1,3 +1,9 @@
+## 1.7.0
+
+- RepoXR (VR) compatibility. The HD pipeline redirects the main camera onto its own render texture and jitters the projection matrix each frame for temporal upscaling. Both assume one flat display, so under RepoXR they collapsed the stereo view (the bug report described each eye pointing the wrong way). When a VR headset is active REPOFidelity now stands its camera pipeline down: no upscaler, no render-texture redirect, no projection jitter, no FOV or ultrawide/aspect override. The optimization layer keeps running, since shadow culling, the CPU and GC patches and the quality settings never touch the stereo view and VR can use the extra frames. Raising VR render resolution stays RepoXR's job through its own CameraResolution setting. VR is detected from Unity's XR state, so there's no hard dependency on RepoXR.
+
+---
+
 ## 1.6.3
 
 - 16:10 / 4:3 / 5:4 panels now get the same un-squashed world view 21:9 / 32:9 panels have had since 1.6.0. Vanilla on a 16:10 panel renders the camera's HOR+ output into the game's fixed 750×418 (16:9) `Render Texture Main` RawImage and letterboxes top and bottom. The underlay path was already there for the wider case but gated only on `aspect > 1.85`; added a symmetric `aspect < 1.768` lower threshold (16:9 = 1.7777..., so 1.768 catches anything definitively narrower while leaving exact 16:9 untouched) so the underlay engages for narrower-than-16:9 panels too. Same path solves both directions: bind world camera RT to a full-screen RawImage on the `sortOrder=0` underlay canvas, hide the game's `mainImage` + `Background`, mirror the post-FX RT onto a sibling at full-screen size. FOV bump, menu-camera narrowing, and main-menu fog tightening stay 16:9+ only — those compensate for the world edge that wider FOV reveals on the truck scene, which a 16:10 panel doesn't expose

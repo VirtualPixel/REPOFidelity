@@ -4,7 +4,7 @@ Better than REPO HD. Better than vanilla. Graphics overhaul that goes both ways 
 
 **Replaces REPO HD.** Everything it does, plus DLSS, auto-benchmark, CPU/GPU-aware tuning, performance optimizations, ultrawide / aspect-ratio fixes, and way more control. If you have REPO HD installed, remove it.
 
-> **v1.6.3 — 16:10 / 4:3 / 5:4 aspect support.** The same un-squashed world-view path that's been there for 21:9 / 32:9 since 1.6.0 now also kicks in for narrower-than-16:9 panels. If your monitor is 1920×1200, 1680×1050, or any 4:3 / 5:4 mode and the game was letterboxing top and bottom, that's gone. Plus a fix for the `<` `>` arrows on the in-game graphics sliders — clicks now register, they were silently dead before.
+> **v1.7.0: plays nice with RepoXR (VR).** The HD upscaling pipeline used to break VR stereo rendering, each eye ended up looking the wrong way. REPOFidelity now detects a VR headset and stands its camera pipeline down (no upscaler, no FOV or ultrawide override). The performance optimizations keep running, so VR still gets the extra frames. Raise VR render resolution with RepoXR's own CameraResolution setting.
 
 ## Vanilla vs REPO Fidelity
 

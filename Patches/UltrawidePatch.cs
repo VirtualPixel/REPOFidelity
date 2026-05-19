@@ -20,6 +20,7 @@ internal static class CameraZoomFovOverride
     internal static void Apply(CameraZoom cz)
     {
         if (cz == null) return;
+        if (VRCompat.Active) return; // VR owns the FOV; the headset sets it per eye
         if (!Settings.ModEnabled) { Restore(cz); return; }
 
         if (!_originals.ContainsKey(cz))
@@ -123,6 +124,7 @@ internal static class MenuCameraFovOverride
 
     internal static void Apply()
     {
+        if (VRCompat.Active) return; // VR owns the FOV; the headset sets it per eye
         if (!Settings.ModEnabled) { Restore(); return; }
         var noTarget = CameraNoPlayerTarget.instance;
         if (noTarget == null || noTarget.cam == null) return;
@@ -368,6 +370,8 @@ internal static class UltrawideCanvasFix
 
     internal static void RefreshAll()
     {
+        // VR bypasses the flat Render Texture Main presentation this underlay rebuilds.
+        if (VRCompat.Active) return;
         bool active = Settings.ModEnabled && Settings.UltrawideUiFix && RequiresAspectFix();
         if (!active) { RestoreAll(); return; }
         EnsureUltrawideUnderlay();

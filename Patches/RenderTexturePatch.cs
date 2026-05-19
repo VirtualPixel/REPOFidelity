@@ -13,10 +13,24 @@ internal static class RenderTexturePatch
     internal static float VanillaWidthSmall;
     internal static float VanillaHeightSmall;
 
+    static bool _vrNoticeLogged;
+
     [HarmonyPostfix]
     [HarmonyPatch("Start")]
     public static void PostfixStart(RenderTextureMain __instance)
     {
+        // In VR the camera renders straight to the headset's stereo swapchain. Installing
+        // the upscaler here would redirect it onto a flat render texture and break that.
+        if (VRCompat.Active)
+        {
+            if (!_vrNoticeLogged)
+            {
+                _vrNoticeLogged = true;
+                Plugin.Log.LogInfo("VR headset detected. HD render pipeline, FOV and ultrawide patches disabled; optimization layer still runs.");
+            }
+            return;
+        }
+
         Camera? mainCam = null;
 
         // Save original values before modifying
@@ -88,6 +102,7 @@ internal static class RenderTexturePatch
     public static void PrefixUpdate(RenderTextureMain __instance)
     {
         if (!Settings.ModEnabled) return;
+        if (VRCompat.Active) return;
         if (Settings.Pixelation) return;
 
         var manager = UpscalerManager.Instance;

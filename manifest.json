@@ -1,6 +1,6 @@
 {
     "name": "REPOFidelity",
-    "version_number": "1.6.3",
+    "version_number": "1.7.0",
     "website_url": "https://github.com/VirtualPixel/REPOFidelity",
     "description": "HD graphics + ultrawide + FOV. DLSS, FSR, SMAA, FOV slider, 21:9 / 32:9 / 16:10 / 4:3 aspect-ratio support, shadow control, auto-benchmark. Drop-in REPO HD replacement. Auto-tuned presets, CPU/GPU-aware.",
     "dependencies": [
