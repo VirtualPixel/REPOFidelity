@@ -56,7 +56,6 @@ static class SceneOptimizer
 
     internal static void Apply()
     {
-        using var _ = ModTiming.Begin("REPOFidelity.SceneOptimizer.Apply");
         long _ftm = FrameTimeMeter.Begin();
 
         _shadowStrengths.Clear();
@@ -793,7 +792,7 @@ static class SceneOptimizer
                       + _flashlightBudgetOrig.Count + _pointLightShadowOrig.Count
                       + _playerAvatarShadowOrig.Count + _playerAvatarSmrUpdateOrig.Count;
         string prefix = mutations == 0 ? "OK" : "LEAK";
-        Plugin.Log.LogInfo(
+        Plugin.Log.LogDebug(
             $"[restore-state:{tag}] {prefix} mutations={mutations} " +
             $"tinyRend={_tinyRendererOrig.Count} " +
             $"animLight={_animatedLightOrig.Count} " +
@@ -888,7 +887,7 @@ static class PlayerAvatarMenuAAPatch
         var cam = __instance.cameraAndStuff.GetComponentInChildren<Camera>(true);
         if (cam == null)
         {
-            Plugin.Log.LogInfo($"avatar preview: no Camera under cameraAndStuff on '{__instance.name}'");
+            Plugin.Log.LogDebug($"avatar preview: no Camera under cameraAndStuff on '{__instance.name}'");
             return;
         }
 
@@ -925,7 +924,7 @@ static class PlayerAvatarMenuAAPatch
                 }
                 else
                 {
-                    Plugin.Log.LogInfo($"avatar preview: main PPL has no resources — SMAA unavailable on '{cam.name}'");
+                    Plugin.Log.LogDebug($"avatar preview: main PPL has no resources — SMAA unavailable on '{cam.name}'");
                 }
             }
         }

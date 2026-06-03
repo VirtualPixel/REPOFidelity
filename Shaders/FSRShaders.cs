@@ -22,7 +22,7 @@ internal static class FSRShaders
             _rcasMaterial = new Material(rcasShader) { hideFlags = HideFlags.HideAndDontSave };
 
         if (_easuMaterial != null)
-            Plugin.Log.LogInfo("FSR shaders loaded from bundle");
+            Plugin.Log.LogDebug("FSR shaders loaded from bundle");
         else
             Plugin.Log.LogWarning("FSR EASU shader unavailable — FSR upscaling disabled");
     }

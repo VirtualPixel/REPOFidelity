@@ -1,6 +1,6 @@
 # REPO Fidelity — HD Graphics & Performance Mod for R.E.P.O.
 
-Better than REPO HD. Better than vanilla. Graphics overhaul that goes both ways — **squeeze more FPS on potato PCs** or **push visuals on high-end rigs**. Auto-detects your hardware and picks the best settings. Full in-game settings menu. DLSS, FSR, SMAA, shadow control, **21:9 / 32:9 / 16:10 / 4:3 aspect-ratio support**, FOV slider, the works.
+Better than REPO HD. Graphics overhaul that goes both ways — **squeeze more FPS on potato PCs** or **push visuals on high-end rigs**. Auto-detects your hardware and picks the best settings. Full in-game settings menu. DLSS, FSR, SMAA, shadow control, **21:9 / 32:9 / 16:10 / 4:3 aspect-ratio support**, and an FOV slider.
 
 **Replaces REPO HD.** Everything it does, plus DLSS, auto-benchmark, CPU/GPU-aware tuning, performance optimizations, ultrawide / aspect-ratio fixes, and way more control. If you have REPO HD installed, remove it.
 

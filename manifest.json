@@ -2,7 +2,7 @@
     "name": "REPOFidelity",
     "version_number": "1.7.0",
     "website_url": "https://github.com/VirtualPixel/REPOFidelity",
-    "description": "HD graphics + ultrawide + FOV. DLSS, FSR, SMAA, FOV slider, 21:9 / 32:9 / 16:10 / 4:3 aspect-ratio support, shadow control, auto-benchmark. Drop-in REPO HD replacement. Auto-tuned presets, CPU/GPU-aware.",
+    "description": "HD graphics replacement for REPO — DLSS, FSR, and SMAA, real ultrawide (21:9, 32:9, 16:10, 4:3), an FOV slider, and shadow controls. Auto-benchmarks your hardware and picks settings to match. Drop-in replacement for REPO HD.",
     "dependencies": [
         "BepInEx-BepInExPack-5.4.2305",
         "nickklmao-MenuLib-2.5.1"

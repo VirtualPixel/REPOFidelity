@@ -135,6 +135,10 @@ internal static class QualityPatch
     // Enforce fog multiplier + view distance every frame after the game's lerp writes
     // RenderSettings. Harmless to run every tick — we multiply the game-written values,
     // not compound our own state.
+    // FogLogic runs every frame; remember the last values we logged so the
+    // debug line only fires when fog or clip actually changes, not per tick.
+    static int _lastFogStart = -1, _lastFogEnd = -1, _lastClip = -1;
+
     [HarmonyPostfix]
     [HarmonyPatch(typeof(EnvironmentDirector), "FogLogic")]
     public static void PostfixFogLogic(EnvironmentDirector __instance)
@@ -162,8 +166,16 @@ internal static class QualityPatch
             UpscalerManager.SetModFarClip(__instance.MainCamera, clip);
         }
 
-        Plugin.Log.LogDebug($"Fog: {RenderSettings.fogStartDistance:F0}-{RenderSettings.fogEndDistance:F0}m, " +
-            $"clip: {__instance.MainCamera.farClipPlane:F0}m");
+        int fogStart = (int)RenderSettings.fogStartDistance;
+        int fogEnd = (int)RenderSettings.fogEndDistance;
+        int clipDist = (int)__instance.MainCamera.farClipPlane;
+        if (fogStart != _lastFogStart || fogEnd != _lastFogEnd || clipDist != _lastClip)
+        {
+            _lastFogStart = fogStart;
+            _lastFogEnd = fogEnd;
+            _lastClip = clipDist;
+            Plugin.Log.LogDebug($"Fog: {fogStart}-{fogEnd}m, clip: {clipDist}m");
+        }
     }
 
     internal static void ApplyFogAndDrawDistance()
@@ -249,7 +261,7 @@ internal static class QualityPatch
             // Apply fog and draw distance live
             ApplyFogAndDrawDistance();
 
-            Plugin.Log.LogInfo($"[{preset}] shadows={Settings.ResolvedShadowQuality}/{Settings.ResolvedShadowDistance}m " +
+            Plugin.Log.LogDebug($"[{preset}] shadows={Settings.ResolvedShadowQuality}/{Settings.ResolvedShadowDistance}m " +
                 $"LOD={Settings.ResolvedLODBias} AF={af} lights={Settings.ResolvedPixelLightCount} " +
                 $"lightDist={Settings.ResolvedLightDistance}m tex={texMip}");
         }

@@ -37,7 +37,6 @@ internal class DLSSUpscaler : IUpscaler
     private CommandBuffer? _depthCopyCmd;
     private CommandBuffer? _mvCopyCmd;
     private int _evalFailCount;
-    private int _evalSuccessLogged;
     private bool _needsReset;
 
     public DLSSUpscaler(bool dlaaMode = false)
@@ -232,8 +231,6 @@ internal class DLSSUpscaler : IUpscaler
             _needsReset = false;
             if (_dlssOutputRT != null)
                 Graphics.Blit(_dlssOutputRT, destination);
-            if (_evalSuccessLogged++ < 3)
-                Plugin.Log.LogDebug($"DLSS D3D12 eval OK — {source.width}x{source.height} -> {destination.width}x{destination.height}");
         }
     }
 

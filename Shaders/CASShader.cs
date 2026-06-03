@@ -21,7 +21,7 @@ internal static class CASShader
         }
 
         _material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
-        Plugin.Log.LogInfo("CAS shader loaded");
+        Plugin.Log.LogDebug("CAS shader loaded");
     }
 
     public static void Apply(RenderTexture source, RenderTexture destination, float sharpness)

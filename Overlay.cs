@@ -251,7 +251,7 @@ internal static class Overlay
         _progressFillImg = fill.AddComponent<Image>();
         _progressFillImg.raycastTarget = false;
 
-        Plugin.Log.LogInfo("Overlay: native HUD created");
+        Plugin.Log.LogDebug("Overlay: native HUD created");
     }
 
     static NativeLine CreateNativeLine(int index)
@@ -316,12 +316,12 @@ internal static class Overlay
             if (img != null && img.sprite != null)
             {
                 _scanlineSprite = img.sprite;
-                Plugin.Log.LogInfo($"Overlay: scanline sprite '{_scanlineSprite.name}'");
+                Plugin.Log.LogDebug($"Overlay: scanline sprite '{_scanlineSprite.name}'");
                 break;
             }
         }
         if (_gameFont != null)
-            Plugin.Log.LogInfo($"Overlay: game font '{_gameFont.name}'");
+            Plugin.Log.LogDebug($"Overlay: game font '{_gameFont.name}'");
     }
 
     static void ClearNative()

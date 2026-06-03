@@ -191,7 +191,6 @@ internal class UpscalerManager : MonoBehaviour
 
 
 
-        Plugin.Log.LogDebug("Passthrough mode");
     }
 
     private void SetupNativeScaling(RenderTextureMain rtMain)
@@ -201,7 +200,6 @@ internal class UpscalerManager : MonoBehaviour
 
 
 
-        Plugin.Log.LogDebug("NativeScaling mode");
     }
 
     private void SetupUpscaler(RenderTextureMain rtMain, Camera camera)
@@ -240,7 +238,7 @@ internal class UpscalerManager : MonoBehaviour
         if (_upscaler != null && _camera != null)
         {
             _upscaler.Initialize(_camera, _inputWidth, _inputHeight, _outputWidth, _outputHeight);
-            Plugin.Log.LogInfo($"Upscaler active: {_upscaler.Name}");
+            Plugin.Log.LogDebug($"Upscaler active: {_upscaler.Name}");
         }
 
         // register jitter callbacks for any temporal upscaler
@@ -256,7 +254,6 @@ internal class UpscalerManager : MonoBehaviour
 
     private void OnPreRenderJitter(Camera cam)
     {
-        using var _ = ModTiming.Begin(MarkPreRenderJitter);
         if (cam != _camera || _upscaler == null || !Settings.ModEnabled) return;
         if (_inputWidth <= 0 || _inputHeight <= 0) return;
 
@@ -277,7 +274,6 @@ internal class UpscalerManager : MonoBehaviour
 
     private void OnPostRenderRestore(Camera cam)
     {
-        using var _ = ModTiming.Begin(MarkPostRenderRestore);
         if (cam != _camera || !_jitterApplied) return;
         cam.projectionMatrix = _savedProjectionMatrix;
         _jitterApplied = false;
@@ -285,7 +281,6 @@ internal class UpscalerManager : MonoBehaviour
 
     private void OnPostRenderCallback(Camera cam)
     {
-        using var _ = ModTiming.Begin(MarkPostRenderCallback);
         if (cam != _camera) return;
         ProcessFrame();
     }
@@ -305,7 +300,6 @@ internal class UpscalerManager : MonoBehaviour
 
     private void LateUpdate()
     {
-        using var _ = ModTiming.Begin(MarkLateUpdate);
         if (!Settings.ModEnabled || _renderTextureMain == null) return;
 
         // Passthrough: nothing to do
@@ -345,7 +339,6 @@ internal class UpscalerManager : MonoBehaviour
 
     private void ProcessFrame()
     {
-        using var _ = ModTiming.Begin(MarkProcessFrame);
         if (_renderTextureMain == null || _upscaler == null) return;
         if (_outputRT == null || !_outputRT.IsCreated()) return;
 
@@ -361,7 +354,6 @@ internal class UpscalerManager : MonoBehaviour
 
     private static void ApplyCAS(RenderTexture target)
     {
-        using var _ = ModTiming.Begin(MarkApplyCAS);
         if (target == null || !target.IsCreated()) return;
         var temp = RenderTexture.GetTemporary(target.width, target.height, 0, target.format);
         CASShader.Apply(target, temp, Settings.Sharpening);
@@ -372,33 +364,17 @@ internal class UpscalerManager : MonoBehaviour
     private float _shadowBudgetTimer;
     private const float ShadowBudgetInterval = 0.1f;
 
-    private const string MarkTick             = "REPOFidelity.Tick";
-    private const string MarkTickShadowBudget = "REPOFidelity.Tick.ShadowBudget";
-    private const string MarkTickDistCull     = "REPOFidelity.Tick.DistanceShadowCull";
-    private const string MarkTickFlashBudget  = "REPOFidelity.Tick.FlashlightBudget";
-    private const string MarkTickAvatarCull   = "REPOFidelity.Tick.PlayerAvatarShadowCull";
-    private const string MarkTickPointLight   = "REPOFidelity.Tick.PointLightShadowCull";
-    private const string MarkLateUpdate       = "REPOFidelity.LateUpdate";
-    private const string MarkProcessFrame     = "REPOFidelity.ProcessFrame";
-    private const string MarkApplyCAS         = "REPOFidelity.ApplyCAS";
-    private const string MarkPreRenderJitter  = "REPOFidelity.Cam.PreRenderJitter";
-    private const string MarkPostRenderRestore = "REPOFidelity.Cam.PostRenderRestore";
-    private const string MarkPostRenderCallback = "REPOFidelity.Cam.PostRenderCallback";
-
     private void Update()
     {
         _shadowBudgetTimer += Time.unscaledDeltaTime;
         if (_shadowBudgetTimer >= ShadowBudgetInterval)
         {
             _shadowBudgetTimer = 0f;
-            using (ModTiming.Begin(MarkTick))
-            {
-                using (ModTiming.Begin(MarkTickShadowBudget)) Patches.SceneOptimizer.UpdateShadowBudget(_camera);
-                using (ModTiming.Begin(MarkTickDistCull))     Patches.SceneOptimizer.UpdateDistanceShadowCull(_camera);
-                using (ModTiming.Begin(MarkTickFlashBudget))  Patches.SceneOptimizer.UpdateFlashlightShadowBudget(_camera);
-                using (ModTiming.Begin(MarkTickAvatarCull))   Patches.SceneOptimizer.UpdatePlayerAvatarShadowCull(_camera);
-                using (ModTiming.Begin(MarkTickPointLight))   Patches.SceneOptimizer.UpdatePointLightShadowCull(_camera);
-            }
+            Patches.SceneOptimizer.UpdateShadowBudget(_camera);
+            Patches.SceneOptimizer.UpdateDistanceShadowCull(_camera);
+            Patches.SceneOptimizer.UpdateFlashlightShadowBudget(_camera);
+            Patches.SceneOptimizer.UpdatePlayerAvatarShadowCull(_camera);
+            Patches.SceneOptimizer.UpdatePointLightShadowCull(_camera);
         }
 
         // F11 dispatches on the user's F11 Target setting. Lets one key cover
@@ -422,7 +398,7 @@ internal class UpscalerManager : MonoBehaviour
             {
                 // disabling is instant — no render texture rebuild needed
                 Settings.ModEnabled = false;
-                Plugin.Log.LogInfo("Mod DISABLED");
+                Plugin.Log.LogDebug("Mod DISABLED");
                 // snapshot modifications BEFORE restore so the log shows what we reverted
                 Patches.SceneOptimizer.LogRestoreState("pre-disable");
                 Patches.SceneOptimizer.Apply();
@@ -544,7 +520,7 @@ internal class UpscalerManager : MonoBehaviour
         {
             case F11Target.FullOptLayer:
                 Settings.OptimizationsEnabled = !Settings.OptimizationsEnabled;
-                Plugin.Log.LogInfo($"F11: Optimizations {(Settings.OptimizationsEnabled ? "ENABLED" : "DISABLED")}");
+                Plugin.Log.LogDebug($"F11: Optimizations {(Settings.OptimizationsEnabled ? "ENABLED" : "DISABLED")}");
                 if (!Settings.OptimizationsEnabled)
                     Patches.SceneOptimizer.LogRestoreState("pre-opt-disable");
                 Patches.SceneOptimizer.Apply();
@@ -555,7 +531,7 @@ internal class UpscalerManager : MonoBehaviour
 
             case F11Target.CpuPatches:
                 Settings.CpuPatchesF11Disabled = !Settings.CpuPatchesF11Disabled;
-                Plugin.Log.LogInfo($"F11: CPU patches {(Settings.CpuPatchesF11Disabled ? "DISABLED" : "ENABLED")}");
+                Plugin.Log.LogDebug($"F11: CPU patches {(Settings.CpuPatchesF11Disabled ? "DISABLED" : "ENABLED")}");
                 break;
         }
     }
@@ -567,7 +543,7 @@ internal class UpscalerManager : MonoBehaviour
         yield return null;
 
         Settings.ModEnabled = true;
-        Plugin.Log.LogInfo("Mod ENABLED");
+        Plugin.Log.LogDebug("Mod ENABLED");
 
         Reinitialize();
         Patches.RenderTexturePatch.ReapplyModCameraSettings();
@@ -918,7 +894,7 @@ internal class UpscalerManager : MonoBehaviour
             if (kv.Key != null) kv.Key.farClipPlane = kv.Value;
         _vanillaFarClipByCam.Clear();
 
-        Plugin.Log.LogInfo("Vanilla settings restored");
+        Plugin.Log.LogDebug("Vanilla settings restored");
     }
 
     private void OnDestroy()

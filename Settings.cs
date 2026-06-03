@@ -161,7 +161,13 @@ internal static class Settings
     }
     internal static F11Target F11TargetSetting
     {
-        get => (F11Target)D.f11Target;
+        // Clamp stale/out-of-range values (e.g. a removed enum member left in an
+        // old settings.json) back to the default so F11 never silently no-ops.
+        get
+        {
+            var t = (F11Target)D.f11Target;
+            return Enum.IsDefined(typeof(F11Target), t) ? t : F11Target.FullOptLayer;
+        }
         set { D.f11Target = (int)value; _file.Save(); }
     }
     internal static bool DebugOverlay
@@ -476,7 +482,7 @@ internal static class Settings
         try
         {
             File.WriteAllText(_autoTunePath, JsonUtility.ToJson(data, true));
-            Plugin.Log.LogInfo("Auto-tune profile saved");
+            Plugin.Log.LogDebug("Auto-tune profile saved");
         }
         catch (Exception ex)
         {
@@ -499,7 +505,7 @@ internal static class Settings
             if (File.Exists(oldCfg))
             {
                 File.Delete(oldCfg);
-                Plugin.Log.LogInfo("Deleted old BepInEx config");
+                Plugin.Log.LogDebug("Deleted old BepInEx config");
             }
         }
         catch { }
@@ -620,7 +626,7 @@ internal static class Settings
 
         ApplyFogClamps();
 
-        Plugin.Log.LogInfo($"Resolved [{preset}]: {ResolvedUpscaleMode} {ResolvedRenderScale}% " +
+        Plugin.Log.LogDebug($"Resolved [{preset}]: {ResolvedUpscaleMode} {ResolvedRenderScale}% " +
             $"AA={ResolvedAAMode} shadows={ResolvedShadowQuality}/{ResolvedShadowDistance}m " +
             $"LOD={ResolvedLODBias} lights={ResolvedPixelLightCount} " +
             $"fogEnd={ResolvedEffectiveFogEnd:F0}m lightDist={ResolvedLightDistance:F0}m");
@@ -751,7 +757,7 @@ internal static class Settings
         // bool overload routes to ExclusiveFullScreen which can fall back to 720p if the
         // requested mode isn't natively supported at the panel's current refresh.
         Screen.SetResolution(w, h, Screen.fullScreenMode);
-        Plugin.Log.LogInfo($"Resolution: {w}x{h}");
+        Plugin.Log.LogDebug($"Resolution: {w}x{h}");
 
         // Screen.SetResolution applies on the next frame, so a synchronous OnChanged
         // would have downstream gates (IsUltrawide etc.) read stale dimensions. Defer
@@ -893,7 +899,7 @@ internal static class Settings
         if (_autoTune.IsStale())
         {
             // no valid autotune yet — fall back to High until benchmark runs
-            Plugin.Log.LogInfo("Auto: no valid autotune profile, using High as fallback");
+            Plugin.Log.LogDebug("Auto: no valid autotune profile, using High as fallback");
             ApplyPreset(QualityPreset.High);
             return;
         }
