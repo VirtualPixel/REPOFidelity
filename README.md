@@ -4,7 +4,7 @@ Better than REPO HD. Graphics overhaul that goes both ways — **squeeze more FP
 
 **Replaces REPO HD.** Everything it does, plus DLSS, auto-benchmark, CPU/GPU-aware tuning, performance optimizations, ultrawide / aspect-ratio fixes, and way more control. If you have REPO HD installed, remove it.
 
-> **v1.7.0: plays nice with RepoXR (VR).** The HD upscaling pipeline used to break VR stereo rendering, each eye ended up looking the wrong way. REPOFidelity now detects a VR headset and stands its camera pipeline down (no upscaler, no FOV or ultrawide override). The performance optimizations keep running, so VR still gets the extra frames. Raise VR render resolution with RepoXR's own CameraResolution setting.
+> **v1.7.0: experimental RepoXR (VR) support.** The HD upscaling pipeline used to break VR stereo rendering, each eye ended up looking the wrong way. REPOFidelity now detects a VR headset and stands its camera pipeline down (no upscaler, no FOV or ultrawide override). The performance optimizations keep running, so VR still gets the extra frames. Raise VR render resolution with RepoXR's own CameraResolution setting. This is new and only lightly tested — if something looks off in VR, open an issue.
 
 ## Vanilla vs REPO Fidelity
 

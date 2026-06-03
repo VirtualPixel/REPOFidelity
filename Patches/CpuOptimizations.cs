@@ -348,8 +348,12 @@ static class PlayerAvatarOverchargeVisualsThrottlePatch
 // Per-player visual scripts that have no gameplay or network side-effects —
 // safe to skip past fog. PlayerHealthGrab / PlayerDeathHead / PlayerTumble
 // deliberately excluded because their Update fires RPCs and mutates gameplay
-// state. FlashlightBob / FlashlightSprint already early-return for remote
-// players (`!isLocal`) so throttling adds nothing.
+// state, and PlayerDeathEffects / PlayerReviveEffects because their Update owns
+// the death/revive teardown — PlayerReviveEffects has no Reset(), so skipping it
+// while a far-away corpse is past fog latches the revive and the next death
+// drops the player into the void. They also barely cost anything (both early-out
+// when idle), so there was nothing to save. FlashlightBob / FlashlightSprint
+// already early-return for remote players (`!isLocal`) so throttling adds nothing.
 
 [HarmonyPatch(typeof(AnimNoise), "Update")]
 static class AnimNoiseThrottlePatch
@@ -369,19 +373,5 @@ static class FlashlightLightAimThrottlePatch
 static class FlashlightTiltThrottlePatch
 {
     static bool Prefix(FlashlightTilt __instance)
-        => !PlayerCosmeticThrottle.ShouldSkip(__instance.transform);
-}
-
-[HarmonyPatch(typeof(PlayerDeathEffects), "Update")]
-static class PlayerDeathEffectsThrottlePatch
-{
-    static bool Prefix(PlayerDeathEffects __instance)
-        => !PlayerCosmeticThrottle.ShouldSkip(__instance.transform);
-}
-
-[HarmonyPatch(typeof(PlayerReviveEffects), "Update")]
-static class PlayerReviveEffectsThrottlePatch
-{
-    static bool Prefix(PlayerReviveEffects __instance)
         => !PlayerCosmeticThrottle.ShouldSkip(__instance.transform);
 }
