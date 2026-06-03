@@ -1,6 +1,7 @@
 ## 1.7.0
 
 - RepoXR (VR) compatibility. The HD pipeline redirects the main camera onto its own render texture and jitters the projection matrix each frame for temporal upscaling. Both assume one flat display, so under RepoXR they collapsed the stereo view (the bug report described each eye pointing the wrong way). When a VR headset is active REPOFidelity now stands its camera pipeline down: no upscaler, no render-texture redirect, no projection jitter, no FOV or ultrawide/aspect override. The optimization layer keeps running, since shadow culling, the CPU and GC patches and the quality settings never touch the stereo view and VR can use the extra frames. Raising VR render resolution stays RepoXR's job through its own CameraResolution setting. VR is detected from Unity's XR state, so there's no hard dependency on RepoXR.
+- Pulled the F9 cost probe and the F11 light-diagnostics dump out of the build. Both were dev-only instruments I used while tuning, and the cost probe patches and unpatches methods at runtime to time them — no business shipping that in a release. They live in a separate dev-tools folder now. The `F9 Cost Probe` toggle is gone from the Graphics menu and `diagnosticsEnabled` drops out of settings.json; nothing else changes in-game.
 
 ---
 

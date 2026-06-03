@@ -21,7 +21,7 @@ internal static class MenuIntegration
     private static REPOSlider? _textureSlider, _lightDistSlider;
     private static REPOSlider? _fogSlider, _viewDistSlider;
     private static REPOToggle? _motionBlurToggle, _caToggle, _lensToggle, _grainToggle;
-    private static REPOToggle? _flickerToggle, _overlayToggle, _diagnosticsToggle;
+    private static REPOToggle? _flickerToggle, _overlayToggle;
     private static REPOSlider? _windowModeSlider, _resolutionSlider, _fpsSlider, _gammaSlider;
     private static REPOSlider? _fovSlider;
     private static REPOToggle? _ultrawideUiToggle;
@@ -371,8 +371,6 @@ internal static class MenuIntegration
             b => ModSet(() => Settings.ExtractionPointFlicker = b), out _flickerToggle);
         AddModToggle("Debug Overlay", Settings.DebugOverlay,
             b => ModSet(() => Settings.DebugOverlay = b), out _overlayToggle);
-        AddModToggle("F9 Cost Probe", Settings.DiagnosticsEnabled,
-            b => ModSet(() => Settings.DiagnosticsEnabled = b), out _diagnosticsToggle);
         var keyOpts = new[] { "F10", "F9", "F8", "F7", "F6", "F5" };
         var keyVals = new[] { KeyCode.F10, KeyCode.F9, KeyCode.F8, KeyCode.F7, KeyCode.F6, KeyCode.F5 };
         int keyIdx = Array.IndexOf(keyVals, Settings.ToggleKey);
@@ -383,8 +381,8 @@ internal static class MenuIntegration
                 if (i >= 0) Settings.ToggleKey = keyVals[i];
             }, out _);
 
-        var f11Opts = new[] { "Full Opt Layer", "CPU Patches", "Light Diagnostics" };
-        var f11Vals = new[] { F11Target.FullOptLayer, F11Target.CpuPatches, F11Target.LightDiagnostics };
+        var f11Opts = new[] { "Full Opt Layer", "CPU Patches" };
+        var f11Vals = new[] { F11Target.FullOptLayer, F11Target.CpuPatches };
         int f11Idx = Array.IndexOf(f11Vals, Settings.F11TargetSetting);
         if (f11Idx < 0) f11Idx = 0;
         AddStringSlider("F11 Target", "Which feature F11 toggles for A/B",
@@ -548,7 +546,6 @@ internal static class MenuIntegration
         _grainToggle?.SetState(Settings.FilmGrain, false);
         _flickerToggle?.SetState(Settings.ExtractionPointFlicker, false);
         _overlayToggle?.SetState(Settings.DebugOverlay, false);
-        _diagnosticsToggle?.SetState(Settings.DiagnosticsEnabled, false);
         SetNum(_fovSlider, Settings.VerticalFovOverride);
         _ultrawideUiToggle?.SetState(Settings.UltrawideUiFix, false);
         SyncPerf(_perfExplosionSlider, Settings.PerfExplosionShadows);

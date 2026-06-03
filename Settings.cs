@@ -13,7 +13,7 @@ internal enum TextureRes { Full, Half, Quarter }
 
 // What F11 toggles. Lets the one key cover multiple diagnostic switches
 // without eating more keybinds.
-internal enum F11Target { FullOptLayer, CpuPatches, LightDiagnostics }
+internal enum F11Target { FullOptLayer, CpuPatches }
 
 internal static class Settings
 {
@@ -295,11 +295,6 @@ internal static class Settings
     {
         get => D.perfPointLightShadows;
         set { D.perfPointLightShadows = value; _file.Save(); _file.NotifyChanged(); }
-    }
-    internal static bool DiagnosticsEnabled
-    {
-        get => D.diagnosticsEnabled;
-        set { D.diagnosticsEnabled = value; _file.Save(); }
     }
 
     // check whether a specific optimization should be active.

@@ -91,20 +91,6 @@ internal static class Overlay
             }
         }
 
-        // Cost probe — suppress all other FPS display while running
-        if (CostProbe.Running || !string.IsNullOrEmpty(CostProbe.Status))
-        {
-            _lines.Add(new LineData(CostProbe.Status, Col.Info));
-            if (CostProbe.Running)
-            {
-                _showProgress = true;
-                _progress = CostProbe.Progress;
-                _progressColor = new Color(0.4f, 0.7f, 0.95f);
-            }
-            _nativeActive = TryUpdateNative();
-            return;
-        }
-
         if (!Settings.ModEnabled)
             _lines.Add(new LineData($"FIDELITY OFF ({Settings.ToggleKey})  {_smoothFps:F0} FPS  {_smoothMs:F1}ms", Col.Warn));
         else if (!Settings.OptimizationsEnabled)

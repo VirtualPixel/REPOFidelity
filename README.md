@@ -165,8 +165,6 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 
 **F11** toggles the performance optimization layer on and off. Unlike F10, the visual layer (upscaler, AA, shadow quality) stays active — only the per-frame hacks (tiny renderer culls, shadow budget, CPU patches, etc.) revert to vanilla.
 
-**F9** runs the cost probe — a ~90s sweep that measures per-marker frame cost, per-camera render time, scene composition, and a preset × fog × upscaler comparison matrix normalized to Ultra + DLAA + fog 1.0×. Writes `frame_cost.txt` and copies the report to the clipboard. Off by default — enable `F9 Cost Probe` in the Graphics menu to arm it.
-
 ## Installation
 
 1. Install [BepInEx 5](https://thunderstore.io/c/repo/p/BepInEx/BepInExPack/)

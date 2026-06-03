@@ -160,11 +160,6 @@ internal class SettingsData
     public int perfFlashlightShadowBudget = -1;
     public int perfPointLightShadows = -1;
 
-    // Opt-in F9 cost probe. When true, pressing F9 launches the full diagnostic
-    // sweep (~90s) and copies the report to the clipboard. Off by default so
-    // ordinary players don't run the probe by accident.
-    public bool diagnosticsEnabled = false;
-
     // bottleneck detection — true = CPU-bound (default assumption),
     // overwritten by auto-benchmark when it runs
     public bool cpuBound = true;
