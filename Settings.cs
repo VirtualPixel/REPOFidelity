@@ -50,7 +50,7 @@ internal static class Settings
     internal static float Sharpening
     {
         get => D.sharpening;
-        // per-frame uniform — skip the pipeline rebuild, still mark Custom.
+        // per-frame uniform: skip the pipeline rebuild, still mark Custom.
         set
         {
             D.sharpening = Mathf.Clamp(value, 0f, 1f);
@@ -190,7 +190,7 @@ internal static class Settings
     internal static bool ModEnabled = true;
 
     // F11-togglable flag. When off, SceneOptimizer passes and CPU throttle patches
-    // skip — the mod's visual features (upscaler, AA) stay active, only the
+    // skip: the mod's visual features (upscaler, AA) stay active, only the
     // performance layer reverts to vanilla. Session-only, defaults on.
     internal static bool OptimizationsEnabled = true;
 
@@ -200,7 +200,7 @@ internal static class Settings
     internal static bool AllocationFixesEnabled = true;
     internal static bool OptimizationsActive => ModEnabled && OptimizationsEnabled;
 
-    // Session-only F11 A/B flag — default off. Lives outside OptimizationsEnabled
+    // Session-only F11 A/B flag, default off. Lives outside OptimizationsEnabled
     // so the user can A/B just the CPU patches without nuking the whole opt layer.
     internal static bool CpuPatchesF11Disabled;
 
@@ -217,7 +217,7 @@ internal static class Settings
         set { D.cpuPatchMode = value; _file.Save(); }
     }
 
-    // Runtime gate — updated every 0.5s, true when CPU patches should be active.
+    // Runtime gate: updated every 0.5s, true when CPU patches should be active.
     // auto-gate driven by rolling frame time (when CpuPatchMode == Auto / -1);
     // the public getter also masks on OptimizationsActive so F11 propagates
     private static bool _cpuPatchesActiveRaw = true;
@@ -228,7 +228,7 @@ internal static class Settings
     private static float _cpuGateTimer;
     private static float _cpuGateAccum;
     private static int _cpuGateFrames;
-    private const float CpuGateThresholdMs = 8f; // ~125 FPS — below this, patches cost more than they save
+    private const float CpuGateThresholdMs = 8f; // ~125 FPS; below this, patches cost more than they save
 
     internal static void UpdateCpuGate()
     {
@@ -257,7 +257,7 @@ internal static class Settings
     }
     internal static int ResolvedShadowBudget;
 
-    // lowest fog multiplier presets/auto-tune may assign — manual slider can go lower.
+    // lowest fog multiplier presets/auto-tune may assign; manual slider can go lower.
     // Placeholder value, revisit after tester feedback on what's actually playable.
     internal const float PlayableFogFloor = 0.5f;
 
@@ -355,7 +355,7 @@ internal static class Settings
             PerfOpt.TinyRendererCulling => level >= 2,
             PerfOpt.AnimatedLightShadows => level >= 3,
             PerfOpt.DistanceShadowCulling => level >= 0, // always on when mod enabled
-            PerfOpt.FlashlightShadowBudget => level >= 0, // always on — caps flashlight shadows
+            PerfOpt.FlashlightShadowBudget => level >= 0, // always on; caps flashlight shadows
             PerfOpt.PointLightShadows => level >= 2,
             _ => false,
         };
@@ -571,7 +571,7 @@ internal static class Settings
 
             if (!GPUDetector.IsUpscalerSupported(ResolvedUpscaleMode))
             {
-                Plugin.Log.LogWarning($"{ResolvedUpscaleMode} not supported — falling back to Auto");
+                Plugin.Log.LogWarning($"{ResolvedUpscaleMode} not supported, falling back to Auto");
                 ResolvedUpscaleMode = BestUpscaler(UpscaleTier.Quality);
             }
 
@@ -580,7 +580,7 @@ internal static class Settings
             // DLSS at 100% is DLAA (native-res AA, no upscaling)
             if (ResolvedUpscaleMode == UpscaleMode.DLSS && RenderScale >= 100)
                 ResolvedUpscaleMode = UpscaleMode.DLAA;
-            // legacy DLAA selection — keep at 100%
+            // legacy DLAA selection; keep at 100%
             if (ResolvedUpscaleMode == UpscaleMode.DLAA)
                 ResolvedRenderScale = 100;
             else
@@ -596,7 +596,7 @@ internal static class Settings
             }
             else if (AntiAliasingMode == AAMode.TAA)
             {
-                // TAA removed — treat as SMAA
+                // TAA removed; treat as SMAA
                 ResolvedAAMode = hasTemporalUpscaler ? AAMode.Off : AAMode.SMAA;
             }
             else
@@ -794,15 +794,15 @@ internal static class Settings
 
     private static UpscaleMode BestUpscaler(UpscaleTier tier) => tier switch
     {
-        // budget: cheapest usable upscaler — FSR Temporal beats FSR spatial on
+        // budget: cheapest usable upscaler: FSR Temporal beats FSR spatial on
         // both cost and quality per benchmark data. iGPU falls back to Off
         // because even FSR's shader blit costs more than the savings on HD/UHD.
         UpscaleTier.Budget => GPUDetector.IsIntegratedGpu ? UpscaleMode.Off : UpscaleMode.FSR_Temporal,
-        // native AA: best AA at 100% scale — DLAA on NVIDIA, FSR Temporal
+        // native AA: best AA at 100% scale: DLAA on NVIDIA, FSR Temporal
         // everywhere else (AMD / Intel dGPU / Apple Silicon).
         UpscaleTier.NativeAA => GPUDetector.DlssAvailable ? UpscaleMode.DLAA
             : UpscaleMode.FSR_Temporal,
-        // quality: best upscaler available — DLSS on NVIDIA RTX,
+        // quality: best upscaler available: DLSS on NVIDIA RTX,
         // FSR Temporal on AMD / Intel dGPU / Apple Silicon.
         _ => GPUDetector.DlssAvailable
             ? UpscaleMode.DLSS : UpscaleMode.FSR_Temporal,
@@ -898,7 +898,7 @@ internal static class Settings
     {
         if (_autoTune.IsStale())
         {
-            // no valid autotune yet — fall back to High until benchmark runs
+            // no valid autotune yet; fall back to High until benchmark runs
             Plugin.Log.LogDebug("Auto: no valid autotune profile, using High as fallback");
             ApplyPreset(QualityPreset.High);
             return;
@@ -925,7 +925,7 @@ internal static class Settings
             _ => 10,
         };
         // CPU-bound Auto was throwing the preset's full shadow budget at scenes
-        // already choking on draw calls. Trim by 7 (floor of 8) — frees ~10
+        // already choking on draw calls. Trim by 7 (floor of 8); frees ~10
         // shadow draws/frame, invisible to the player.
         if (at.cpuBound) ResolvedShadowBudget = Mathf.Max(ResolvedShadowBudget - 7, 8);
     }
@@ -936,7 +936,7 @@ internal static class Settings
         int refresh = Mathf.Max((int)Mathf.Round((float)rr.value), 60);
         float target = refresh;
 
-        // Weighted composite — average dominates for steady scenes, lows
+        // Weighted composite: average dominates for steady scenes, lows
         // punish systems with hitches. 50/30/20 matches how smoothness
         // actually feels; spikes show up in the 1 % and 0.1 % buckets.
         float p01 = low01Fps > 0 ? low01Fps : low1Fps;
@@ -972,7 +972,7 @@ internal static class Settings
 
         if (cpuBound)
         {
-            // DLAA is free on NVIDIA tensor cores — use it even when CPU-bound
+            // DLAA is free on NVIDIA tensor cores; use it even when CPU-bound
             if (GPUDetector.DlssAvailable)
             {
                 upscaler = UpscaleMode.DLAA;
@@ -984,7 +984,7 @@ internal static class Settings
             {
                 // FSR Temporal at native scale gives better edge AA than SMAA
                 // but adds ~0.5-1 ms of CPU for the reprojection pass. Only
-                // pick it when the user has measured headroom to spare —
+                // pick it when the user has measured headroom to spare;
                 // tight-budget CPU-bound stays on SMAA.
                 upscaler = UpscaleMode.FSR_Temporal;
                 aa = AAMode.Off;
@@ -1017,7 +1017,7 @@ internal static class Settings
         {
             // CPU-bound: GpuCost does NOT predict CPU savings. Pure-GPU knobs
             // (AF, LOD, fog, shadow resolution, texture quality) don't reduce
-            // main-thread work, so they stay maxed — the GPU already has
+            // main-thread work, so they stay maxed; the GPU already has
             // headroom by definition on a CPU-bound system. Step only knobs
             // that reduce draw-call count (shadow distance shrinks the caster
             // set, light count reduces forward passes per lit mesh, light
@@ -1042,7 +1042,7 @@ internal static class Settings
                 if (headroom < 0.30f) { shQ = ShadowQuality.Medium; lod = 1f; af = 4; }
                 if (headroom < 0.20f)
                 {
-                    // Final fallback: GPU-side relief for borderline systems —
+                    // Final fallback: GPU-side relief for borderline systems;
                     // scale drop lets the GPU return frames faster, which
                     // shortens the CPU stall in Unity's render submission.
                     shQ = ShadowQuality.Low;
@@ -1057,16 +1057,16 @@ internal static class Settings
             }
             else if (headroom > 1.15f)
             {
-                // Bonus tier — CPU is cruising. GPU has headroom too (CPU-bound
+                // Bonus tier: CPU is cruising. GPU has headroom too (CPU-bound
                 // by definition), so push pure-GPU fidelity up without spending
-                // CPU. Shadow distance / light count stay at Ultra — raising
+                // CPU. Shadow distance / light count stay at Ultra; raising
                 // either would eat CPU budget we just verified we have.
                 sharp = 0.4f;
                 if (headroom > 1.30f) { lod = 5f; }
                 if (headroom > 1.50f) { lod = 6f; shD = 175f; }  // shD tiny CPU bump acceptable
                 if (headroom > 1.80f) { shD = 200f; }            // only when truly bottomless
             }
-            // else: within ±5 % of target — keep Ultra defaults.
+            // else: within ±5 % of target; keep Ultra defaults.
         }
         else
         {
@@ -1116,7 +1116,7 @@ internal static class Settings
                 aa = AAMode.Off;
             }
 
-            // Headroom bonus — when the system easily clears target at Ultra,
+            // Headroom bonus: when the system easily clears target at Ultra,
             // push a few invisible-to-subtle values beyond vanilla Ultra so
             // strong rigs actually see richer visuals instead of leftover fps.
             // Re-measured between each bump so we don't blow past the budget.

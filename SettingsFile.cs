@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace REPOFidelity;
 
-// simple JSON-backed settings file — keeps us out of BepInEx config (and REPOConfig)
+// simple JSON-backed settings file; keeps us out of BepInEx config (and REPOConfig)
 internal class SettingsFile
 {
     private readonly string _path;
@@ -90,7 +90,7 @@ internal class AutoTuneData
 
     // bump this when autotune logic changes (algorithm tweak, new perf gating, etc).
     // a bump forces every installed user through autotune once on first launch after the
-    // mod update. mod-version changes alone do NOT force a re-tune — only revision bumps,
+    // mod update. mod-version changes alone do NOT force a re-tune; only revision bumps,
     // GPU changes, or resolution changes do.
     internal const int AutoTuneRevision = 7;
     public int revision;
@@ -106,7 +106,7 @@ internal class AutoTuneData
 [Serializable]
 internal class SettingsData
 {
-    // preset — default to Auto so first-time users get auto-tuned
+    // preset: default to Auto so first-time users get auto-tuned
     public int preset = (int)QualityPreset.Auto;
 
     // display
@@ -140,7 +140,7 @@ internal class SettingsData
 
     // ultra-wide / FOV
     // 0 = use the game's per-player default (70). Otherwise interpreted as
-    // the vertical FOV the camera should run at — Unity's HOR+ behaviour
+    // the vertical FOV the camera should run at; Unity's HOR+ behaviour
     // expands horizontal FOV from there based on Screen.aspect.
     public int verticalFovOverride = 0;
     // auto-correct CanvasScaler.matchWidthOrHeight to height-match when
@@ -149,7 +149,7 @@ internal class SettingsData
 
     public int shadowBudget = -1;
 
-    // performance — these default to -1 (auto, driven by preset).
+    // performance: these default to -1 (auto, driven by preset).
     // 0 = off, 1 = on. only applies when preset is Custom.
     public int perfExplosionShadows = -1;
     public int perfItemLightShadows = -1;
@@ -160,11 +160,11 @@ internal class SettingsData
     public int perfFlashlightShadowBudget = -1;
     public int perfPointLightShadows = -1;
 
-    // bottleneck detection — true = CPU-bound (default assumption),
+    // bottleneck detection: true = CPU-bound (default assumption),
     // overwritten by auto-benchmark when it runs
     public bool cpuBound = true;
 
-    // cpu optimizations — -1 = auto (enable when frame time > 8ms), 0 = off, 1 = on
+    // cpu optimizations: -1 = auto (enable when frame time > 8ms), 0 = off, 1 = on
     public int cpuPatchMode = -1;
 
     // debug

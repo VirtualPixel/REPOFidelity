@@ -22,7 +22,7 @@ internal static class DLSSDownloader
         if (available)
             Plugin.Log.LogDebug($"DLSS DLL: {path} ({new FileInfo(path).Length / 1024 / 1024}MB)");
         else
-            Plugin.Log.LogWarning("nvngx_dlss.dll missing or invalid — DLSS/DLAA disabled. Reinstall the mod.");
+            Plugin.Log.LogWarning("nvngx_dlss.dll missing or invalid; DLSS/DLAA disabled. Reinstall the mod.");
 
         return available;
     }

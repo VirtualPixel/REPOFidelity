@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace REPOFidelity;
 
-// F12 benchmark — 2-pass A/B: vanilla vs GPU/GC only vs all optimizations
+// F12 benchmark - 2-pass A/B: vanilla vs GPU/GC only vs all optimizations
 internal class OptimizerBenchmark : MonoBehaviour
 {
     internal static OptimizerBenchmark? Instance { get; private set; }
@@ -114,7 +114,7 @@ internal class OptimizerBenchmark : MonoBehaviour
         {
             string pl = $"Pass {pass + 1}/{Passes}";
 
-            // 1. Vanilla — mod completely off
+            // 1. Vanilla: mod completely off
             Settings.ModEnabled = false;
             ForceCpu(false);
             Patches.SceneOptimizer.Apply();
@@ -126,7 +126,7 @@ internal class OptimizerBenchmark : MonoBehaviour
             var r = new Result(); yield return Measure(r);
             vanillaAccum.Add(r); phase++;
 
-            // 2. GPU/GC only — mod on, CPU patches forced off
+            // 2. GPU/GC only: mod on, CPU patches forced off
             Settings.ModEnabled = true;
             ForceCpu(false);
             Patches.SceneOptimizer.Apply();
@@ -181,7 +181,7 @@ internal class OptimizerBenchmark : MonoBehaviour
     {
         var sb = new StringBuilder();
         sb.AppendLine("╔══════════════════════════════════════════════════════════════╗");
-        sb.AppendLine("║            REPO FIDELITY — FULL BENCHMARK REPORT            ║");
+        sb.AppendLine("║            REPO FIDELITY - FULL BENCHMARK REPORT            ║");
         sb.AppendLine("╚══════════════════════════════════════════════════════════════╝");
         sb.AppendLine();
         sb.AppendLine($"  Date:       {DateTime.Now:yyyy-MM-dd HH:mm:ss}");

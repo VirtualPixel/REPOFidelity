@@ -121,7 +121,7 @@ internal static class QualityPatch
             PostProcessing.Instance.grain.active = false;
     }
 
-    // v0.4.0-tester: Setup() only initializes instance fields — does NOT write RenderSettings.
+    // v0.4.0-tester: Setup() only initializes instance fields; does NOT write RenderSettings.
     // FogLogic() runs every Update() frame and lerps instance fields into RenderSettings.
     // We capture vanilla from instance fields here, then enforce the multiplier in
     // PostfixFogLogic below so room-to-room transitions (RoomFog) stay scaled.
@@ -133,7 +133,7 @@ internal static class QualityPatch
     }
 
     // Enforce fog multiplier + view distance every frame after the game's lerp writes
-    // RenderSettings. Harmless to run every tick — we multiply the game-written values,
+    // RenderSettings. Harmless to run every tick; we multiply the game-written values,
     // not compound our own state.
     // FogLogic runs every frame; remember the last values we logged so the
     // debug line only fires when fog or clip actually changes, not per tick.
@@ -295,7 +295,7 @@ internal static class QualityPatch
         ApplyRangeTieredLightShadows();
     }
 
-    // re-scan scene for Flashlight spotlights — cheap, runs on every shadow-resolution apply
+    // re-scan scene for Flashlight spotlights: cheap, runs on every shadow-resolution apply
     // (level change, preset change). handles respawn / new level correctly without separate tracking.
     private static void RefreshFlashlightLights()
     {
@@ -312,7 +312,7 @@ internal static class QualityPatch
     // Potato caps the top bucket to 1024 for extra savings.
     private static void ApplyRangeTieredLightShadows()
     {
-        // restore-before-apply — needed so F10 / F11 toggle and preset changes don't
+        // restore-before-apply: needed so F10 / F11 toggle and preset changes don't
         // layer clamps on top of clamps and drift away from the true original
         RestoreRangeTieredLightShadows();
 
@@ -336,7 +336,7 @@ internal static class QualityPatch
                 continue;
             }
 
-            // Flashlight exemption — only on Ultra
+            // Flashlight exemption: only on Ultra
             if (ultraFlashlight && _flashlightLights.Contains(light))
             {
                 _shadowResOrig[light] = light.shadowCustomResolution;

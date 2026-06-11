@@ -8,7 +8,7 @@ using UnityEngine.Rendering.PostProcessing;
 namespace REPOFidelity.Patches;
 
 // ---
-// shadow reduction — gated by preset or custom toggles
+// shadow reduction: gated by preset or custom toggles
 // ---
 
 [HarmonyPatch(typeof(ParticlePrefabExplosion), "Start")]
@@ -31,7 +31,7 @@ static class ItemLightShadowPatch
     }
 }
 
-// spectate camera forces shadow distance to 90m — always cap this,
+// spectate camera forces shadow distance to 90m; always cap this,
 // it's wasteful on every preset for a zoomed death cam
 // v0.4.0-tester: SpectateCamera's state-machine tick moved from Update() to
 // LateUpdate() (Update() now only calls HeadEnergyLogic). StateDeath still
@@ -47,7 +47,7 @@ static class SpectateShadowPatch
 }
 
 // ---
-// scene-wide optimization scans — run on level gen and
+// scene-wide optimization scans: run on level gen and
 // whenever perf settings change mid-level
 // ---
 
@@ -72,7 +72,7 @@ static class SceneOptimizer
         SetExplosionLightShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ExplosionShadows));
         ApplyPointLightShadowCull(Settings.ShouldOptimize(Settings.PerfOpt.PointLightShadows));
 
-        // must run AFTER other passes — renderers they've set to Off should stay out of the watchlist
+        // must run AFTER other passes: renderers they've set to Off should stay out of the watchlist
         CaptureDistanceCullWatchlist();
         CapturePlayerAvatarRenderers();
         CaptureFlashlightControllers();
@@ -98,7 +98,7 @@ static class SceneOptimizer
         foreach (var avatar in Object.FindObjectsOfType<PlayerAvatar>())
         {
             // Local avatar's shadow state is owned by PlayerAvatarVisuals.ApplyLocalVisibilityBody.
-            // Its early-exit gate means any write we do won't get re-asserted by the game — skip.
+            // Its early-exit gate means any write we do won't get re-asserted by the game; skip.
             if (avatar.isLocal) continue;
             foreach (var r in avatar.GetComponentsInChildren<Renderer>(true))
             {
@@ -154,7 +154,7 @@ static class SceneOptimizer
     }
 
     // ---
-    // saved-state dictionaries — each mutation records what it changed so F10
+    // saved-state dictionaries: each mutation records what it changed so F10
     // (mod off) or flag-off returns the scene to vanilla
     // ---
 
@@ -195,7 +195,7 @@ static class SceneOptimizer
     }
 
     // ---
-    // distance-based shadow cull — small props (<2m bounds) disable shadow casting when
+    // distance-based shadow cull: small props (<2m bounds) disable shadow casting when
     // beyond fog-clamped shadow distance, re-enable when inside. runs every frame via
     // UpdateDistanceShadowCull, built once per level via CaptureDistanceCullWatchlist.
     // ---
@@ -203,7 +203,7 @@ static class SceneOptimizer
     static readonly List<Renderer> _distanceCullWatchlist = new();
     static readonly Dictionary<Renderer, ShadowCastingMode> _distanceCullOrig = new();
 
-    // flashlight shadow budget — only N closest flashlights keep their original shadow
+    // flashlight shadow budget: only N closest flashlights keep their original shadow
     // mode, rest go to None. saves original mode per spotlight so F10 / flag-off revert
     static readonly Dictionary<Light, LightShadows> _flashlightBudgetOrig = new();
     static readonly List<FlashlightController> _flashlightControllers = new();
@@ -212,11 +212,11 @@ static class SceneOptimizer
     static readonly List<(Light light, float distSq)> _flashlightSorted = new();
 
     // Potato cuts everything, flashlight cast included. Other presets keep
-    // the closest 4 — it's the player's primary light source.
+    // the closest 4; it's the player's primary light source.
     static int ResolveFlashlightBudgetN() =>
         Settings.Preset == QualityPreset.Potato ? 0 : 4;
 
-    // player avatar renderers — skinned meshes for each player. Distant players'
+    // player avatar renderers: skinned meshes for each player. Distant players'
     // avatars still cast into the directional shadow map; gate that by distance.
     // updateWhenOffscreen gets forced false so Unity can skip bone updates when
     // the avatar isn't visible.
@@ -233,7 +233,7 @@ static class SceneOptimizer
         _distanceCullCursor = 0;
         if (!Settings.ShouldOptimize(Settings.PerfOpt.DistanceShadowCulling)) return;
 
-        // Mid-sized props past shadow distance have no visible contribution —
+        // Mid-sized props past shadow distance have no visible contribution;
         // bump the cap above the original 2m to catch more of them. Potato
         // pulls 5m props in too.
         float boundsCap = Settings.Preset == QualityPreset.Potato ? 5f : 3f;
@@ -254,7 +254,7 @@ static class SceneOptimizer
             Plugin.Log.LogDebug($"distance cull watchlist: {count} small renderers");
     }
 
-    // Cursor into the watchlist — picks up where the last tick left off so a
+    // Cursor into the watchlist: picks up where the last tick left off so a
     // 5000-renderer list takes ~5 ticks (~500ms) to fully re-evaluate instead
     // of scanning every entry on every 100ms tick.
     static int _distanceCullCursor;
@@ -264,7 +264,7 @@ static class SceneOptimizer
     {
         if (cam == null || _distanceCullWatchlist.Count == 0) return;
 
-        // mod off or flag off — restore everything and bail
+        // mod off or flag off: restore everything and bail
         if (!Settings.ShouldOptimize(Settings.PerfOpt.DistanceShadowCulling))
         {
             RestoreDistanceCullWatchlist();
@@ -319,7 +319,7 @@ static class SceneOptimizer
 
     // Collect every Point light that currently casts shadows so the per-frame
     // update pass can toggle them on distance. Small short-range lights (<=3m)
-    // are skipped — their cubemap cost is already trivial and the draw-call
+    // are skipped; their cubemap cost is already trivial and the draw-call
     // churn from toggling them is worse than just letting them render.
     static void ApplyPointLightShadowCull(bool enable)
     {
@@ -417,7 +417,7 @@ static class SceneOptimizer
 
         _flashlightSorted.Sort((a, b) => a.distSq.CompareTo(b.distSq));
 
-        // flashlights past fog end have no visible shadow anyway — skip them
+        // flashlights past fog end have no visible shadow anyway; skip them
         // before the budget check so a far-away player doesn't eat a slot
         float fogEnd = Settings.ResolvedEffectiveFogEnd;
         float fogCutoffSq = fogEnd > 0f ? (fogEnd * 1.1f) * (fogEnd * 1.1f) : float.PositiveInfinity;
@@ -465,13 +465,13 @@ static class SceneOptimizer
     }
 
     // ---
-    // shadow budget — limits how many small point lights cast shadows at once.
+    // shadow budget: limits how many small point lights cast shadows at once.
     // closest N to the camera get shadows with faded strength transitions.
     // ---
 
     // dim short-range point lights (item glows, valuables, props). Captured once
     // per level so the 100ms tick can iterate a cached list instead of walking
-    // every Light in the scene — the scene-wide scan allocates on busy maps.
+    // every Light in the scene; the scene-wide scan allocates on busy maps.
     static readonly List<Light> _shadowBudgetWatchlist = new();
     static readonly List<(Light light, float dist)> _budgetCandidates = new();
     static readonly Dictionary<int, float> _shadowStrengths = new();
@@ -501,7 +501,7 @@ static class SceneOptimizer
     {
         if (cam == null) return;
 
-        // mod / optimizations disabled or budget unlimited — restore all managed lights
+        // mod / optimizations disabled or budget unlimited: restore all managed lights
         if (!Settings.OptimizationsActive)
         {
             RestoreManagedLights();
@@ -531,7 +531,7 @@ static class SceneOptimizer
 
             float dist = Vector3.Distance(camPos, light.transform.position);
 
-            // beyond shadow distance — fade out
+            // beyond shadow distance: fade out
             if (dist > cullDist)
             {
                 FadeLight(light, 0f, dt);
@@ -541,7 +541,7 @@ static class SceneOptimizer
             _budgetCandidates.Add((light, dist));
         }
 
-        // sort by distance — closest first
+        // sort by distance, closest first
         _budgetCandidates.Sort((a, b) => a.dist.CompareTo(b.dist));
 
         for (int i = 0; i < _budgetCandidates.Count; i++)
@@ -577,7 +577,7 @@ static class SceneOptimizer
 
         if (next <= 0.01f)
         {
-            // fully faded out — disable shadow
+            // fully faded out: disable shadow
             if (light.shadows != LightShadows.None)
                 light.shadows = LightShadows.None;
             light.shadowStrength = 0f;
@@ -600,7 +600,7 @@ static class SceneOptimizer
         if (!enable) return;
 
         // Flashlights hit intensity=0 in the pause-menu Hidden state. Killing
-        // the shadow here leaves it dead after the user turns it back on —
+        // the shadow here leaves it dead after the user turns it back on;
         // the budget owns them.
         var flashlights = new HashSet<Light>();
         foreach (var fl in Object.FindObjectsOfType<FlashlightController>())
@@ -645,7 +645,7 @@ static class SceneOptimizer
     }
 
     // off-screen and non-emitting systems still tick every frame unless culling is explicit.
-    // a typical R.E.P.O. level has 230+ systems registered and 1 emitting — the other ~229
+    // a typical R.E.P.O. level has 230+ systems registered and 1 emitting; the other ~229
     // are pure overhead until this runs.
     static void ApplyParticleAutoCull(bool enable)
     {
@@ -724,7 +724,7 @@ static class SceneOptimizer
             if (r.shadowCastingMode == ShadowCastingMode.Off) continue;
             // ShadowsOnly proxies (e.g. flashlight shadow caster) flip to a visible
             // mesh if forced Off. Distance-cull restores per-frame, tiny-cull is
-            // permanent — leave them alone.
+            // permanent; leave them alone.
             if (r.shadowCastingMode == ShadowCastingMode.ShadowsOnly) continue;
             if (r.bounds.size.magnitude >= sizeCap) continue;
             if (_localAvatarRendererSet.Contains(r)) continue;
@@ -779,7 +779,7 @@ static class SceneOptimizer
     }
 
     // "LEAK" if any dict is non-empty post-disable, "OK" otherwise. Note
-    // watchlist counts are candidate-list sizes, not mutations — they clear on
+    // watchlist counts are candidate-list sizes, not mutations; they clear on
     // next Apply() so a non-zero value there doesn't mean a broken restore path.
     internal static void LogRestoreState(string tag)
     {
@@ -821,7 +821,7 @@ static class LevelOptimizationPatch
     }
 }
 
-// Late-joining / respawning PlayerAvatars need their renderers captured too —
+// Late-joining / respawning PlayerAvatars need their renderers captured too;
 // GenerateDone only fires on level gen, so network joiners slip through otherwise
 [HarmonyPatch(typeof(PlayerAvatar), "Start")]
 static class PlayerAvatarStartPatch
@@ -863,11 +863,11 @@ static class PlayerAvatarMenuAAPatch
     internal static void ApplyToMenu(PlayerAvatarMenu __instance)
     {
         // only the pause-menu preview gets the bump. expressionAvatar variants exist
-        // during gameplay (one per player) and must keep vanilla behaviour — an
+        // during gameplay (one per player) and must keep vanilla behaviour; an
         // 8-player lobby would otherwise eat real ms on menu-style rendering.
         if (__instance.expressionAvatar) return;
 
-        // bail when multiple menu PAMs are visible at once — bumping each to 1024² +
+        // bail when multiple menu PAMs are visible at once: bumping each to 1024² +
         // MSAA + SMAA scales linearly (truck lobby with 8+ slots is the classic case).
         // Filter on parentPage being alive AND in active hierarchy so dying PAMs from
         // a pause→customize transition (one extra Update tick before self-destruct)
@@ -904,7 +904,7 @@ static class PlayerAvatarMenuAAPatch
         }
         else
         {
-            // no PPL on avatar camera — borrow resources from main camera's PPL to attach one
+            // no PPL on avatar camera: borrow resources from main camera's PPL to attach one
             // (m_Resources is internal, so needs reflection)
             var mainPpl = Camera.main?.GetComponent<PostProcessLayer>();
             if (mainPpl != null)
@@ -924,7 +924,7 @@ static class PlayerAvatarMenuAAPatch
                 }
                 else
                 {
-                    Plugin.Log.LogDebug($"avatar preview: main PPL has no resources — SMAA unavailable on '{cam.name}'");
+                    Plugin.Log.LogDebug($"avatar preview: main PPL has no resources; SMAA unavailable on '{cam.name}'");
                 }
             }
         }
@@ -938,7 +938,7 @@ static class PlayerAvatarMenuAAPatch
             {
                 _rtOrig[rt] = (rt.width, rt.height, rt.antiAliasing);
 
-                // preserve original aspect ratio — scale shortest dimension up to
+                // preserve original aspect ratio: scale shortest dimension up to
                 // TargetRtSize, apply same factor to the longer one. Cap longer dim
                 // at MaxLongDim so extreme aspect ratios don't blow up VRAM.
                 int shortDim = Mathf.Min(rt.width, rt.height);
@@ -1016,7 +1016,7 @@ static class PlayerAvatarMenuAAPatch
         }
         _pplState.Clear();
 
-        // re-enable cameras, strip the gate — vanilla rendering takes back over
+        // re-enable cameras, strip the gate; vanilla rendering takes back over
         foreach (var cam in affectedCams)
         {
             cam.enabled = true;
@@ -1028,7 +1028,7 @@ static class PlayerAvatarMenuAAPatch
     internal static int AvatarRtOrigCount => _rtOrig.Count;
     internal static int AvatarPplCount => _pplState.Count;
 
-    // F10 re-enable — Start already fired, so scan + reapply manually
+    // F10 re-enable: Start already fired, so scan + reapply manually
     internal static void ReapplyAll()
     {
         foreach (var menu in Object.FindObjectsOfType<PlayerAvatarMenu>())
@@ -1048,15 +1048,15 @@ internal class AvatarCameraGate : MonoBehaviour
     {
         if (cam == null) { Destroy(this); return; }
 
-        // mod off — defer to vanilla behaviour (always enabled)
+        // mod off: defer to vanilla behaviour (always enabled)
         if (!Settings.ModEnabled)
         {
             if (!cam.enabled) cam.enabled = true;
             return;
         }
 
-        // mod on — gate on whether the menu page is in the hierarchy and active.
-        // Catches Opening / Active / Activating — only skips when fully hidden.
+        // mod on: gate on whether the menu page is in the hierarchy and active.
+        // Catches Opening / Active / Activating; only skips when fully hidden.
         bool shouldRender = menu != null
             && menu.parentPage != null
             && menu.parentPage.gameObject.activeInHierarchy;
@@ -1124,10 +1124,10 @@ static class PerfSettingsWatcher
 }
 
 // ---
-// GC reduction — always on, no visual impact
+// GC reduction: always on, no visual impact
 // ---
 
-// PhysGrabber.ColorStateSetColor — 6x GetComponent cached on Start
+// PhysGrabber.ColorStateSetColor: 6x GetComponent cached on Start
 static class GrabberComponentCache
 {
     class CachedRenderers
@@ -1220,7 +1220,7 @@ static class SkipGrabberGetComponent
     }
 }
 
-// hook settings changes — registered from LevelGenerator.GenerateDone
+// hook settings changes: registered from LevelGenerator.GenerateDone
 // since Plugin.Awake can't be patched from within itself
 [HarmonyPatch(typeof(LevelGenerator), "GenerateDone")]
 static class RegisterPerfWatcher

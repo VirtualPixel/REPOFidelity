@@ -46,7 +46,7 @@ internal static class MenuIntegration
         }
     }
 
-    // FPS: "30"–"360" + "Unlimited", game stores -1 for unlimited
+    // FPS: "30"-"360" + "Unlimited", game stores -1 for unlimited
     private static readonly string[] FpsOptions;
     static MenuIntegration()
     {
@@ -171,7 +171,7 @@ internal static class MenuIntegration
     {
         if (_benchmarkQueued) return "AUTO-TUNE QUEUED (WILL RUN ON NEXT LEVEL)";
         if (SemiFunc.RunIsLevel()) return "AUTO-TUNE BENCHMARK (15s)";
-        return "AUTO-TUNE — WILL QUEUE (START A GAME)";
+        return "AUTO-TUNE - WILL QUEUE (START A GAME)";
     }
 
     private static void RefreshDynamicLabels()
@@ -186,7 +186,7 @@ internal static class MenuIntegration
             shouldCachePage: true, pageDimmerVisibility: false, spacing: 2f,
             localPosition: new Vector2(0f, 0f));
 
-        // Live status line — bottleneck, fps, render resolution
+        // Live status line: bottleneck, fps, render resolution
         _page.AddElementToScrollView(sv =>
         {
             var label = MenuAPI.CreateREPOLabel("", sv, new Vector2(0f, 0f));
@@ -290,7 +290,7 @@ internal static class MenuIntegration
         // Environment
         AddLabel("Environment");
         // Fog upper bound stays at 1.1 because farther fog would give a
-        // gameplay advantage — lower bound opened up so reducing fog for
+        // gameplay advantage; lower bound opened up so reducing fog for
         // performance is actually an option now.
         AddFloatSlider("Fog Distance", "1.0 = vanilla; lower pulls fog closer for perf", 0.3f, 1.1f, 2,
             Settings.FogDistanceMultiplier, "x",
@@ -520,7 +520,7 @@ internal static class MenuIntegration
         // Show the resolved (clamped) render scale so slider reflects actual applied value
         SetNum(_renderScaleSlider, Settings.ResolvedRenderScale);
         SetNum(_sharpeningSlider, Settings.Sharpening);
-        // TAA is removed from dropdown — show what it resolves to
+        // TAA is removed from dropdown; show what it resolves to
         string aaDisplay = Settings.AntiAliasingMode == AAMode.TAA
             ? Settings.ResolvedAAMode.ToString()
             : Settings.AntiAliasingMode.ToString();

@@ -6,7 +6,7 @@ using UnityEngine;
 namespace REPOFidelity.Patches;
 
 // ---
-// shared NonAlloc physics buffers — replaces the array
+// shared NonAlloc physics buffers; replaces the array
 // allocations that Physics.SphereCastAll / RaycastAll /
 // OverlapSphere do every call
 // ---
@@ -30,7 +30,7 @@ static class PhysicsBuffers
 }
 
 // ---
-// PhysGrabber discovery loop — the original SphereCastAll +
+// PhysGrabber discovery loop: the original SphereCastAll +
 // OverlapSphere + SphereCastAll/RaycastAll path runs 50x/sec
 // and allocates 3-4 arrays per call. run our NonAlloc version
 // before the original method, then let the rest (grab logic,
@@ -44,7 +44,7 @@ static class RayCheckDiscoveryPatch
     // the original method's discovery loop will still run but finding
     // no undiscovered valuables (we already discovered them) so it
     // effectively becomes a no-op pass through empty results.
-    // this isn't perfect but it's safe — grab and climb logic is untouched.
+    // this isn't perfect but it's safe; grab and climb logic is untouched.
     static void Prefix(PhysGrabber __instance, bool _grab)
     {
         if (!Settings.ModEnabled) return;

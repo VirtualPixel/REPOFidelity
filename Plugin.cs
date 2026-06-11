@@ -28,7 +28,7 @@ public class Plugin : BaseUnityPlugin
                            "Please remove REPO_HD to avoid conflicts.");
         }
 
-        // Hide from REPOConfig — we use our own settings menu via MenuLib
+        // Hide from REPOConfig; we use our own settings menu via MenuLib
         Config.Bind("_", "Hidden", true,
             new BepInEx.Configuration.ConfigDescription("", null, "HideFromREPOConfig"));
         Config.SaveOnConfigSet = false;
@@ -40,7 +40,7 @@ public class Plugin : BaseUnityPlugin
         _harmony = new Harmony(PluginGuid);
         // Patch each class individually so one bad HarmonyPatch annotation
         // (wrong method name, stale game version, etc.) can't abort the rest
-        // of Awake — menu integration and DLSS setup must still run.
+        // of Awake; menu integration and DLSS setup must still run.
         foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
         {
             try { _harmony.CreateClassProcessor(type).Patch(); }
@@ -52,12 +52,13 @@ public class Plugin : BaseUnityPlugin
         Log.LogInfo($"GPU: {GPUDetector.GpuName} ({GPUDetector.Vendor}, Tier: {GPUDetector.Tier}, VRAM: {GPUDetector.VramMb}MB)");
         Log.LogInfo($"CPU: {UnityEngine.SystemInfo.processorType} ({UnityEngine.SystemInfo.processorCount} threads)");
         Log.LogInfo($"RAM: {UnityEngine.SystemInfo.systemMemorySize}MB | Platform: {UnityEngine.Application.platform} | API: {UnityEngine.SystemInfo.graphicsDeviceType}");
+        Log.LogInfo($"Display: {UnityEngine.Screen.width}x{UnityEngine.Screen.height} (aspect {(float)UnityEngine.Screen.width / UnityEngine.Screen.height:F2})");
         Log.LogInfo($"DLSS Available: {GPUDetector.DlssAvailable}");
 
         if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("nickklmao.menulib"))
         {
             MenuIntegration.Initialize();
-            Log.LogInfo("MenuLib detected — settings added to graphics menu");
+            Log.LogInfo("MenuLib detected, settings added to graphics menu");
         }
     }
 

@@ -4,7 +4,7 @@
 
 **Goal:** Eliminate unnecessary render pipeline overhead on low-end hardware (especially iGPUs) while keeping all quality improvements and upscaler support working.
 
-**Architecture:** Introduce a three-tier rendering system — Passthrough (zero custom RTs, zero per-frame processing), NativeScaling (game's built-in RT scaling, zero custom RTs), and Upscaler (DLSS/FSR with reduced RT count). Fix auto-tune and presets to never produce broken setting combinations on iGPUs. Make depth texture generation conditional. Use the game's `overlayRawImage` (accessible via publicizer) to display upscaler output, eliminating the need for camera redirection.
+**Architecture:** Introduce a three-tier rendering system - Passthrough (zero custom RTs, zero per-frame processing), NativeScaling (game's built-in RT scaling, zero custom RTs), and Upscaler (DLSS/FSR with reduced RT count). Fix auto-tune and presets to never produce broken setting combinations on iGPUs. Make depth texture generation conditional. Use the game's `overlayRawImage` (accessible via publicizer) to display upscaler output, eliminating the need for camera redirection.
 
 **Tech Stack:** C# / Unity 2022.3 / BepInEx 5 / Harmony / PostProcessing v2
 
@@ -20,21 +20,21 @@
 | `Patches/GraphicsPatch.cs` | Modify | Allow game's UpdateRenderSize in native-scaling tier |
 
 **Files NOT changing** (they work independently of the RT pipeline):
-- `Patches/QualityPatch.cs` — modifies Unity QualitySettings directly
-- `Patches/PerformancePatch.cs` — shadow/scene optimizations
-- `Patches/GCOptimizations.cs` — physics alloc reduction
-- `MenuIntegration.cs` — settings UI (no API changes)
-- `Upscalers/IUpscaler.cs` — interface unchanged
-- `Upscalers/TemporalUpscaler.cs` — works with any source/dest RTs
-- `Upscalers/DLSSUpscaler.cs` — works with any source/dest RTs
-- `Shaders/CASShader.cs` — stateless Apply(src, dst, sharpness)
-- `Patches/ExtractionPointPatch.cs` — independent
+- `Patches/QualityPatch.cs` - modifies Unity QualitySettings directly
+- `Patches/PerformancePatch.cs` - shadow/scene optimizations
+- `Patches/GCOptimizations.cs` - physics alloc reduction
+- `MenuIntegration.cs` - settings UI (no API changes)
+- `Upscalers/IUpscaler.cs` - interface unchanged
+- `Upscalers/TemporalUpscaler.cs` - works with any source/dest RTs
+- `Upscalers/DLSSUpscaler.cs` - works with any source/dest RTs
+- `Shaders/CASShader.cs` - stateless Apply(src, dst, sharpness)
+- `Patches/ExtractionPointPatch.cs` - independent
 
 ---
 
 ### Task 1: Fix auto-tune broken iGPU combination
 
-**Why:** Auto-tune currently produces `upscaler=Off + renderScale=50` on iGPUs. With no upscaler, sub-100% render scale triggers the full RT pipeline (3 custom RTs, per-frame blit) for a blurry bilinear copy — worse quality AND worse performance than native. Additionally, FSR render scales below 50% produce unacceptable quality — enforce 50% minimum for all software upscalers.
+**Why:** Auto-tune currently produces `upscaler=Off + renderScale=50` on iGPUs. With no upscaler, sub-100% render scale triggers the full RT pipeline (3 custom RTs, per-frame blit) for a blurry bilinear copy - worse quality AND worse performance than native. Additionally, FSR render scales below 50% produce unacceptable quality - enforce 50% minimum for all software upscalers.
 
 **Files:**
 - Modify: `Settings.cs:649-658` (AutoSelectPreset budget<0.5 path)
@@ -47,17 +47,17 @@ In `AutoSelectPreset()`, after the budget loop completes (around line 665), add 
 ```csharp
 // After line 664 (end of budget loop), before the log line:
 // No upscaler = no reconstruction. Sub-100% scale would be a raw
-// bilinear blit — blurry AND slower on iGPU due to RT pipeline overhead.
+// bilinear blit - blurry AND slower on iGPU due to RT pipeline overhead.
 if (upscaler == UpscaleMode.Off && scale < 100)
 {
-    Plugin.Log.LogInfo($"Auto-tune: upscaler Off — forcing native render scale (was {scale}%)");
+    Plugin.Log.LogInfo($"Auto-tune: upscaler Off - forcing native render scale (was {scale}%)");
     scale = 100;
 }
 ```
 
 - [ ] **Step 2: Also guard the UpscaleMode.Off min scale**
 
-In `MinRenderScale()` (line 424-433), update floors — Off must be native, FSR never below 50%:
+In `MinRenderScale()` (line 424-433), update floors - Off must be native, FSR never below 50%:
 
 ```csharp
 internal static int MinRenderScale(UpscaleMode mode) => mode switch
@@ -68,7 +68,7 @@ internal static int MinRenderScale(UpscaleMode mode) => mode switch
     UpscaleMode.FSR_Temporal => 50,   // temporal accumulation needs enough input detail
     UpscaleMode.FSR => 50,            // spatial-only EASU floor
     UpscaleMode.Off => 100,           // no upscaler = native only
-    _ => 50                           // Auto / unknown — safe floor
+    _ => 50                           // Auto / unknown - safe floor
 };
 ```
 
@@ -81,10 +81,10 @@ In `UpscalerManager.Setup()`, after the upscaler fallback logic (after line 122)
 ```csharp
 // After the existing fallback block (line 122):
 // Defensive: if we ended up with no upscaler and sub-native scale,
-// force native — this combination is always a net negative.
+// force native - this combination is always a net negative.
 if (_upscaler == null && Settings.ResolvedRenderScale < 100)
 {
-    Plugin.Log.LogWarning("No upscaler + sub-native scale — forcing native resolution");
+    Plugin.Log.LogWarning("No upscaler + sub-native scale - forcing native resolution");
     Settings.ResolvedRenderScale = 100;
 }
 ```
@@ -109,7 +109,7 @@ native resolution when no upscaler is active."
 
 ### Task 2: Fix Potato/Low presets for iGPU AA strategy
 
-**Why:** Potato MUST outperform REPO HD at equivalent or better visuals. REPO HD at native res with TAA+SMAA gets 70fps on the iGPU test case. Our Potato with Passthrough tier (zero pipeline overhead) + no AA (saves TAA/SMAA cost) + shadow/LOD/texture reductions should exceed that. On iGPUs, Potato GPU-bound path tries `BestUpscaler(Budget)` which returns `Off` — correct. Low does the same. AA should be completely off on Potato (even SMAA costs frames on iGPU), and SMAA (not TAA) should be used on non-upscaler paths since TAA conflicts with temporal upscalers.
+**Why:** Potato MUST outperform REPO HD at equivalent or better visuals. REPO HD at native res with TAA+SMAA gets 70fps on the iGPU test case. Our Potato with Passthrough tier (zero pipeline overhead) + no AA (saves TAA/SMAA cost) + shadow/LOD/texture reductions should exceed that. On iGPUs, Potato GPU-bound path tries `BestUpscaler(Budget)` which returns `Off` - correct. Low does the same. AA should be completely off on Potato (even SMAA costs frames on iGPU), and SMAA (not TAA) should be used on non-upscaler paths since TAA conflicts with temporal upscalers.
 
 **Files:**
 - Modify: `Settings.cs:456-490` (Potato and Low preset definitions)
@@ -121,7 +121,7 @@ In `ApplyPreset()` Potato case (line 463-468), the GPU-bound branch should never
 
 ```csharp
 case QualityPreset.Potato:
-    // CPU and GPU paths converge for Potato — no upscaler, no AA.
+    // CPU and GPU paths converge for Potato - no upscaler, no AA.
     // iGPU can't benefit from temporal upscaling (shader overhead > fill savings)
     // and even SMAA costs measurable frames at this tier.
     ResolvedUpscaleMode = UpscaleMode.Off;
@@ -186,7 +186,7 @@ git commit -m "fix: simplify Potato/Low presets, never upscale on low-end
 
 Potato: no upscaler, no AA, native resolution on both CPU/GPU paths.
 Low: no upscaler, SMAA, native resolution. iGPUs can't benefit from
-temporal upscaling — shader overhead exceeds fill-rate savings."
+temporal upscaling - shader overhead exceeds fill-rate savings."
 ```
 
 ---
@@ -205,9 +205,9 @@ Add at the top of `UpscalerManager.cs`, inside the class:
 ```csharp
 internal enum RenderTier
 {
-    Passthrough,    // No processing — camera renders directly to game RT at native res
+    Passthrough,    // No processing - camera renders directly to game RT at native res
     NativeScaling,  // Game's built-in textureWidthOriginal scaling, optional CAS
-    Upscaler        // DLSS/FSR — game RT is low-res input, output RT for display
+    Upscaler        // DLSS/FSR - game RT is low-res input, output RT for display
 }
 
 internal RenderTier CurrentTier { get; private set; }
@@ -221,7 +221,7 @@ private UnityEngine.UI.RawImage? _overlayRawImage;
 private bool _fallbackCameraRedirect; // true when overlayRawImage unavailable
 ```
 
-Remove `_intermediateRT` field (line 17). Remove `_inputRT` field (line 16). Keep `_needsProcessing` for backward compat during transition — it maps to `CurrentTier == RenderTier.Upscaler`.
+Remove `_intermediateRT` field (line 17). Remove `_inputRT` field (line 16). Keep `_needsProcessing` for backward compat during transition - it maps to `CurrentTier == RenderTier.Upscaler`.
 
 - [ ] **Step 2: Refactor Setup() to determine tier and initialize accordingly**
 
@@ -249,22 +249,22 @@ internal void Setup(RenderTextureMain rtMain, Camera camera)
 
     if (_upscaler != null && !_upscaler.IsAvailable)
     {
-        Plugin.Log.LogWarning($"{_upscaler.Name} unavailable — falling back to FSR Temporal");
+        Plugin.Log.LogWarning($"{_upscaler.Name} unavailable - falling back to FSR Temporal");
         _upscaler = new TemporalUpscaler();
         Settings.ResolvedUpscaleMode = UpscaleMode.FSR_Temporal;
 
         if (!_upscaler.IsAvailable)
         {
-            Plugin.Log.LogWarning("FSR also unavailable — no upscaling");
+            Plugin.Log.LogWarning("FSR also unavailable - no upscaling");
             _upscaler = null;
             Settings.ResolvedUpscaleMode = UpscaleMode.Off;
         }
     }
 
-    // Force native when no upscaler (defensive — Task 1 should prevent this)
+    // Force native when no upscaler (defensive - Task 1 should prevent this)
     if (_upscaler == null && Settings.ResolvedRenderScale < 100)
     {
-        Plugin.Log.LogWarning("No upscaler + sub-native scale — forcing native resolution");
+        Plugin.Log.LogWarning("No upscaler + sub-native scale - forcing native resolution");
         Settings.ResolvedRenderScale = 100;
     }
 
@@ -277,7 +277,7 @@ internal void Setup(RenderTextureMain rtMain, Camera camera)
     }
     else if (hasCAS)
     {
-        // CAS-only at native res — use NativeScaling tier (CAS via GetTemporary)
+        // CAS-only at native res - use NativeScaling tier (CAS via GetTemporary)
         CurrentTier = RenderTier.NativeScaling;
     }
     else
@@ -354,7 +354,7 @@ private void SetupUpscaler(RenderTextureMain rtMain, Camera camera)
     _inputWidth = Mathf.Max(Mathf.RoundToInt(_outputWidth * scale), 1);
     _inputHeight = Mathf.Max(Mathf.RoundToInt(_outputHeight * scale), 1);
 
-    // Game's RT becomes the low-res input — set dimensions via textureWidthOriginal
+    // Game's RT becomes the low-res input - set dimensions via textureWidthOriginal
     // (handled by RenderTexturePatch.PrefixUpdate each frame)
     var gameRT = rtMain.renderTexture;
     if (gameRT != null)
@@ -365,7 +365,7 @@ private void SetupUpscaler(RenderTextureMain rtMain, Camera camera)
         gameRT.Create();
     }
 
-    // Camera renders to game's RT naturally — no redirect needed
+    // Camera renders to game's RT naturally - no redirect needed
     if (camera != null && gameRT != null)
         camera.targetTexture = gameRT;
 
@@ -462,7 +462,7 @@ private void LateUpdate()
 }
 ```
 
-- [ ] **Step 8: Update ProcessFrame() — use _outputRT instead of gameRT**
+- [ ] **Step 8: Update ProcessFrame() - use _outputRT instead of gameRT**
 
 ```csharp
 private void ProcessFrame()
@@ -511,7 +511,7 @@ private void HandleResolutionChange()
 
     if (CurrentTier == RenderTier.NativeScaling)
     {
-        // Game's RT is resized by RenderTexturePatch.PrefixUpdate — nothing to do here.
+        // Game's RT is resized by RenderTexturePatch.PrefixUpdate - nothing to do here.
         return;
     }
 
@@ -692,7 +692,7 @@ public static void PrefixUpdate(RenderTextureMain __instance)
     if (manager != null && manager.CurrentTier == UpscalerManager.RenderTier.Upscaler)
     {
         // Upscaler tier: game RT is the low-res input.
-        // Don't override dimensions — UpscalerManager.Setup set them.
+        // Don't override dimensions - UpscalerManager.Setup set them.
         // Just sync textureWidth/textureHeight for game's OnScreen() calculations.
         var gameRT = __instance.renderTexture;
         if (gameRT != null)
@@ -798,7 +798,7 @@ public static bool PrefixUpdateRenderSize()
 }
 ```
 
-Wait — there's a subtlety. The game's `UpdateRenderSize` sets the render texture to a pixelated low-res size (the vanilla game's retro look). We DON'T want that on Passthrough/NativeScaling either — we want native res. So we should still block it, but our PrefixUpdate in RenderTexturePatch sets the correct dimensions each frame.
+Wait - there's a subtlety. The game's `UpdateRenderSize` sets the render texture to a pixelated low-res size (the vanilla game's retro look). We DON'T want that on Passthrough/NativeScaling either - we want native res. So we should still block it, but our PrefixUpdate in RenderTexturePatch sets the correct dimensions each frame.
 
 Revised:
 
@@ -813,7 +813,7 @@ public static bool PrefixUpdateRenderSize()
 }
 ```
 
-This is actually the same as the current code. No change needed — the existing logic is correct for all three tiers because PrefixUpdate in RenderTexturePatch handles dimensions for Passthrough/NativeScaling.
+This is actually the same as the current code. No change needed - the existing logic is correct for all three tiers because PrefixUpdate in RenderTexturePatch handles dimensions for Passthrough/NativeScaling.
 
 - [ ] **Step 2: Verify no change needed, add clarifying comment**
 
@@ -861,7 +861,7 @@ _overlayRawImage = rtMain.overlayRawImage;
 
 if (_overlayRawImage == null)
 {
-    Plugin.Log.LogWarning("overlayRawImage not found on RenderTextureMain — " +
+    Plugin.Log.LogWarning("overlayRawImage not found on RenderTextureMain - " +
         "upscaler tier will use camera-redirect fallback");
 }
 ```
@@ -908,7 +908,7 @@ private void SetupUpscaler(RenderTextureMain rtMain, Camera camera)
     {
         // Fallback: camera-redirect approach (no overlayRawImage access)
         // _outputRT is the low-res camera target; game RT is the full-res display.
-        // Variable name is reused across paths — in this fallback it's the INPUT.
+        // Variable name is reused across paths - in this fallback it's the INPUT.
         _outputRT = new RenderTexture(_inputWidth, _inputHeight, 24, format)
         {
             filterMode = FilterMode.Bilinear
@@ -1041,7 +1041,7 @@ if (Settings.DebugOverlay || _benchmarkActive || !Settings.ModEnabled)
 
 - [ ] **Step 2: Skip resolution detection in Passthrough**
 
-Already handled in Task 3 Step 7 — LateUpdate returns immediately for Passthrough.
+Already handled in Task 3 Step 7 - LateUpdate returns immediately for Passthrough.
 
 - [ ] **Step 3: Build and verify**
 
@@ -1108,12 +1108,12 @@ Trace through each config combination mentally:
 - [ ] **Step 5: Runtime testing checklist**
 
 Test each scenario in-game:
-1. Fresh install (no settings.json) — auto-benchmark runs, picks appropriate tier
-2. Potato preset — verify Passthrough tier, no custom RTs in logs
-3. High preset with DLSS/FSR — verify Upscaler tier, one _outputRT
-4. F10 toggle — mod disables/enables cleanly, no black screen
-5. Change preset in menu — Reinitialize fires, tier changes correctly
-6. Resolution change (window resize) — HandleResolutionChange works per tier
+1. Fresh install (no settings.json) - auto-benchmark runs, picks appropriate tier
+2. Potato preset - verify Passthrough tier, no custom RTs in logs
+3. High preset with DLSS/FSR - verify Upscaler tier, one _outputRT
+4. F10 toggle - mod disables/enables cleanly, no black screen
+5. Change preset in menu - Reinitialize fires, tier changes correctly
+6. Resolution change (window resize) - HandleResolutionChange works per tier
 
 - [ ] **Step 6: Commit final state**
 

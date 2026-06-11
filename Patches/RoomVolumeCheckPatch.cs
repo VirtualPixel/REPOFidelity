@@ -8,18 +8,18 @@ namespace REPOFidelity.Patches;
 // Replaces RoomVolumeCheck.Check. Vanilla samples Physics.OverlapBox at a single point
 // at 10Hz, which misses rooms entirely when the player moves faster than one tick's worth
 // of travel (tumble wings, fast flight). The miss shows up as a false "not in any room"
-// state — breaks ambience / truck-safety / enemy-AI room awareness for up to 100ms and
+// state: breaks ambience / truck-safety / enemy-AI room awareness for up to 100ms and
 // robs the player of the scouting-points credit for rooms they crossed at speed. Four
 // tiers:
 //
-//   1. Rest-skip. Player stationary and we had rooms last tick — keep cached state and
+//   1. Rest-skip. Player stationary and we had rooms last tick: keep cached state and
 //      return. Zero physics calls on idle ticks.
 //   2. OverlapBoxNonAlloc at current position. Common-case query for moving players.
 //   3. BoxCastNonAlloc sweep from last position to current. Catches rooms whose volumes
 //      the player crossed entirely between two ticks.
 //   4. Sticky carry-over. If overlap and sweep both come up empty but we were in a room
 //      last tick, retain that room for up to StickyMaxTicks more ticks. Handles flying
-//      above the room's collider ceiling — the sweep can't help there since it starts
+//      above the room's collider ceiling; the sweep can't help there since it starts
 //      inside the volume and Unity's cast APIs skip the starting collider.
 //
 // Not gated behind CpuPatchesActive. Rest-skip makes the common case strictly cheaper
@@ -52,7 +52,7 @@ static class RoomVolumeCheckPatch
         var playerWait = new WaitForSeconds(0.1f);
         var nonPlayerWait = new WaitForSeconds(0.5f);
 
-        // Per-instance state via closure — hoisted to fields by the coroutine state machine.
+        // Per-instance state via closure, hoisted to fields by the coroutine state machine.
         Vector3 lastPos = Vector3.zero;
         bool hasLastPos = false;
         int stickyTicks = 0;
@@ -88,7 +88,7 @@ static class RoomVolumeCheckPatch
         Quaternion rotation = instance.transform.rotation;
 
         // Rest-skip: stationary in a known room. CurrentRooms / inTruck / inExtractionPoint
-        // still hold last tick's values — just re-run the game-logic tail (idempotent).
+        // still hold last tick's values; just re-run the game-logic tail (idempotent).
         if (hasLastPos
             && instance.wasInRoom
             && stickyTicks == 0
@@ -141,7 +141,7 @@ static class RoomVolumeCheckPatch
         }
         if (!usedSticky) stickyTicks = 0;
 
-        // Cache current rooms for future sticky fallback. Skip if we just read the cache —
+        // Cache current rooms for future sticky fallback. Skip if we just read the cache;
         // nothing new to record.
         if (!usedSticky && instance.CurrentRooms.Count > 0)
         {

@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 
 namespace REPOFidelity;
 
-// per-patch frame time measurement — only active when debug overlay or benchmark is running.
+// per-patch frame time measurement; only active when debug overlay or benchmark is running.
 // uses a continuously-running stopwatch with snapshot pairs so overlapping patches don't clobber each other.
 internal static class FrameTimeMeter
 {
@@ -40,7 +40,7 @@ internal static class FrameTimeMeter
         public float AverageMs => AverageUs / 1000f;
     }
 
-    // runs continuously — never restarted. Begin/End capture tick snapshots.
+    // runs continuously, never restarted. Begin/End capture tick snapshots.
     private static readonly Stopwatch _sw = Stopwatch.StartNew();
 
     internal static bool Active => Settings.DebugOverlay || OptimizerBenchmark.Running;
@@ -61,7 +61,7 @@ internal static class FrameTimeMeter
     internal static readonly Meter SemiFuncCache = new("SemiFunc Cache", "SemiFunc");
     internal static readonly Meter PhysGrabObjectFix = new("PhysGrabObject Fix", "PhysGrab");
     internal static readonly Meter LightManagerBatch = new("LightManager Batch", "LightMgr");
-    // SceneOptimizer.Apply is event-driven (level gen, respawn, preset change) — per-frame
+    // SceneOptimizer.Apply is event-driven (level gen, respawn, preset change); per-frame
     // average stays near zero, worst-frame is the useful metric when hunting spikes.
     internal static readonly Meter SceneApply = new("SceneOptimizer Apply", "SceneApl");
 

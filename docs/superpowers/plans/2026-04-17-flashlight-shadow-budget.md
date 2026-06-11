@@ -11,11 +11,11 @@
 - Save original `LightShadows` per flashlight on first touch; F10 revert restores
 
 **Files:**
-- Modify: `Patches/PerformancePatch.cs` — new method + call site
-- Modify: `Settings.cs` — new `PerfOpt.FlashlightShadowBudget` + tiering + perf toggle
-- Modify: `SettingsFile.cs` — new `perfFlashlightShadowBudget` field
-- Modify: `UpscalerManager.cs` — hook into existing 10Hz tick
-- Modify: `CHANGELOG.md` — bullet
+- Modify: `Patches/PerformancePatch.cs` - new method + call site
+- Modify: `Settings.cs` - new `PerfOpt.FlashlightShadowBudget` + tiering + perf toggle
+- Modify: `SettingsFile.cs` - new `perfFlashlightShadowBudget` field
+- Modify: `UpscalerManager.cs` - hook into existing 10Hz tick
+- Modify: `CHANGELOG.md` - bullet
 
 ---
 
@@ -47,7 +47,7 @@
 ## Task 4: F10 revert + diagnostic
 
 - [ ] In `LogRestoreState`, add `flashBudget={_flashlightBudgetOrig.Count}` line. Include in `mutations` total.
-- [ ] No separate F10 hook needed — restore path fires on next tick when `ShouldOptimize` returns false (`Settings.ModEnabled = false` propagates).
+- [ ] No separate F10 hook needed - restore path fires on next tick when `ShouldOptimize` returns false (`Settings.ModEnabled = false` propagates).
 
 ## Task 5: Verification
 

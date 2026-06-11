@@ -11,7 +11,7 @@ static class EnemyDirectorThrottlePatch
     static int _frameSkip;
     static float _cachedActionDelta;
 
-    // EnemyDirector is a singleton — these statics are safe
+    // EnemyDirector is a singleton; these statics are safe
     static bool Prefix(EnemyDirector __instance)
     {
         if (!Settings.ModEnabled || !Settings.CpuPatchesActive) return true;
@@ -51,7 +51,7 @@ static class EnemyDirectorThrottlePatch
             RunExtractionLogic(__instance);
         }
 
-        // room comparison — only refresh every 3rd frame, accumulation rate unchanged
+        // room comparison: only refresh every 3rd frame, accumulation rate unchanged
         _frameSkip = (_frameSkip + 1) % 3;
         if (_frameSkip == 0)
         {
@@ -153,7 +153,7 @@ static class EnemyDirectorThrottlePatch
     internal static void ResetCache() => _cachedActionDelta = 0f;
 }
 
-// RoomVolumeCheck patching lives in its own file — see Patches/RoomVolumeCheckPatch.cs.
+// RoomVolumeCheck patching lives in its own file; see Patches/RoomVolumeCheckPatch.cs.
 
 // NonAlloc + 0.25s per-enemy result cache. shared _buf same safety as above.
 [HarmonyPatch(typeof(SemiFunc), nameof(SemiFunc.EnemyGetNearestPhysObject))]
@@ -205,7 +205,7 @@ static class SemiFuncCachePatch
 [HarmonyPatch(typeof(PhysGrabObject), "Update")]
 static class PhysGrabObjectFixPatch
 {
-    // cached Rigidbody lookup — avoids GetComponent per Update tick
+    // cached Rigidbody lookup; avoids GetComponent per Update tick
     static readonly Dictionary<PhysGrabObject, Rigidbody?> _rbCache = new();
 
     internal static void ClearRbCache() => _rbCache.Clear();
@@ -292,7 +292,7 @@ static class PlayerCosmeticThrottle
 
     // Per-transform "is this on a real PlayerAvatar in the world" cache.
     // PlayerAvatarMenu previews (pause-menu portrait, expression wheel) live at world
-    // positions like (0,0,-2000) — far enough from Camera.main that the distance gate
+    // positions like (0,0,-2000), far enough from Camera.main that the distance gate
     // would falsely throttle them and freeze the preview's blendshapes / eyelids.
     // World avatars have a PlayerAvatar in their parent chain; menu previews don't.
     static readonly Dictionary<Transform, bool> _isWorldAvatar = new();
@@ -345,11 +345,11 @@ static class PlayerAvatarOverchargeVisualsThrottlePatch
         => !PlayerCosmeticThrottle.ShouldSkip(__instance.transform);
 }
 
-// Per-player visual scripts that have no gameplay or network side-effects —
+// Per-player visual scripts that have no gameplay or network side-effects;
 // safe to skip past fog. PlayerHealthGrab / PlayerDeathHead / PlayerTumble
 // deliberately excluded because their Update fires RPCs and mutates gameplay
 // state, and PlayerDeathEffects / PlayerReviveEffects because their Update owns
-// the death/revive teardown — PlayerReviveEffects has no Reset(), so skipping it
+// the death/revive teardown: PlayerReviveEffects has no Reset(), so skipping it
 // while a far-away corpse is past fog latches the revive and the next death
 // drops the player into the void. They also barely cost anything (both early-out
 // when idle), so there was nothing to save. FlashlightBob / FlashlightSprint

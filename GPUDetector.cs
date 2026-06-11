@@ -100,7 +100,7 @@ internal static class GPUDetector
     {
         string upper = name.ToUpperInvariant();
 
-        // Intel integrated — HD/UHD/Iris, plus Arc iGPU on Core Ultra
+        // Intel integrated: HD/UHD/Iris, plus Arc iGPU on Core Ultra
         // (distinguished from Arc dGPU by the absence of a letter+3-digit
         // model code).
         if (vendor == GpuVendor.Intel &&
@@ -114,9 +114,9 @@ internal static class GPUDetector
              (upper.Contains("RADEON GRAPHICS") && !upper.Contains("RX"))))
             return true;
 
-        // Apple Silicon uses unified memory — powerful but bandwidth-shared.
+        // Apple Silicon uses unified memory: powerful but bandwidth-shared.
         // FSR shader blits are affordable on M-series, so it isn't flagged as
-        // iGPU for upscaler purposes — BestUpscaler defaults Apple to FSR.
+        // iGPU for upscaler purposes; BestUpscaler defaults Apple to FSR.
 
         // Fallback: very low VRAM is a strong iGPU signal
         if (vramMb > 0 && vramMb < 2048)

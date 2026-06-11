@@ -15,8 +15,8 @@
 | Range | Resolution (default) | Potato cap applied |
 |---|---|---|
 | `< 5m` | 256 | 256 |
-| `5–10m` | 512 | 512 |
-| `10–20m` | 1024 | 1024 |
+| `5-10m` | 512 | 512 |
+| `10-20m` | 1024 | 1024 |
 | `≥ 20m` | 2048 | **1024** |
 
 **Flashlight:** always 4096 when `ResolvedShadowQuality == Ultra`. Otherwise follows the table above.
@@ -37,7 +37,7 @@
 
 **Files:** `Patches/QualityPatch.cs`
 
-- [ ] Rename and replace the method. New signature: no parameters — reads preset/quality from Settings directly.
+- [ ] Rename and replace the method. New signature: no parameters - reads preset/quality from Settings directly.
 - [ ] Call `RefreshFlashlightLights()` at start.
 - [ ] For each `Light` in scene:
   1. Zero-intensity shadows → `LightShadows.None` (preserve existing behavior).
@@ -46,7 +46,7 @@
   4. Compute bracket from `light.range` (use the table).
   5. If `Settings.Preset == QualityPreset.Potato` apply `Mathf.Min(res, 1024)`.
   6. Assign `shadowCustomResolution = res`.
-- [ ] Drop the `_ultraShadowsApplied` early-return — the new method is cheap enough and consistent behavior matters more than skipping.
+- [ ] Drop the `_ultraShadowsApplied` early-return - the new method is cheap enough and consistent behavior matters more than skipping.
 
 ## Task 3: Call on every preset in `ApplyShadowResolution`
 
@@ -57,7 +57,7 @@
 
 ## Task 4: Build + F9 measurement checkpoint
 
-- [ ] Build (`dotnet build`) — confirm no errors.
+- [ ] Build (`dotnet build`) - confirm no errors.
 - [ ] F9 probe from same truck spot, same starting preset.
 - [ ] Compare per-light shadow cost proxy section to previous run. Expected:
   - Flashlight score: Ultra unchanged (4096 → 100), High/Medium/Low drops (2048 → 25).

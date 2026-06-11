@@ -10,9 +10,9 @@ internal class UpscalerManager : MonoBehaviour
 {
     internal enum RenderTier
     {
-        Passthrough,    // No processing — camera renders directly to game RT at native res
+        Passthrough,    // No processing: camera renders directly to game RT at native res
         NativeScaling,  // Game's built-in textureWidthOriginal scaling, optional CAS
-        Upscaler        // DLSS/FSR — game RT is low-res input, output RT for display
+        Upscaler        // DLSS/FSR: game RT is low-res input, output RT for display
     }
 
     internal RenderTier CurrentTier { get; private set; }
@@ -53,7 +53,7 @@ internal class UpscalerManager : MonoBehaviour
         }
     }
 
-    // Temporal jitter — shared between DLSS and FSR
+    // Temporal jitter, shared between DLSS and FSR
     private int _jitterIndex;
     private Matrix4x4 _savedProjectionMatrix;
     private bool _jitterApplied;
@@ -137,13 +137,13 @@ internal class UpscalerManager : MonoBehaviour
 
         if (_upscaler != null && !_upscaler.IsAvailable)
         {
-            Plugin.Log.LogWarning($"{_upscaler.Name} unavailable — falling back to FSR Temporal");
+            Plugin.Log.LogWarning($"{_upscaler.Name} unavailable, falling back to FSR Temporal");
             _upscaler = new TemporalUpscaler();
             Settings.ResolvedUpscaleMode = UpscaleMode.FSR_Temporal;
 
             if (!_upscaler.IsAvailable)
             {
-                Plugin.Log.LogWarning("FSR also unavailable — no upscaling");
+                Plugin.Log.LogWarning("FSR also unavailable, no upscaling");
                 _upscaler = null;
                 Settings.ResolvedUpscaleMode = UpscaleMode.Off;
 
@@ -152,7 +152,7 @@ internal class UpscalerManager : MonoBehaviour
                 // settings alone for performance (shadows, LOD, lights, etc.)
                 if (Settings.ResolvedRenderScale < 100)
                 {
-                    Plugin.Log.LogWarning("No upscaler available — forcing native render scale");
+                    Plugin.Log.LogWarning("No upscaler available, forcing native render scale");
                     Settings.ResolvedRenderScale = 100;
                 }
             }
@@ -224,7 +224,7 @@ internal class UpscalerManager : MonoBehaviour
 
         camera.targetTexture = _outputRT;
 
-        // Game RT at full output res — the game's overlay pipeline blits this to screen
+        // Game RT at full output res; the game's overlay pipeline blits this to screen
         if (gameRT != null)
         {
             gameRT.Release();
@@ -396,7 +396,7 @@ internal class UpscalerManager : MonoBehaviour
 
             if (!enabling)
             {
-                // disabling is instant — no render texture rebuild needed
+                // disabling is instant; no render texture rebuild needed
                 Settings.ModEnabled = false;
                 Plugin.Log.LogDebug("Mod DISABLED");
                 // snapshot modifications BEFORE restore so the log shows what we reverted
@@ -474,7 +474,7 @@ internal class UpscalerManager : MonoBehaviour
 
         if (_benchmarkActive)
         {
-            // Warmup phase — let GPU/shaders/textures stabilize before measuring
+            // Warmup phase: let GPU/shaders/textures stabilize before measuring
             if (_benchmarkWarmup > 0f)
             {
                 _benchmarkWarmup -= Time.unscaledDeltaTime;
@@ -715,7 +715,7 @@ internal class UpscalerManager : MonoBehaviour
 
             if (filteredCount < 10)
             {
-                Plugin.Log.LogWarning("Benchmark: too few valid frames — skipping auto-tune");
+                Plugin.Log.LogWarning("Benchmark: too few valid frames, skipping auto-tune");
                 return;
             }
 
@@ -756,7 +756,7 @@ internal class UpscalerManager : MonoBehaviour
                 Plugin.Log.LogInfo($"  Ratio: {ratio:P1}, threshold: {threshold:P0} (fps={avgFps:F0})");
 
                 // Proton/DXVK fix: draw call translation overhead scales with resolution,
-                // so 25% scale also reduces CPU load — making the ratio misleadingly low.
+                // so 25% scale also reduces CPU load, making the ratio misleadingly low.
                 // Secondary check: if the CPU ceiling itself is below target, the CPU
                 // can't sustain the target framerate regardless of GPU load.
                 float targetFps = Mathf.Max((float)Screen.currentResolution.refreshRateRatio.value, 60f);
@@ -771,7 +771,7 @@ internal class UpscalerManager : MonoBehaviour
                 }
                 else if (!cpuBound && translationLayer && ratio < 0.95f)
                 {
-                    // on translation layers, the 25% test is unreliable —
+                    // on translation layers, the 25% test is unreliable;
                     // use a tighter threshold since DXVK overhead artificially
                     // inflates the ceiling
                     cpuBound = true;
@@ -828,7 +828,7 @@ internal class UpscalerManager : MonoBehaviour
         }
     }
 
-    // Saved vanilla values for F10 restore — internal so QualityPatch can read them
+    // Saved vanilla values for F10 restore; internal so QualityPatch can read them
     internal static float _vanillaFogStart;
     internal static float _vanillaFogEnd;
     internal static bool _vanillaSaved;
@@ -836,14 +836,14 @@ internal class UpscalerManager : MonoBehaviour
     internal static float _lastEnvironmentSetupTime;
 
     // Per-camera pre-mod farClipPlane. One static _vanillaFarClip was wrong because
-    // menu cam and gameplay cam have different vanilla clip ranges — captured one, stamped
+    // menu cam and gameplay cam have different vanilla clip ranges: captured one, stamped
     // the other on F10 restore, hid the menu truck. Each camera records its own value on
     // the first mod write.
     internal static readonly System.Collections.Generic.Dictionary<Camera, float> _vanillaFarClipByCam = new();
 
     // Use everywhere the mod wants to set cam.farClipPlane instead of a direct write.
     // First write on a given camera records its current value for later restore.
-    // Skip during SpectateCamera death state — vanilla EnvironmentDirector.FogLogic
+    // Skip during SpectateCamera death state; vanilla EnvironmentDirector.FogLogic
     // (t20 line 248) does the same. StateDeath sets near=70 / far=90; stamping a
     // smaller far on top of that 70m near inverts the frustum and the death cam
     // renders white. Resumes when death state ends.

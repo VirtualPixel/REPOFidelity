@@ -5,7 +5,7 @@ namespace REPOFidelity.Patches;
 
 // ---
 // Per-frame allocation cuts in gameplay scripts. Pure NonAlloc swaps and idle-skip
-// fast paths — no behavior change, so they run as long as the mod is on regardless
+// fast paths; no behavior change, so they run as long as the mod is on regardless
 // of the CpuPatchesActive auto-gate.
 // ---
 
@@ -13,7 +13,7 @@ namespace REPOFidelity.Patches;
 // PhysGrabObjectGrabArea.Update calls playerGrabbers.ToList() every frame to allow
 // safe iteration over the grabber list while modifying others. When no one's grabbing,
 // the .ToList() still allocates an empty List per instance per frame. Skip the whole
-// Update when this object has no grabbers and no stale grabber bookkeeping — the
+// Update when this object has no grabbers and no stale grabber bookkeeping; the
 // original cleanup loops have nothing to do in that state.
 [HarmonyPatch(typeof(PhysGrabObjectGrabArea), "Update")]
 static class GrabAreaIdleSkipPatch
@@ -22,7 +22,7 @@ static class GrabAreaIdleSkipPatch
     {
         if (!Settings.ModEnabled || !Settings.AllocationFixesEnabled) return true;
 
-        // vanilla bails immediately for non-master clients — match that early-out
+        // vanilla bails immediately for non-master clients; match that early-out
         if (!SemiFunc.IsMasterClientOrSingleplayer()) return false;
 
         var grabbing = __instance.physGrabObject != null

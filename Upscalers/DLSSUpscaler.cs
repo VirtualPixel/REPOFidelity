@@ -28,7 +28,7 @@ internal class DLSSUpscaler : IUpscaler
     private int _inputWidth, _inputHeight;
     private int _outputWidth, _outputHeight;
 
-    // Output RT with UAV — DLSS needs write access
+    // Output RT with UAV; DLSS needs write access
     private RenderTexture? _dlssOutputRT;
 
     // Depth/MV capture
@@ -54,7 +54,7 @@ internal class DLSSUpscaler : IUpscaler
             // Ensure nvngx_dlss.dll is available (auto-find from installed games)
             if (!DLSSDownloader.EnsureAvailable())
             {
-                Plugin.Log.LogWarning("DLSS: nvngx_dlss.dll not available — DLSS disabled");
+                Plugin.Log.LogWarning("DLSS: nvngx_dlss.dll not available; DLSS disabled");
                 return;
             }
 
@@ -106,7 +106,7 @@ internal class DLSSUpscaler : IUpscaler
         }
         catch (DllNotFoundException)
         {
-            Plugin.Log.LogWarning("DLSS: ngx_bridge.dll not found — DLSS disabled");
+            Plugin.Log.LogWarning("DLSS: ngx_bridge.dll not found; DLSS disabled");
         }
         catch (Exception ex)
         {
@@ -158,7 +158,7 @@ internal class DLSSUpscaler : IUpscaler
         int createFlags = _dlaaMode ? 0 : (1 << 1);
         NGXBridge.NGXBridge_ParamSetInt(_evalParams, "DLSS.Feature.Create.Flags", createFlags);
 
-        // Preset E (CNN) — tolerates Unity's MV jitter better than the transformer default.
+        // Preset E (CNN): tolerates Unity's MV jitter better than the transformer default.
         const int presetE = 5;
         NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "DLSS.Hint.Render.Preset.DLAA",             (uint)presetE);
         NGXBridge.NGXBridge_ParamSetUInt(_evalParams, "DLSS.Hint.Render.Preset.Quality",          (uint)presetE);
@@ -187,7 +187,7 @@ internal class DLSSUpscaler : IUpscaler
             return;
         }
 
-        // DLSS was created for a specific input size — other render passes
+        // DLSS was created for a specific input size; other render passes
         // (secondary cameras, post-fx stages) hand us arbitrary sources.
         // Pass those through untouched.
         if (source.width != _inputWidth || source.height != _inputHeight)
@@ -204,7 +204,7 @@ internal class DLSSUpscaler : IUpscaler
         NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "MV.Scale.X", -(float)_inputWidth);
         NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "MV.Scale.Y", -(float)_inputHeight);
 
-        // Jitter already baked into Unity MVs — pass 0 to avoid double-subtract.
+        // Jitter already baked into Unity MVs; pass 0 to avoid double-subtract.
         NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "Jitter.Offset.X", 0f);
         NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "Jitter.Offset.Y", 0f);
         NGXBridge.NGXBridge_ParamSetFloat(_evalParams, "Sharpness", 0f);

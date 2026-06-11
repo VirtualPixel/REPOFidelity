@@ -1,4 +1,4 @@
-# Fog-Driven Distance Culling — Implementation Plan
+# Fog-Driven Distance Culling - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
@@ -16,7 +16,7 @@
 
 ---
 
-## Part A — Fog as master distance knob
+## Part A - Fog as master distance knob
 
 ### Task A1: Widen fog clamp + fix the <1.0x gate
 
@@ -36,13 +36,13 @@ Quick sanity check before editing: confirm no other spot in `Settings.cs` reappl
 
 `UpscalerManager.cs:527-534` guards the fog write with `if (_vanillaSaved && fogMult > 1f)`. Change to `fogMult != 1f` (so `0.3 → 1.1` range all apply; exact `1.0` is a no-op skip that saves a write).
 
-The block below the guard multiplies `_vanillaFogStart` and `_vanillaFogEnd` — no changes to those lines; the multiplication already works for values < 1.
+The block below the guard multiplies `_vanillaFogStart` and `_vanillaFogEnd` - no changes to those lines; the multiplication already works for values < 1.
 
 - [ ] **Step A1.3: Commit**
 
 ```
 git add Settings.cs UpscalerManager.cs
-git commit -m "fog: open multiplier range to 0.3x–1.1x, apply on <1.0 as well"
+git commit -m "fog: open multiplier range to 0.3x-1.1x, apply on <1.0 as well"
 ```
 
 ---
@@ -56,7 +56,7 @@ git commit -m "fog: open multiplier range to 0.3x–1.1x, apply on <1.0 as well"
 
 - [ ] **Step A2.1: Add the constant**
 
-Add near the top of the internal Settings fields (look for where other internal constants like `ShadowBudget` bounds live; pick a sensible neighbor). Name: `PlayableFogFloor`, type `float`, value `0.5f`. Add a one-line comment saying it's a TBD placeholder — real value comes after tester feedback.
+Add near the top of the internal Settings fields (look for where other internal constants like `ShadowBudget` bounds live; pick a sensible neighbor). Name: `PlayableFogFloor`, type `float`, value `0.5f`. Add a one-line comment saying it's a TBD placeholder - real value comes after tester feedback.
 
 - [ ] **Step A2.2: Add the resolved field**
 
@@ -75,7 +75,7 @@ git commit -m "fog: add PlayableFogFloor constant and ResolvedEffectiveFogEnd fi
 
 **Files:**
 - Modify: `UpscalerManager.cs` (fog application block around line 527-534)
-- Modify: `UpscalerManager.cs` (`_vanillaSaved` capture site — search for `_vanillaFogEnd =`)
+- Modify: `UpscalerManager.cs` (`_vanillaSaved` capture site - search for `_vanillaFogEnd =`)
 
 **Why:** `ResolvedEffectiveFogEnd` must equal `_vanillaFogEnd × ResolvedFogMultiplier` and must be recomputed when either input changes. The fog write block at 527-534 is the right place because it already runs on fog changes, preset changes, and level reloads.
 
@@ -87,11 +87,11 @@ Inside the `if (fogMult != 1f)` block (post Task A1.2), after the `fogEndDistanc
 Settings.ResolvedEffectiveFogEnd = RenderSettings.fogEndDistance;
 ```
 
-And do the same in the `else` branch / pass-through — if fogMult == 1f, set `ResolvedEffectiveFogEnd = _vanillaFogEnd`. (If there's no explicit `else`, add one.)
+And do the same in the `else` branch / pass-through - if fogMult == 1f, set `ResolvedEffectiveFogEnd = _vanillaFogEnd`. (If there's no explicit `else`, add one.)
 
 - [ ] **Step A3.2: Verify at startup**
 
-Once the game loads and fog is captured (search for `_vanillaFogEnd = RenderSettings.fogEndDistance;`), `ResolvedEffectiveFogEnd` also gets initialized. If the assignment sequence would ever read `ResolvedEffectiveFogEnd` before the first fog-apply call, also write it at the capture site. (Likely not needed — the clamp consumers run after `Apply()`, but verify.)
+Once the game loads and fog is captured (search for `_vanillaFogEnd = RenderSettings.fogEndDistance;`), `ResolvedEffectiveFogEnd` also gets initialized. If the assignment sequence would ever read `ResolvedEffectiveFogEnd` before the first fog-apply call, also write it at the capture site. (Likely not needed - the clamp consumers run after `Apply()`, but verify.)
 
 - [ ] **Step A3.3: Commit**
 
@@ -105,14 +105,14 @@ git commit -m "fog: populate ResolvedEffectiveFogEnd when fog is applied"
 ### Task A4: Clamp `ResolvedShadowDistance` and `ResolvedLightDistance` to fog end
 
 **Files:**
-- Modify: `Settings.cs` (inside `Recompute` after `ResolvedShadowDistance`/`ResolvedLightDistance` are assigned — around line 465-468)
-- Possibly: `Patches/QualityPatch.cs` (where `QualitySettings.shadowDistance` is pushed to Unity) — verify the resolved value flows through after clamping
+- Modify: `Settings.cs` (inside `Recompute` after `ResolvedShadowDistance`/`ResolvedLightDistance` are assigned - around line 465-468)
+- Possibly: `Patches/QualityPatch.cs` (where `QualitySettings.shadowDistance` is pushed to Unity) - verify the resolved value flows through after clamping
 
-**Why:** Once preset/custom values have populated `Resolved*` fields, apply the fog ceiling. This is a *ceiling only* — preset value stays the lower bound so Potato's 10m isn't stretched.
+**Why:** Once preset/custom values have populated `Resolved*` fields, apply the fog ceiling. This is a *ceiling only* - preset value stays the lower bound so Potato's 10m isn't stretched.
 
 - [ ] **Step A4.1: Add a clamp helper**
 
-Small static method on `Settings` — name it something like `ApplyFogClamps()`. Body (illustrative, ≤5 lines):
+Small static method on `Settings` - name it something like `ApplyFogClamps()`. Body (illustrative, ≤5 lines):
 
 ```csharp
 float end = ResolvedEffectiveFogEnd;
@@ -159,7 +159,7 @@ git commit -m "fog: clamp ResolvedShadowDistance and ResolvedLightDistance to fo
 **Files:**
 - Modify: `MenuIntegration.cs` (search for `FogDistanceMultiplier` or `fogMultiplier`)
 
-**Why:** Settings clamp now accepts 0.3–1.1, but the slider UI may still present 1.0–1.1. Match the UI to the new range.
+**Why:** Settings clamp now accepts 0.3-1.1, but the slider UI may still present 1.0-1.1. Match the UI to the new range.
 
 - [ ] **Step A5.1: Find the slider definition**
 
@@ -167,13 +167,13 @@ Grep for `FogDistance`, `fogMultiplier`, or `Fog Distance` in `MenuIntegration.c
 
 - [ ] **Step A5.2: Update the slider range**
 
-Min → `0.3f`, max stays `1.1f`. If the slider has step granularity (e.g. 0.05), keep the same step — the wider range just means more stops. Double-check the label/tooltip still reads correctly.
+Min → `0.3f`, max stays `1.1f`. If the slider has step granularity (e.g. 0.05), keep the same step - the wider range just means more stops. Double-check the label/tooltip still reads correctly.
 
 - [ ] **Step A5.3: Commit**
 
 ```
 git add MenuIntegration.cs
-git commit -m "fog: widen menu slider range to 0.3x–1.1x"
+git commit -m "fog: widen menu slider range to 0.3x-1.1x"
 ```
 
 ---
@@ -198,7 +198,7 @@ Record:
 - Main thread vs GPU time
 - The "shadow casters off-screen" figure if CostProbe surfaces it
 
-Expected: shadow-related costs drop. Exact delta unknown — hypothesis is 0.3–0.7 ms on CPU-bound systems.
+Expected: shadow-related costs drop. Exact delta unknown - hypothesis is 0.3-0.7 ms on CPU-bound systems.
 
 - [ ] **Step A6.4: Sanity check presets**
 
@@ -210,17 +210,17 @@ Drag fog to 0.5x, then 0.3x. Confirm:
 - Fog visibly tightens
 - Shadow distance in the log drops proportionally
 - Light distance in the log drops proportionally
-- No "pop" at fog boundary (walk toward a wall with a shadow caster near fog edge — the shadow fades with fog rather than abruptly disappearing)
+- No "pop" at fog boundary (walk toward a wall with a shadow caster near fog edge - the shadow fades with fog rather than abruptly disappearing)
 
 - [ ] **Step A6.6: Decide about Part B**
 
 If Part A alone closes >80% of the "80% off-screen shadow casters" gap (inspect CostProbe's shadow cost numbers before/after), Part B's marginal value may be low. Log findings, then decide: build Part B, or stop here and move to optimization item #2 (per-range shadow resolution).
 
-Record the measurement in `docs/superpowers/plans/2026-04-17-fog-driven-distance-culling.md` as a new "Measurements" appendix, or in a separate benchmark notes file if you prefer. Do not commit in-progress benchmark scratch — commit a summary.
+Record the measurement in `docs/superpowers/plans/2026-04-17-fog-driven-distance-culling.md` as a new "Measurements" appendix, or in a separate benchmark notes file if you prefer. Do not commit in-progress benchmark scratch - commit a summary.
 
 ---
 
-## Part B — Per-prop distance-based shadow culling
+## Part B - Per-prop distance-based shadow culling
 
 > **Only proceed to Part B if Part A's F9 measurement shows meaningful residual shadow cost worth attacking.**
 
@@ -268,7 +268,7 @@ git commit -m "perf: add DistanceShadowCulling flag with PerfOpt plumbing"
 ### Task B2: Capture the distance-cull watchlist in `SceneOptimizer.Apply()`
 
 **Files:**
-- Modify: `Patches/PerformancePatch.cs` — `SceneOptimizer` class (currently ends around line 307)
+- Modify: `Patches/PerformancePatch.cs` - `SceneOptimizer` class (currently ends around line 307)
 
 **Why:** One-shot capture on level gen. Reusing the same `Apply()` entry point that already fires on level-gen postfix and on perf-setting changes.
 
@@ -302,17 +302,17 @@ git commit -m "perf: capture distance-cull watchlist in SceneOptimizer.Apply"
 
 ---
 
-### Task B3: Per-frame toggle — `UpdateDistanceShadowCull`
+### Task B3: Per-frame toggle - `UpdateDistanceShadowCull`
 
 **Files:**
-- Modify: `Patches/PerformancePatch.cs` — `SceneOptimizer` class
+- Modify: `Patches/PerformancePatch.cs` - `SceneOptimizer` class
 - Modify: `UpscalerManager.cs` (Update loop around line 365-375)
 
-**Why:** Per-frame distance check with hysteresis dead band. Piggybacks on the existing 0.1s-cadence `UpdateShadowBudget` call site — the watchlist loop is cheap enough that 10 Hz is plenty.
+**Why:** Per-frame distance check with hysteresis dead band. Piggybacks on the existing 0.1s-cadence `UpdateShadowBudget` call site - the watchlist loop is cheap enough that 10 Hz is plenty.
 
 - [ ] **Step B3.1: Add `UpdateDistanceShadowCull(Camera cam)` method to `SceneOptimizer`**
 
-Behavior (illustrative pseudo — you write the C#):
+Behavior (illustrative pseudo - you write the C#):
 
 ```
 if cam is null or watchlist empty → return
@@ -328,11 +328,11 @@ foreach renderer in watchlist:
     else if !isOff && distSq > thresholdSq: set Off
 ```
 
-Use squared distance — avoid per-frame `Sqrt`. Prune dead refs as you go (destroyed renderers become null).
+Use squared distance - avoid per-frame `Sqrt`. Prune dead refs as you go (destroyed renderers become null).
 
 - [ ] **Step B3.2: Add `RestoreDistanceCullWatchlist()` helper**
 
-Small method that iterates the watchlist and sets `shadowCastingMode = ShadowCastingMode.On` on every non-null entry. Does *not* clear the list — `Apply()` does that.
+Small method that iterates the watchlist and sets `shadowCastingMode = ShadowCastingMode.On` on every non-null entry. Does *not* clear the list - `Apply()` does that.
 
 - [ ] **Step B3.3: Hook into the Update loop**
 
@@ -342,7 +342,7 @@ Small method that iterates the watchlist and sets `shadowCastingMode = ShadowCas
 Patches.SceneOptimizer.UpdateDistanceShadowCull(_camera);
 ```
 
-Same cadence is fine — 10 Hz is enough for the boundary walk; the dead band absorbs single-tick lag.
+Same cadence is fine - 10 Hz is enough for the boundary walk; the dead band absorbs single-tick lag.
 
 - [ ] **Step B3.4: Commit**
 
@@ -366,8 +366,8 @@ Compare to the Task A6.3 numbers. Record the incremental delta (Part B - Part A)
 - [ ] **Step B4.3: Visual regression check**
 
 Walk around Wizard and Manor. Specifically look for:
-- Shadow of a small prop disappearing as you walk away — should be invisible at the threshold distance
-- Shadow reappearing as you walk back — should fade in smoothly inside the dead band, no snap
+- Shadow of a small prop disappearing as you walk away - should be invisible at the threshold distance
+- Shadow reappearing as you walk back - should fade in smoothly inside the dead band, no snap
 - Off-screen casters: rotate the camera 180° from a group of props and confirm the shadow map cost drops (CostProbe should reflect this)
 
 - [ ] **Step B4.4: Edge cases**
@@ -380,7 +380,7 @@ Walk around Wizard and Manor. Specifically look for:
 
 Criteria:
 - If incremental delta ≥ 0.05 ms and no visual regressions → keep, proceed to Task B5
-- If delta < 0.05 ms → drop Part B; `git revert` B1–B3 commits and stop. Part A stands alone.
+- If delta < 0.05 ms → drop Part B; `git revert` B1-B3 commits and stop. Part A stands alone.
 - If visual regressions are present → investigate threshold or dead band tuning first before deciding.
 
 ---
@@ -412,7 +412,7 @@ Record baseline vs. new build for each machine. Particular interest: does Part B
 
 Follow the existing changelog voice ("imperative, user-facing, concise"). One bullet per user-visible change. Example bullets (revise to taste):
 
-- Fog slider now opens down to 0.3× (was 1.0× floor). Pulling fog closer also tightens shadow and light range proportionally — a real CPU-bound performance knob.
+- Fog slider now opens down to 0.3× (was 1.0× floor). Pulling fog closer also tightens shadow and light range proportionally - a real CPU-bound performance knob.
 - Shadow and light distances now cap at the fog end plus a small overshoot for smooth transitions. Ultra's 150m shadow range no longer wastes draw calls on casters hidden behind fog.
 - (Only if Part B shipped:) Small props (<2m bounds) disable shadow casting when beyond ~70% of the effective shadow distance, with hysteresis to prevent flicker.
 
@@ -430,12 +430,12 @@ git commit -m "changelog: fog-driven shadow/light distance + optional per-prop c
 ## Rollback guardrails
 
 - Each Part A task is a separate commit, so if A2/A3/A4 reveal a regression, `git revert` is surgical.
-- Part A and Part B are independent commits series — Part B can be reverted without disturbing Part A.
+- Part A and Part B are independent commits series - Part B can be reverted without disturbing Part A.
 - The `PlayableFogFloor` value is a constant you can tune later without re-plumbing.
 
 ## Out-of-scope (confirmed with user, for future iterations)
 
 - Volumetric fog (user suggested as atmosphere idea)
-- Auto-tune integration for the fog knob — presets/auto-tune staying above `PlayableFogFloor` is in scope; *using* fog as an auto-tune stepdown lever is not.
+- Auto-tune integration for the fog knob - presets/auto-tune staying above `PlayableFogFloor` is in scope; *using* fog as an auto-tune stepdown lever is not.
 - Watchlist rebuild on mid-level item spawn events
 - Version bump (release-time concern, not per-feature)

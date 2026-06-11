@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace REPOFidelity.Upscalers;
 
-// P/Invoke bindings for ngx_bridge.dll — wraps _nvngx.dll behind simple C exports.
+// P/Invoke bindings for ngx_bridge.dll; wraps _nvngx.dll behind simple C exports.
 internal static class NGXBridge
 {
     private const string DLL = "ngx_bridge";

@@ -386,7 +386,7 @@ internal static class UltrawideCanvasFix
     // Vanilla letterboxes the world view to a centred 16:9 RawImage:
     //   Wider panels (21:9 / 32:9): letterbox lives on the LEFT and RIGHT.
     //   Narrower panels (16:10 / 4:3 / 5:4): letterbox lives on the TOP and BOTTOM.
-    // Same underlay path solves both — bind the world camera RT to a full-screen RawImage,
+    // Same underlay path solves both: bind the world camera RT to a full-screen RawImage,
     // hide the game's inner mainImage and the surrounding Background, mirror post-FX.
     // The world camera's HOR+ default already tracks Screen.aspect, so the worldRT contents
     // render at panel aspect; displaying that RT full-screen un-stretches it correctly.

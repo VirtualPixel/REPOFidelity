@@ -24,7 +24,7 @@ internal static class FSRShaders
         if (_easuMaterial != null)
             Plugin.Log.LogDebug("FSR shaders loaded from bundle");
         else
-            Plugin.Log.LogWarning("FSR EASU shader unavailable — FSR upscaling disabled");
+            Plugin.Log.LogWarning("FSR EASU shader unavailable; FSR upscaling disabled");
     }
 
     public static Material? GetEASUMaterial()
