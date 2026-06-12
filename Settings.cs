@@ -956,9 +956,17 @@ internal static class Settings
     {
         if (_autoTune.IsStale())
         {
-            // no valid autotune yet; fall back to High until benchmark runs
-            Plugin.Log.LogDebug("Auto: no valid autotune profile, using High as fallback");
-            ApplyPreset(QualityPreset.High);
+            // no valid autotune yet; fall back by detected GPU tier until the
+            // benchmark runs. A flat High fallback put Tier-Low iGPUs on High
+            // shadows for their whole first session.
+            var fallback = GPUDetector.Tier switch
+            {
+                GpuTier.High => QualityPreset.High,
+                GpuTier.Mid => QualityPreset.Medium,
+                _ => QualityPreset.Low,
+            };
+            Plugin.Log.LogDebug($"Auto: no valid autotune profile, using {fallback} as fallback (GPU tier {GPUDetector.Tier})");
+            ApplyPreset(fallback);
             return;
         }
 
