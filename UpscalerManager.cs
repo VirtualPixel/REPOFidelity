@@ -385,6 +385,7 @@ internal class UpscalerManager : MonoBehaviour
         // F10-compare aspect override and main-menu fog tightening. Both self-gated.
         Patches.UltrawideCompareResolution.TickEnforcement();
         Patches.UltrawideMenuTweaks.Tick();
+        Patches.UltrawideResolutionWatcher.Tick();
 
         if (!_benchmarkActive && !_togglePending && !MenuIntegration.IsGraphicsPageOpen
             && Input.GetKeyDown(Settings.ToggleKey))
