@@ -494,43 +494,107 @@ internal static class OverlayCameraWiden
     }
 }
 
-// Full-canvas cosmetic covers on the HUD canvas (the boot/transition Fade, the
-// vignette sprite) are sized to the canvas, so under the widened capture they
-// only darken the central 16:9 and their texture edge reads as a black line
-// mid-screen, and boot shows the world at the sides before the presentation
-// flips. Stretch them across the widened capture while it's active; they're
-// borderless gradients/solids, so stretching is invisible. Driven from
-// OverlayCameraWiden.Tick so cover state can't desync from the capture state.
+// The general "cover" problem: the game draws full-canvas cover art all over
+// the HUD canvas (the boot/transition Fade, the main menu's vignette gradient,
+// the pause menu's black dim, the splash background, the hurt vignette, level
+// loading covers...). All of it is sized to the canvas, so under the widened
+// capture it only covers the central 16:9 and its edge reads as a hard line
+// with the world visible past it. There is no per-object fix that survives
+// game updates, so this is a CLASSIFIER: anything under the HUD canvas whose
+// footprint spans the whole canvas AND is identifiably cover art (a solid
+// color with no sprite, or art named like a vignette/fade/background) gets
+// stretched to the capture, remembered, and restored when the widen drops.
+// Rescanned on a slow cadence and on every menu page open, so covers that
+// spawn later are caught without naming them individually. Positioned HUD
+// elements and big DRAWN art (the result-screen truck) are excluded by the
+// classification, so nothing visibly authored ever distorts.
 internal static class HudCoverStretch
 {
-    static RectTransform? _fade;
-    static Vector3 _fadeVanilla;
-    static bool _applied;
+    static readonly List<(RectTransform Rect, Vector3 Vanilla)> _stretched = new();
+    static float _rescanTimer;
+    static bool _active;
 
     internal static void Tick(bool widenActive)
     {
-        if (_fade == null && FadeOverlay.Instance != null && FadeOverlay.Instance.Image != null)
+        if (widenActive && !_active)
         {
-            _fade = FadeOverlay.Instance.Image.rectTransform;
-            _fadeVanilla = _fade.localScale;
+            _active = true;
+            _rescanTimer = 0f;
+            Rescan();
         }
-        if (_fade == null) return;
+        else if (!widenActive && _active)
+        {
+            _active = false;
+            RestoreAll();
+        }
+        else if (_active)
+        {
+            _rescanTimer += Time.unscaledDeltaTime;
+            if (_rescanTimer >= 1.5f)
+            {
+                _rescanTimer = 0f;
+                Rescan();
+            }
+        }
+    }
 
-        if (widenActive && Screen.height > 0)
+    internal static void Rescan()
+    {
+        if (!_active || Screen.height == 0) return;
+        var hud = HUDCanvas.instance;
+        if (hud == null || hud.rect == null) return;
+
+        const float refAspect = 16f / 9f;
+        float aspect = (float)Screen.width / Screen.height;
+        float xFactor = aspect > refAspect ? aspect / refAspect : 1f;
+        float yFactor = aspect < refAspect ? refAspect / aspect : 1f;
+        if (xFactor <= 1f && yFactor <= 1f) return;
+
+        foreach (var g in hud.rect.GetComponentsInChildren<Graphic>(true))
         {
-            const float refAspect = 16f / 9f;
-            float aspect = (float)Screen.width / Screen.height;
-            Vector3 want = _fadeVanilla;
-            if (aspect > refAspect) want.x = _fadeVanilla.x * (aspect / refAspect);
-            else if (aspect < refAspect) want.y = _fadeVanilla.y * (refAspect / aspect);
-            if (_fade.localScale != want) _fade.localScale = want;
-            _applied = true;
+            if (g is not Image && g is not RawImage) continue;
+            var rt = g.rectTransform;
+            if (!IsCover(g, rt)) continue;
+            bool seen = false;
+            foreach (var (r, _) in _stretched)
+                if (r == rt) { seen = true; break; }
+            if (seen) continue;
+            var s = rt.localScale;
+            _stretched.Add((rt, s));
+            rt.localScale = new Vector3(s.x * xFactor, s.y * yFactor, s.z);
+            Plugin.Log.LogDebug($"[ultrawide] cover stretched: {g.gameObject.name} ({ArtName(g)})");
         }
-        else if (_applied)
-        {
-            _fade.localScale = _fadeVanilla;
-            _applied = false;
-        }
+    }
+
+    // A cover spans the whole canvas (footprint in canvas units; the HUD
+    // canvas is world-space at scale 1, so rect * lossyScale lands in canvas
+    // units) and is either a bare solid color or art named like a cover.
+    // Footprint excludes positioned elements; the name/sprite test excludes
+    // big authored art like the result-screen truck sprites.
+    static bool IsCover(Graphic g, RectTransform rt)
+    {
+        float w = rt.rect.width * Mathf.Abs(rt.lossyScale.x);
+        float h = rt.rect.height * Mathf.Abs(rt.lossyScale.y);
+        if (w < 600f || h < 290f) return false;
+        string art = ArtName(g);
+        if (art.Length == 0) return true; // bare solid color = a dim/fade by construction
+        string n = (g.gameObject.name + "|" + art).ToLowerInvariant();
+        return n.Contains("vignette") || n.Contains("fade") || n.Contains("background")
+            || n.Contains("gradient") || n.Contains("dark") || n.Contains("dim");
+    }
+
+    static string ArtName(Graphic g)
+    {
+        if (g is Image img) return img.sprite != null ? img.sprite.name : "";
+        if (g is RawImage raw) return raw.texture != null ? raw.texture.name : "";
+        return "";
+    }
+
+    static void RestoreAll()
+    {
+        foreach (var (rt, vanilla) in _stretched)
+            if (rt != null) rt.localScale = vanilla;
+        _stretched.Clear();
     }
 }
 
@@ -945,8 +1009,10 @@ internal static class MenuPageStartUltrawidePatch
     {
         UltrawideCanvasFix.RefreshAll();
         MenuCameraFovOverride.Apply();
+        HudCoverStretch.Rescan();
     }
 }
+
 
 [HarmonyPatch(typeof(LevelGenerator), "GenerateDone")]
 internal static class LevelGeneratorUltrawidePatch
