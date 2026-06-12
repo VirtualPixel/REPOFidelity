@@ -1090,7 +1090,27 @@ internal static class GameCameraAspectGuard
                 : (float)Screen.width / Screen.height;
             if (Mathf.Abs(c.aspect - want) > 0.01f) c.ResetAspect();
         }
+
+        // Ground-truth probe: log the projection matrix the camera ACTUALLY holds,
+        // not the aspect/fov properties everything so far was verified against.
+        // m11 = 1/tan(vFov/2), m00 = m11/aspect. If matrixAspect disagrees with
+        // camAspect, something rebuilds the projection behind the properties and
+        // the wide render never contained the wide frustum.
+        _probeTimer += Time.unscaledDeltaTime;
+        if (_probeTimer >= 5f && Camera.main != null)
+        {
+            _probeTimer = 0f;
+            var cm = Camera.main;
+            var m = cm.projectionMatrix;
+            float matrixAspect = m.m00 != 0f ? m.m11 / m.m00 : 0f;
+            float matrixVFov = m.m11 != 0f ? 2f * Mathf.Atan(1f / m.m11) * Mathf.Rad2Deg : 0f;
+            float matrixHFov = m.m00 != 0f ? 2f * Mathf.Atan(1f / m.m00) * Mathf.Rad2Deg : 0f;
+            Plugin.Log.LogDebug($"[proj] cam={cm.name} matrixAspect={matrixAspect:F3} matrixVFov={matrixVFov:F1}" +
+                $" matrixHFov={matrixHFov:F1} camAspect={cm.aspect:F3} camVFov={cm.fieldOfView:F1} rect={cm.rect}");
+        }
     }
+
+    static float _probeTimer;
 }
 
 // Aspect ratios change at runtime (resolution dropdown, window drag, monitor hop).
