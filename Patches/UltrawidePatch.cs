@@ -855,122 +855,6 @@ internal static class HudParkedShift
     }
 }
 
-// One-shot UI-pipeline dump. The ultrawide HUD work has failed repeatedly on
-// assumptions about which canvas hosts the visible HUD, where the cursor is
-// parented, and what the overlay texture actually contains. This logs the ground
-// truth from the running game the first time the ultrawide path engages; the next
-// design decision gets made from this output, not from theory. Temporary: remove
-// once HUD-unstretch is settled.
-internal static class UltrawideDiagDump
-{
-    static bool _dumped;
-
-    internal static void DumpOnce()
-    {
-        if (_dumped) return;
-        _dumped = true;
-        var log = Plugin.Log;
-        log.LogInfo($"[uw-dump] screen {Screen.width}x{Screen.height}");
-
-        foreach (var canvas in Object.FindObjectsOfType<Canvas>(true))
-        {
-            var rt = canvas.GetComponent<RectTransform>();
-            var scaler = canvas.GetComponent<CanvasScaler>();
-            log.LogInfo($"[uw-dump] canvas {Path(canvas.transform)} mode={canvas.renderMode} sort={canvas.sortingOrder}" +
-                $" sizeDelta={rt.sizeDelta} localScale={rt.localScale} lossy={rt.lossyScale}" +
-                $" cam={(canvas.worldCamera != null ? canvas.worldCamera.name : "null")}" +
-                (scaler != null ? $" scaler={scaler.uiScaleMode} ref={scaler.referenceResolution} match={scaler.matchWidthOrHeight}" : ""));
-        }
-
-        foreach (var img in Object.FindObjectsOfType<RawImage>(true))
-        {
-            var rt = img.rectTransform;
-            string tex = img.texture != null ? $"{img.texture.name}({img.texture.width}x{img.texture.height})" : "null";
-            string mat = img.material != null && img.material.shader != null ? img.material.shader.name : "null";
-            log.LogInfo($"[uw-dump] rawimage {Path(img.transform)} enabled={img.enabled} tex={tex} mat={mat}" +
-                $" anchors={rt.anchorMin}-{rt.anchorMax} sizeDelta={rt.sizeDelta} lossy={rt.lossyScale} children={img.transform.childCount}");
-        }
-
-        var rtm = RenderTextureMain.instance;
-        if (rtm != null)
-        {
-            log.LogInfo($"[uw-dump] rtm.renderTexture={(rtm.renderTexture != null ? $"{rtm.renderTexture.width}x{rtm.renderTexture.height}" : "null")}");
-            if (rtm.overlayRawImage != null)
-                for (int i = 0; i < rtm.overlayRawImage.transform.childCount; i++)
-                    log.LogInfo($"[uw-dump] overlayRawImage child[{i}]={rtm.overlayRawImage.transform.GetChild(i).name}");
-        }
-
-        var oc = CameraOverlay.instance != null ? CameraOverlay.instance.overlayCamera : null;
-        if (oc != null)
-            log.LogInfo($"[uw-dump] overlayCamera tex={(oc.targetTexture != null ? $"{oc.targetTexture.name}({oc.targetTexture.width}x{oc.targetTexture.height})" : "null")}" +
-                $" ortho={oc.orthographic} size={oc.orthographicSize} fov={oc.fieldOfView} rect={oc.pixelRect}");
-
-        if (HUDCanvas.instance != null && HUDCanvas.instance.rect != null)
-        {
-            var hr = HUDCanvas.instance.rect;
-            log.LogInfo($"[uw-dump] HUDCanvas {Path(hr)} sizeDelta={hr.sizeDelta} localScale={hr.localScale} lossy={hr.lossyScale} children={hr.childCount}");
-            for (int i = 0; i < Mathf.Min(hr.childCount, 12); i++)
-                log.LogInfo($"[uw-dump]   hud child[{i}]={hr.GetChild(i).name}");
-        }
-
-        if (MenuCursor.instance != null)
-            log.LogInfo($"[uw-dump] MenuCursor {Path(MenuCursor.instance.transform)} localScale={MenuCursor.instance.transform.localScale}");
-
-        // Full-canvas UI Images: the cosmetic cover layers (fade, vignette sprite)
-        // are Images, not RawImages, and one of them is the 16:9-locked "vignette"
-        // with the visible edge line. Log every large or anchor-stretched Image so
-        // the exact object can be named and stretch-fixed.
-        foreach (var img in Object.FindObjectsOfType<Image>(true))
-        {
-            var rt = img.rectTransform;
-            bool fullCanvas = rt.sizeDelta.x >= 600f
-                              || (rt.anchorMin == Vector2.zero && rt.anchorMax == Vector2.one);
-            if (!fullCanvas) continue;
-            string sprite = img.sprite != null ? img.sprite.name : "null";
-            log.LogInfo($"[uw-dump] image {Path(img.transform)} enabled={img.enabled} sprite={sprite} color={img.color}" +
-                $" anchors={rt.anchorMin}-{rt.anchorMax} sizeDelta={rt.sizeDelta} lossy={rt.lossyScale}");
-        }
-
-        // The vignette hunt: which cameras carry a PostProcessLayer, which volumes
-        // hold a Vignette, and what does each camera render into.
-        foreach (var cam in Object.FindObjectsOfType<Camera>(true))
-        {
-            var ppl = cam.GetComponent<PostProcessLayer>();
-            string tex = cam.targetTexture != null ? $"{cam.targetTexture.name}({cam.targetTexture.width}x{cam.targetTexture.height})" : "screen";
-            log.LogInfo($"[uw-dump] camera {Path(cam.transform)} enabled={cam.enabled} tex={tex} aspect={cam.aspect:F3} ortho={cam.orthographic}" +
-                (ppl != null ? $" ppLayer={ppl.enabled} volLayer={ppl.volumeLayer.value}" : " ppLayer=none"));
-        }
-        foreach (var vol in Object.FindObjectsOfType<PostProcessVolume>(true))
-        {
-            string vig = "none";
-            if (vol.profile != null && vol.profile.TryGetSettings<Vignette>(out var v))
-                vig = $"intensity={v.intensity.value:F2} smooth={v.smoothness.value:F2} rounded={v.rounded.value}";
-            log.LogInfo($"[uw-dump] ppvolume {Path(vol.transform)} enabled={vol.enabled} global={vol.isGlobal} goLayer={vol.gameObject.layer} weight={vol.weight} vignette={vig}");
-        }
-
-        var ppo = GameObject.Find("Post Processing Overlay");
-        if (ppo != null)
-        {
-            string comps = string.Join(",", System.Array.ConvertAll(ppo.GetComponents<Component>(), c => c.GetType().Name));
-            log.LogInfo($"[uw-dump] PostProcessingOverlay {Path(ppo.transform)} comps={comps} localScale={ppo.transform.localScale}");
-        }
-
-        var semis = Object.FindObjectsOfType<SemiUI>(true);
-        for (int i = 0; i < Mathf.Min(semis.Length, 15); i++)
-            log.LogInfo($"[uw-dump] semiui {semis[i].GetType().Name} {Path(semis[i].transform)}");
-        if (semis.Length > 15)
-            log.LogInfo($"[uw-dump] semiui ... {semis.Length - 15} more omitted");
-    }
-
-    static string Path(Transform t)
-    {
-        string s = t.name;
-        int guard = 0;
-        while (t.parent != null && ++guard < 24) { t = t.parent; s = t.name + "/" + s; }
-        return s;
-    }
-}
-
 // Stale camera aspects: Camera Top ships pinned to the vanilla 750/418 box
 // ratio (1.794), so once the render target is panel-sized its whole layer
 // draws stretched across the wide display while the world layer renders true.
@@ -1000,26 +884,7 @@ internal static class GameCameraAspectGuard
             if (Mathf.Abs(c.aspect - want) > 0.01f) c.ResetAspect();
         }
 
-        // Ground-truth probe: log the projection matrix the camera ACTUALLY holds,
-        // not the aspect/fov properties everything so far was verified against.
-        // m11 = 1/tan(vFov/2), m00 = m11/aspect. If matrixAspect disagrees with
-        // camAspect, something rebuilds the projection behind the properties and
-        // the wide render never contained the wide frustum.
-        _probeTimer += Time.unscaledDeltaTime;
-        if (_probeTimer >= 5f && Camera.main != null)
-        {
-            _probeTimer = 0f;
-            var cm = Camera.main;
-            var m = cm.projectionMatrix;
-            float matrixAspect = m.m00 != 0f ? m.m11 / m.m00 : 0f;
-            float matrixVFov = m.m11 != 0f ? 2f * Mathf.Atan(1f / m.m11) * Mathf.Rad2Deg : 0f;
-            float matrixHFov = m.m00 != 0f ? 2f * Mathf.Atan(1f / m.m00) * Mathf.Rad2Deg : 0f;
-            Plugin.Log.LogDebug($"[proj] cam={cm.name} matrixAspect={matrixAspect:F3} matrixVFov={matrixVFov:F1}" +
-                $" matrixHFov={matrixHFov:F1} camAspect={cm.aspect:F3} camVFov={cm.fieldOfView:F1} rect={cm.rect}");
-        }
     }
-
-    static float _probeTimer;
 }
 
 // Aspect ratios change at runtime (resolution dropdown, window drag, monitor hop).
@@ -1111,7 +976,6 @@ internal static class UltrawideCanvasFix
         bool active = Settings.ModEnabled && Settings.UltrawideUiFix && RequiresAspectFix() && !inSplash;
         if (!active) { RestoreAll(); return; }
         EnsureUltrawideUnderlay();
-        UltrawideDiagDump.DumpOnce();
 
         GameCameraAspectGuard.Tick();
         // HUD-unstretch itself runs from OverlayCameraWiden.Tick (per frame, owns
@@ -1324,37 +1188,8 @@ internal static class MenuPageStartUltrawidePatch
         // shows the bare strip for a visible beat on every menu open
         MenuEdgeArtExtend.Rescan();
         HudParkedShift.Rescan();
-        MenuArtDump.DumpOnce(__instance);
     }
 }
-
-// One-shot dump of a menu page's full art inventory. The main menu's dark
-// left gradient survived the cover classifier because it is NOT a full-canvas
-// cover, it's positioned art, and the proper treatment (extend it to the
-// capture edge around the correct pivot) needs its exact identity, rect,
-// anchors, and pivot. Remove once the main-menu treatment is settled.
-internal static class MenuArtDump
-{
-    static bool _dumped;
-
-    internal static void DumpOnce(MenuPage page)
-    {
-        if (_dumped || page == null) return;
-        if (!(RunManager.instance != null && RunManager.instance.levelCurrent != null
-              && (SemiFunc.RunIsLobbyMenu() || SemiFunc.MenuLevel()))) return;
-        _dumped = true;
-        foreach (var g in page.GetComponentsInChildren<Graphic>(true))
-        {
-            var rt = g.rectTransform;
-            string art = g is Image i ? (i.sprite != null ? i.sprite.name : "solid")
-                       : g is RawImage r ? (r.texture != null ? r.texture.name : "solid") : "?";
-            Plugin.Log.LogInfo($"[uw-menuart] {g.gameObject.name} art={art} color={g.color}" +
-                $" rect={rt.rect.width:F0}x{rt.rect.height:F0} pos={rt.anchoredPosition}" +
-                $" anchors={rt.anchorMin}-{rt.anchorMax} pivot={rt.pivot} lossy={rt.lossyScale}");
-        }
-    }
-}
-
 
 [HarmonyPatch(typeof(LevelGenerator), "GenerateDone")]
 internal static class LevelGeneratorUltrawidePatch
