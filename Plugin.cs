@@ -44,7 +44,7 @@ public class Plugin : BaseUnityPlugin
         foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
         {
             try { _harmony.CreateClassProcessor(type).Patch(); }
-            catch (System.Exception ex) { Log.LogWarning($"Harmony patch failed for {type.Name}: {ex.Message}"); }
+            catch (System.Exception ex) { Log.LogWarning($"Harmony patch failed for {type.Name}: {ex}"); }
         }
 
 

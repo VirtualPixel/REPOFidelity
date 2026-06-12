@@ -602,9 +602,30 @@ internal static class UltrawideDiagDump
 internal static class UltrawideResolutionWatcher
 {
     static int _w, _h;
+    static float _retryTimer;
 
     internal static void Tick()
     {
+        // Fallback engage: the menu/scene event triggers can die (a Harmony patch
+        // conflict or load-order quirk killed MenuPage.Awake's postfix in one
+        // session and the presentation never came up). If the underlay should be
+        // active but isn't, retry on a slow cadence; RefreshAll self-gates
+        // (splash, VR, aspect), so this is a no-op everywhere else.
+        if (Settings.ModEnabled && Settings.UltrawideUiFix
+            && UltrawideCanvasFix.RequiresAspectFix() && !UltrawideCanvasFix.UnderlayActive)
+        {
+            _retryTimer += Time.unscaledDeltaTime;
+            if (_retryTimer >= 2f)
+            {
+                _retryTimer = 0f;
+                UltrawideCanvasFix.RefreshAll();
+            }
+        }
+        else
+        {
+            _retryTimer = 0f;
+        }
+
         if (Screen.width == _w && Screen.height == _h) return;
         bool first = _w == 0;
         _w = Screen.width;
@@ -652,7 +673,14 @@ internal static class UltrawideCanvasFix
     {
         // VR bypasses the flat Render Texture Main presentation this underlay rebuilds.
         if (VRCompat.Active) return;
-        bool active = Settings.ModEnabled && Settings.UltrawideUiFix && RequiresAspectFix();
+        // Splash sequence stays fully vanilla: the splash art is HUD-canvas sized,
+        // so under our wide presentation it only covers the central 16:9 and the
+        // already-loaded menu world peeks out around it. The first main-menu
+        // MenuPage.Awake lands right after the splash and engages everything.
+        bool inSplash = RunManager.instance != null
+                        && RunManager.instance.levelCurrent != null
+                        && SemiFunc.IsSplashScreen();
+        bool active = Settings.ModEnabled && Settings.UltrawideUiFix && RequiresAspectFix() && !inSplash;
         if (!active) { RestoreAll(); return; }
         EnsureUltrawideUnderlay();
         UltrawideDiagDump.DumpOnce();
