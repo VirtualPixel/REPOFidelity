@@ -359,17 +359,21 @@ internal static class HudCursorRemap
         if (!Active || Screen.height == 0) return screenPos;
         float aspect = (float)Screen.width / Screen.height;
         const float refAspect = 16f / 9f;
+        // No clamp: the widened capture renders UI beyond the canvas edges too,
+        // so coords past the virtual range put the cursor in the side regions,
+        // 1:1 under the mouse across the whole panel. (A clamp was needed when
+        // the display was a centered box and the side capture wasn't shown.)
         if (aspect > refAspect + 0.01f)
         {
             float boxW = Screen.height * refAspect;
             float left = (Screen.width - boxW) * 0.5f;
-            screenPos.x = Mathf.Clamp((screenPos.x - left) * (Screen.width / boxW), 0f, Screen.width);
+            screenPos.x = (screenPos.x - left) * (Screen.width / boxW);
         }
         else if (aspect < refAspect - 0.01f)
         {
             float boxH = Screen.width / refAspect;
             float bottom = (Screen.height - boxH) * 0.5f;
-            screenPos.y = Mathf.Clamp((screenPos.y - bottom) * (Screen.height / boxH), 0f, Screen.height);
+            screenPos.y = (screenPos.y - bottom) * (Screen.height / boxH);
         }
         return screenPos;
     }
