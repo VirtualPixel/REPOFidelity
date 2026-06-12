@@ -424,6 +424,7 @@ internal static class Settings
         _initComplete = true;
         MigrateOldConfig(dir);
         ValidateResolutionForCurrentMonitor();
+        ValidateMachineForSettings();
     }
 
     // Reset persisted D.resWidth/D.resHeight if they don't fit the current monitor.
@@ -450,8 +451,16 @@ internal static class Settings
             Plugin.Log.LogWarning($"[settings] resolution {D.resWidth}x{D.resHeight} (aspect {savedAspect:F2}) mismatches monitor {sysW}x{sysH} (aspect {monitorAspect:F2}); resetting to native");
             D.resWidth = sysW;
             D.resHeight = sysH;
+            // An aspect mismatch means this settings file was written on a different
+            // machine (profile share). A quality preset tuned for that machine's GPU
+            // must not run here; drop to Auto so the auto-tuner re-resolves.
+            if ((QualityPreset)D.preset != QualityPreset.Auto)
+            {
+                Plugin.Log.LogWarning($"[settings] foreign settings file detected; resetting preset {(QualityPreset)D.preset} -> Auto");
+                D.preset = (int)QualityPreset.Auto;
+            }
             _file.Save();
-            Screen.SetResolution(sysW, sysH, Screen.fullScreenMode);
+            _pendingWindowReset = true;
             return;
         }
 
@@ -467,8 +476,48 @@ internal static class Settings
             D.resWidth = sysW;
             D.resHeight = sysH;
             _file.Save();
-            Screen.SetResolution(sysW, sysH, Screen.fullScreenMode);
+            _pendingWindowReset = true;
         }
+    }
+
+    // The corrective Screen.SetResolution for the validator above must NOT run at
+    // load time: the chainloader fires before the engine creates the real window,
+    // so Screen.fullScreenMode is still the pre-init stub (a tiny windowed
+    // surface). Calling SetResolution then pulls the game out of fullscreen into
+    // a clamped corner window on every machine the validator fires on. Wait for
+    // the game's own graphics init to apply the real display mode, then reset on
+    // top of it; same dims + same mode is a no-op, so this only acts when the
+    // window is genuinely wrong.
+    static bool _pendingWindowReset;
+
+    internal static void TickDeferredWindowReset()
+    {
+        if (!_pendingWindowReset) return;
+        if (Time.frameCount < 10 || GraphicsManager.instance == null) return;
+        _pendingWindowReset = false;
+        int sysW = Display.main != null ? Display.main.systemWidth : 0;
+        int sysH = Display.main != null ? Display.main.systemHeight : 0;
+        if (sysW <= 0 || sysH <= 0) return;
+        Plugin.Log.LogWarning($"[settings] deferred native reset: {sysW}x{sysH} ({Screen.fullScreenMode})");
+        Screen.SetResolution(sysW, sysH, Screen.fullScreenMode);
+    }
+
+    // A Gale/Thunderstore profile carries this settings file to other machines;
+    // the GPU name is the durable machine-swap signal (the aspect check above
+    // misses swaps between same-aspect panels). On a change, drop the preset back
+    // to Auto so the auto-tuner re-resolves for the actual hardware; auto-tune
+    // data already invalidates itself on GPU change. First run just stamps.
+    static void ValidateMachineForSettings()
+    {
+        string gpu = SystemInfo.graphicsDeviceName ?? "";
+        if (D.gpuName == gpu) return;
+        if (!string.IsNullOrEmpty(D.gpuName) && (QualityPreset)D.preset != QualityPreset.Auto)
+        {
+            Plugin.Log.LogWarning($"[settings] GPU changed ('{D.gpuName}' -> '{gpu}'); resetting preset {(QualityPreset)D.preset} -> Auto");
+            D.preset = (int)QualityPreset.Auto;
+        }
+        D.gpuName = gpu;
+        _file.Save();
     }
 
     private static void LoadAutoTune()

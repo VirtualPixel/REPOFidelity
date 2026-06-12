@@ -382,6 +382,8 @@ internal class UpscalerManager : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.F11) && Settings.ToggleKey != KeyCode.F11)
             DispatchF11();
 
+        Settings.TickDeferredWindowReset();
+
         // F10-compare aspect override and main-menu fog tightening. Both self-gated.
         Patches.UltrawideCompareResolution.TickEnforcement();
         Patches.UltrawideMenuTweaks.Tick();

@@ -109,6 +109,10 @@ internal class SettingsData
     // preset: default to Auto so first-time users get auto-tuned
     public int preset = (int)QualityPreset.Auto;
 
+    // machine identity: stamped on first run, used to detect a settings file
+    // that traveled to different hardware via a shared profile
+    public string gpuName = "";
+
     // display
     public int resWidth;
     public int resHeight;
