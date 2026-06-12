@@ -490,6 +490,47 @@ internal static class OverlayCameraWiden
             _applied = false;
         }
         HudCursorRemap.Active = _applied;
+        HudCoverStretch.Tick(_applied);
+    }
+}
+
+// Full-canvas cosmetic covers on the HUD canvas (the boot/transition Fade, the
+// vignette sprite) are sized to the canvas, so under the widened capture they
+// only darken the central 16:9 and their texture edge reads as a black line
+// mid-screen, and boot shows the world at the sides before the presentation
+// flips. Stretch them across the widened capture while it's active; they're
+// borderless gradients/solids, so stretching is invisible. Driven from
+// OverlayCameraWiden.Tick so cover state can't desync from the capture state.
+internal static class HudCoverStretch
+{
+    static RectTransform? _fade;
+    static Vector3 _fadeVanilla;
+    static bool _applied;
+
+    internal static void Tick(bool widenActive)
+    {
+        if (_fade == null && FadeOverlay.Instance != null && FadeOverlay.Instance.Image != null)
+        {
+            _fade = FadeOverlay.Instance.Image.rectTransform;
+            _fadeVanilla = _fade.localScale;
+        }
+        if (_fade == null) return;
+
+        if (widenActive && Screen.height > 0)
+        {
+            const float refAspect = 16f / 9f;
+            float aspect = (float)Screen.width / Screen.height;
+            Vector3 want = _fadeVanilla;
+            if (aspect > refAspect) want.x = _fadeVanilla.x * (aspect / refAspect);
+            else if (aspect < refAspect) want.y = _fadeVanilla.y * (refAspect / aspect);
+            if (_fade.localScale != want) _fade.localScale = want;
+            _applied = true;
+        }
+        else if (_applied)
+        {
+            _fade.localScale = _fadeVanilla;
+            _applied = false;
+        }
     }
 }
 
@@ -554,6 +595,21 @@ internal static class UltrawideDiagDump
         if (MenuCursor.instance != null)
             log.LogInfo($"[uw-dump] MenuCursor {Path(MenuCursor.instance.transform)} localScale={MenuCursor.instance.transform.localScale}");
 
+        // Full-canvas UI Images: the cosmetic cover layers (fade, vignette sprite)
+        // are Images, not RawImages, and one of them is the 16:9-locked "vignette"
+        // with the visible edge line. Log every large or anchor-stretched Image so
+        // the exact object can be named and stretch-fixed.
+        foreach (var img in Object.FindObjectsOfType<Image>(true))
+        {
+            var rt = img.rectTransform;
+            bool fullCanvas = rt.sizeDelta.x >= 600f
+                              || (rt.anchorMin == Vector2.zero && rt.anchorMax == Vector2.one);
+            if (!fullCanvas) continue;
+            string sprite = img.sprite != null ? img.sprite.name : "null";
+            log.LogInfo($"[uw-dump] image {Path(img.transform)} enabled={img.enabled} sprite={sprite} color={img.color}" +
+                $" anchors={rt.anchorMin}-{rt.anchorMax} sizeDelta={rt.sizeDelta} lossy={rt.lossyScale}");
+        }
+
         // The vignette hunt: which cameras carry a PostProcessLayer, which volumes
         // hold a Vignette, and what does each camera render into.
         foreach (var cam in Object.FindObjectsOfType<Camera>(true))
@@ -615,7 +671,7 @@ internal static class UltrawideResolutionWatcher
             && UltrawideCanvasFix.RequiresAspectFix() && !UltrawideCanvasFix.UnderlayActive)
         {
             _retryTimer += Time.unscaledDeltaTime;
-            if (_retryTimer >= 2f)
+            if (_retryTimer >= 0.5f)
             {
                 _retryTimer = 0f;
                 UltrawideCanvasFix.RefreshAll();
@@ -879,8 +935,10 @@ internal static class UltrawideCanvasFix
     }
 }
 
-[HarmonyPatch(typeof(MenuPage), "Awake")]
-internal static class MenuPageAwakeUltrawidePatch
+// MenuPage has no Awake; targeting it left this patch dead in every build (the
+// engagement only ever worked through fallbacks). Start is the real Unity hook.
+[HarmonyPatch(typeof(MenuPage), "Start")]
+internal static class MenuPageStartUltrawidePatch
 {
     [HarmonyPostfix]
     static void Postfix()
