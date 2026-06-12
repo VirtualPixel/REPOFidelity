@@ -446,9 +446,21 @@ internal static class OverlayCameraWiden
     static Camera? _cam;
     static float _vanillaSize;
     static bool _applied;
+    static bool _panelLogged;
 
     internal static void Tick()
     {
+        // One-shot panel report at Info: proves which build is running and what
+        // aspect the game window actually reports, even when the widen never
+        // engages. Field-debug anchor for shared-profile machines.
+        if (!_panelLogged && Screen.height > 0)
+        {
+            _panelLogged = true;
+            Plugin.Log.LogInfo($"[ultrawide] panel {Screen.width}x{Screen.height} " +
+                $"aspect={(float)Screen.width / Screen.height:F3} " +
+                $"requiresFix={UltrawideCanvasFix.RequiresAspectFix()}");
+        }
+
         var cam = CameraOverlay.instance != null ? CameraOverlay.instance.overlayCamera : null;
         if (cam == null)
         {
@@ -758,6 +770,12 @@ internal static class MenuEdgeArtExtend
 internal static class HudParkedShift
 {
     static readonly List<(SemiUI Ui, Vector2 Hide)> _shifted = new();
+    // Field-debug bookkeeping: classify every SemiUI once at Info so a user's
+    // default LogOutput.log shows whether the shift engaged on their machine
+    // (LogDebug never reaches the disk log on a default BepInEx config).
+    static readonly HashSet<SemiUI> _classified = new();
+    static readonly HashSet<SemiUI> _pendingLogged = new();
+    static bool _summaryLogged;
     static float _rescanTimer;
     static bool _active;
 
@@ -802,16 +820,37 @@ internal static class HudParkedShift
         float extX = halfW * (xFactor - 1f) + 8f;
         float extY = halfH * (yFactor - 1f) + 8f;
 
+        if (!_summaryLogged)
+        {
+            _summaryLogged = true;
+            Plugin.Log.LogInfo($"[ultrawide] parked-shift scan: aspect={aspect:F3} " +
+                $"xF={xFactor:F3} yF={yFactor:F3} canvas={hud.rect.sizeDelta.x:F0}x{hud.rect.sizeDelta.y:F0} " +
+                $"ext=({extX:F1},{extY:F1})");
+        }
+
         foreach (var ui in hud.rect.GetComponentsInChildren<SemiUI>(true))
         {
-            if (ui.allChildren == null) continue; // Start hasn't run; hidePosition is still a raw offset
+            if (ui.allChildren == null)
+            {
+                // Start hasn't run; hidePosition is still a raw offset. The 0.4s
+                // rescan picks it up once Start parks it.
+                if (_pendingLogged.Add(ui))
+                    Plugin.Log.LogInfo($"[ultrawide] parked-shift: {ui.gameObject.name} start pending");
+                continue;
+            }
             bool seen = false;
             foreach (var (u, _) in _shifted)
                 if (u == ui) { seen = true; break; }
             if (seen) continue;
 
             var mover = ui.animateTheEntireObject ? ui.transform : ui.textRectTransform;
-            if (mover == null || mover.parent == null) continue;
+            if (mover == null || mover.parent == null)
+            {
+                if (_classified.Add(ui))
+                    Plugin.Log.LogInfo($"[ultrawide] parked-shift: {ui.gameObject.name} no mover " +
+                        $"(animateEntire={ui.animateTheEntireObject})");
+                continue;
+            }
 
             Vector2 parked = hud.rect.InverseTransformPoint(
                 mover.parent.TransformPoint(new Vector3(ui.hidePosition.x, ui.hidePosition.y, 0f)));
@@ -829,7 +868,13 @@ internal static class HudParkedShift
                 if (parked.y >= halfH) push.y = extY;
                 else if (parked.y <= -halfH) push.y = -extY;
             }
-            if (push == Vector2.zero) continue;
+            if (push == Vector2.zero)
+            {
+                if (_classified.Add(ui))
+                    Plugin.Log.LogInfo($"[ultrawide] parked-shift: {ui.gameObject.name} inside " +
+                        $"parked=({parked.x:F1},{parked.y:F1}) half=({halfW:F0},{halfH:F0})");
+                continue;
+            }
 
             Vector2 localPush = mover.parent.InverseTransformVector(
                 hud.rect.TransformVector(new Vector3(push.x, push.y, 0f)));
@@ -838,7 +883,9 @@ internal static class HudParkedShift
             bool atPark = ui.hidePositionCurrent == ui.hidePosition;
             ui.hidePosition += localPush;
             if (atPark) ui.hidePositionCurrent = ui.hidePosition;
-            Plugin.Log.LogDebug($"[ultrawide] parked HUD shifted: {ui.gameObject.name} push={push}");
+            _classified.Add(ui);
+            Plugin.Log.LogInfo($"[ultrawide] parked-shift: {ui.gameObject.name} shifted " +
+                $"push=({push.x:F1},{push.y:F1}) parked=({parked.x:F1},{parked.y:F1}) atPark={atPark}");
         }
     }
 
@@ -852,6 +899,9 @@ internal static class HudParkedShift
             if (atPark) ui.hidePositionCurrent = hide;
         }
         _shifted.Clear();
+        _classified.Clear();
+        _pendingLogged.Clear();
+        _summaryLogged = false;
     }
 }
 
