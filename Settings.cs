@@ -448,17 +448,14 @@ internal static class Settings
         float monitorAspect = (float)sysW / sysH;
         if (Mathf.Abs(savedAspect - monitorAspect) > 0.05f)
         {
+            // Resolution reset only. An aspect mismatch is NOT proof of a foreign
+            // settings file (multi-monitor swaps, DSR, slider experiments on the
+            // same machine all trigger it; it wiped the author's own Custom preset
+            // once). Machine-swap preset handling lives in
+            // ValidateMachineForSettings, keyed on the GPU name.
             Plugin.Log.LogWarning($"[settings] resolution {D.resWidth}x{D.resHeight} (aspect {savedAspect:F2}) mismatches monitor {sysW}x{sysH} (aspect {monitorAspect:F2}); resetting to native");
             D.resWidth = sysW;
             D.resHeight = sysH;
-            // An aspect mismatch means this settings file was written on a different
-            // machine (profile share). A quality preset tuned for that machine's GPU
-            // must not run here; drop to Auto so the auto-tuner re-resolves.
-            if ((QualityPreset)D.preset != QualityPreset.Auto)
-            {
-                Plugin.Log.LogWarning($"[settings] foreign settings file detected; resetting preset {(QualityPreset)D.preset} -> Auto");
-                D.preset = (int)QualityPreset.Auto;
-            }
             _file.Save();
             _pendingWindowReset = true;
             return;
