@@ -717,6 +717,37 @@ internal static class UltrawideDiagDump
     }
 }
 
+// Stale camera aspects: Camera Top ships pinned to the vanilla 750/418 box
+// ratio (1.794), so once the render target is panel-sized its whole layer
+// draws stretched across the wide display while the world layer renders true.
+// REPO renders GRABBED objects on the top layer (to avoid wall clipping), so a
+// held cart at the screen edge looked stretched while the world behind it was
+// correct: the source of the "fake ultrawide" impression. Re-derive any game
+// camera whose aspect deviates from its actual render target, enforced per
+// frame in case game code re-pins it. Hands off while F10-compare owns the
+// aspects, and inert when the panel needs no fix.
+internal static class GameCameraAspectGuard
+{
+    internal static void Tick()
+    {
+        if (VRCompat.Active || UltrawideCompareResolution.IsCompareActive) return;
+        if (!Settings.ModEnabled || !Settings.UltrawideUiFix) return;
+        if (!UltrawideCanvasFix.RequiresAspectFix() || Screen.height == 0) return;
+
+        var rtm = RenderTextureMain.instance;
+        if (rtm == null || rtm.cameras == null) return;
+        foreach (var c in rtm.cameras)
+        {
+            if (c == null) continue;
+            var tex = c.targetTexture;
+            float want = tex != null
+                ? (float)tex.width / Mathf.Max(1, tex.height)
+                : (float)Screen.width / Screen.height;
+            if (Mathf.Abs(c.aspect - want) > 0.01f) c.ResetAspect();
+        }
+    }
+}
+
 // Aspect ratios change at runtime (resolution dropdown, window drag, monitor hop).
 // All the aspect-derived state above is recomputed by RefreshAll, but those refreshes
 // ride scene/menu/settings events, so a bare resolution switch would leave the
@@ -808,19 +839,7 @@ internal static class UltrawideCanvasFix
         EnsureUltrawideUnderlay();
         UltrawideDiagDump.DumpOnce();
 
-        // Stale camera aspects: Camera Top ships pinned to the vanilla 750/418
-        // box ratio (1.794), so once the render target is panel-sized its whole
-        // layer (held items, top-layer props) draws stretched across the wide
-        // display while the world layer renders true. Re-derive every game
-        // camera's aspect from its actual target. Skipped while F10-compare
-        // owns the aspects.
-        if (!UltrawideCompareResolution.IsCompareActive)
-        {
-            var rtmA = RenderTextureMain.instance;
-            if (rtmA != null && rtmA.cameras != null)
-                foreach (var c in rtmA.cameras)
-                    if (c != null) c.ResetAspect();
-        }
+        GameCameraAspectGuard.Tick();
         // HUD-unstretch itself runs from OverlayCameraWiden.Tick (per frame, owns
         // HudCursorRemap.Active too) so it can't race scene construction.
     }
