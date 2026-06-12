@@ -529,8 +529,11 @@ internal static class HudCoverStretch
         }
         else if (_active)
         {
+            // Tight cadence: loading covers spawn in bursts and a slow rescan
+            // shows them unstretched for a beat (reported as quick artifacts
+            // outside 16:9 on level load).
             _rescanTimer += Time.unscaledDeltaTime;
-            if (_rescanTimer >= 1.5f)
+            if (_rescanTimer >= 0.4f)
             {
                 _rescanTimer = 0f;
                 Rescan();
@@ -804,6 +807,20 @@ internal static class UltrawideCanvasFix
         if (!active) { RestoreAll(); return; }
         EnsureUltrawideUnderlay();
         UltrawideDiagDump.DumpOnce();
+
+        // Stale camera aspects: Camera Top ships pinned to the vanilla 750/418
+        // box ratio (1.794), so once the render target is panel-sized its whole
+        // layer (held items, top-layer props) draws stretched across the wide
+        // display while the world layer renders true. Re-derive every game
+        // camera's aspect from its actual target. Skipped while F10-compare
+        // owns the aspects.
+        if (!UltrawideCompareResolution.IsCompareActive)
+        {
+            var rtmA = RenderTextureMain.instance;
+            if (rtmA != null && rtmA.cameras != null)
+                foreach (var c in rtmA.cameras)
+                    if (c != null) c.ResetAspect();
+        }
         // HUD-unstretch itself runs from OverlayCameraWiden.Tick (per frame, owns
         // HudCursorRemap.Active too) so it can't race scene construction.
     }
@@ -1005,11 +1022,39 @@ internal static class UltrawideCanvasFix
 internal static class MenuPageStartUltrawidePatch
 {
     [HarmonyPostfix]
-    static void Postfix()
+    static void Postfix(MenuPage __instance)
     {
         UltrawideCanvasFix.RefreshAll();
         MenuCameraFovOverride.Apply();
         HudCoverStretch.Rescan();
+        MenuArtDump.DumpOnce(__instance);
+    }
+}
+
+// One-shot dump of a menu page's full art inventory. The main menu's dark
+// left gradient survived the cover classifier because it is NOT a full-canvas
+// cover, it's positioned art, and the proper treatment (extend it to the
+// capture edge around the correct pivot) needs its exact identity, rect,
+// anchors, and pivot. Remove once the main-menu treatment is settled.
+internal static class MenuArtDump
+{
+    static bool _dumped;
+
+    internal static void DumpOnce(MenuPage page)
+    {
+        if (_dumped || page == null) return;
+        if (!(RunManager.instance != null && RunManager.instance.levelCurrent != null
+              && (SemiFunc.RunIsLobbyMenu() || SemiFunc.MenuLevel()))) return;
+        _dumped = true;
+        foreach (var g in page.GetComponentsInChildren<Graphic>(true))
+        {
+            var rt = g.rectTransform;
+            string art = g is Image i ? (i.sprite != null ? i.sprite.name : "solid")
+                       : g is RawImage r ? (r.texture != null ? r.texture.name : "solid") : "?";
+            Plugin.Log.LogInfo($"[uw-menuart] {g.gameObject.name} art={art} color={g.color}" +
+                $" rect={rt.rect.width:F0}x{rt.rect.height:F0} pos={rt.anchoredPosition}" +
+                $" anchors={rt.anchorMin}-{rt.anchorMax} pivot={rt.pivot} lossy={rt.lossyScale}");
+        }
     }
 }
 
