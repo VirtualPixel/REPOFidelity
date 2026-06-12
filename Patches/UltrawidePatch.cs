@@ -512,6 +512,7 @@ internal static class OverlayCameraWiden
         HudCoverStretch.Tick(_applied);
         MenuEdgeArtExtend.Tick(_applied);
         HudParkedShift.Tick(_applied);
+        RevealCensus.Tick(_applied);
     }
 }
 
@@ -612,6 +613,13 @@ internal static class HudCoverStretch
         if (g is Image img) return img.sprite != null ? img.sprite.name : "";
         if (g is RawImage raw) return raw.texture != null ? raw.texture.name : "";
         return "";
+    }
+
+    internal static bool Manages(Transform t)
+    {
+        foreach (var (rt, _) in _stretched)
+            if (rt != null && (t == rt || t.IsChildOf(rt))) return true;
+        return false;
     }
 
     static void RestoreAll()
@@ -744,6 +752,13 @@ internal static class MenuEdgeArtExtend
             Plugin.Log.LogDebug($"[ultrawide] edge art extended: {g.gameObject.name} ({art})" +
                 $" span=[{cAfter - wAfter * 0.5f:F1},{cAfter + wAfter * 0.5f:F1}] capture=[{-captureHalfW:F1},{captureHalfW:F1}]");
         }
+    }
+
+    internal static bool Manages(Transform t)
+    {
+        foreach (var (rt, _, _) in _extended)
+            if (rt != null && (t == rt || t.IsChildOf(rt))) return true;
+        return false;
     }
 
     static void RestoreAll()
@@ -902,6 +917,99 @@ internal static class HudParkedShift
         _classified.Clear();
         _pendingLogged.Clear();
         _summaryLogged = false;
+    }
+}
+
+// Field-debug census: name everything that is only visible BECAUSE the widened
+// capture sees past the vanilla canvas. Enumerates enabled Graphics under the
+// HUD canvas and logs (once, at Info, so a default LogOutput.log carries it)
+// any whose rect pokes outside the canvas but inside the capture. This is the
+// tool for "I see a thing at the screen edge that shouldn't be there" reports
+// from machines we can't touch: modded UI (e.g. third-party chat windows)
+// parked off-canvas is invisible vanilla but lands in our revealed band, and
+// no SemiUI-based fix can know about it. Covers and edge art this mod
+// stretches on purpose are skipped.
+internal static class RevealCensus
+{
+    static readonly HashSet<int> _logged = new();
+    static readonly Vector3[] _corners = new Vector3[4];
+    static float _timer;
+    static bool _active;
+
+    internal static void Tick(bool widenActive)
+    {
+        if (widenActive && !_active)
+        {
+            _active = true;
+            _timer = 0f;
+            Scan();
+        }
+        else if (!widenActive && _active)
+        {
+            _active = false;
+        }
+        else if (_active)
+        {
+            _timer += Time.unscaledDeltaTime;
+            if (_timer >= 1f)
+            {
+                _timer = 0f;
+                Scan();
+            }
+        }
+    }
+
+    static void Scan()
+    {
+        var hud = HUDCanvas.instance;
+        if (hud == null || hud.rect == null || Screen.height == 0) return;
+
+        const float refAspect = 16f / 9f;
+        float aspect = (float)Screen.width / Screen.height;
+        float xFactor = aspect > refAspect ? aspect / refAspect : 1f;
+        float yFactor = aspect < refAspect ? refAspect / aspect : 1f;
+        if (xFactor <= 1f && yFactor <= 1f) return;
+
+        float halfW = hud.rect.sizeDelta.x * 0.5f;
+        float halfH = hud.rect.sizeDelta.y * 0.5f;
+        float capW = halfW * xFactor;
+        float capH = halfH * yFactor;
+
+        foreach (var g in hud.rect.GetComponentsInChildren<Graphic>(false))
+        {
+            if (!g.enabled || g.color.a < 0.01f) continue;
+
+            var rt = g.rectTransform;
+            rt.GetWorldCorners(_corners);
+            Vector2 min = new(float.MaxValue, float.MaxValue);
+            Vector2 max = new(float.MinValue, float.MinValue);
+            for (int i = 0; i < 4; i++)
+            {
+                Vector2 c = hud.rect.InverseTransformPoint(_corners[i]);
+                min = Vector2.Min(min, c);
+                max = Vector2.Max(max, c);
+            }
+
+            // inside the vanilla canvas: visible on every aspect, not ours
+            bool outsideCanvas = min.x < -halfW - 1f || max.x > halfW + 1f
+                              || min.y < -halfH - 1f || max.y > halfH + 1f;
+            if (!outsideCanvas) continue;
+            // entirely past the capture too: still invisible, ignore
+            bool inCapture = min.x < capW && max.x > -capW && min.y < capH && max.y > -capH;
+            if (!inCapture) continue;
+
+            if (HudCoverStretch.Manages(rt) || MenuEdgeArtExtend.Manages(rt)) continue;
+            var cg = g.GetComponentInParent<CanvasGroup>();
+            if (cg != null && cg.alpha < 0.01f) continue;
+            if (!_logged.Add(g.GetInstanceID())) continue;
+
+            string path = g.transform.parent != null
+                ? g.transform.parent.name + "/" + g.gameObject.name
+                : g.gameObject.name;
+            Plugin.Log.LogInfo($"[ultrawide] reveal: {path} <{g.GetType().Name}> " +
+                $"rect=({min.x:F0},{min.y:F0})..({max.x:F0},{max.y:F0}) " +
+                $"canvas=({halfW:F0},{halfH:F0}) cap=({capW:F0},{capH:F0}) a={g.color.a:F2}");
+        }
     }
 }
 
