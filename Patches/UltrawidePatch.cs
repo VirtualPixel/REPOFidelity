@@ -33,6 +33,12 @@ internal static class CameraZoomFovOverride
         float target = Settings.VerticalFovOverride > 0
             ? Settings.VerticalFovOverride
             : ComputeAspectAwareDefault(_originals[cz]);
+
+        float aspect = Screen.height > 0 ? (float)Screen.width / Screen.height : 0f;
+        float hFov = aspect > 0f
+            ? 2f * Mathf.Atan(Mathf.Tan(target * Mathf.Deg2Rad / 2f) * aspect) * Mathf.Rad2Deg : 0f;
+        Plugin.Log.LogDebug($"[fov] gameplay vFOV {_originals[cz]:F0} -> {target:F0} " +
+            $"(slider={Settings.VerticalFovOverride}, aspect={aspect:F3}, hFOV={hFov:F0})");
         StartFovAnim(cz, target);
     }
 
@@ -159,10 +165,12 @@ internal static class MenuCameraFovOverride
         _trackedCam = null;
     }
 
-    // Lerp between vanilla HOR+ (vFOV unchanged) and full VERT- (vFOV reduced so hFOV
-    // matches the 16:9-equivalent). Strength: 0 at 16:9, ~0.51 at 21:9, 1.0 at 32:9.
-    // Used on the menu camera to hide the world edge that wider FOV reveals past the
-    // truck on the title scene.
+    // Full VERT- on the menu camera: vFOV reduced so the horizontal span matches
+    // the 16:9 framing the title set was built for. The menu set has hard edges
+    // (black void past the backdrop); any extra horizontal reveal shows them as a
+    // hard stop line. The old partial 0.51 strength left exactly that visible at
+    // 21:9. Menu framing is static art, so cropping a little vertical costs
+    // nothing.
     static float ApplyAspectCorrection(float baseFov)
     {
         if (Screen.height == 0) return baseFov;
@@ -170,13 +178,9 @@ internal static class MenuCameraFovOverride
         const float refAspect = 16f / 9f;
         if (aspect <= refAspect + 0.01f) return baseFov;
 
-        float strength = Mathf.Clamp01((aspect / refAspect - 1f) * 1.5f);
-        if (strength <= 0f) return baseFov;
-
         // target_vFov = 2 * atan(tan(baseFov/2) * refAspect / aspect)
         float baseRad = baseFov * Mathf.Deg2Rad;
-        float fullCorrectedRad = 2f * Mathf.Atan(Mathf.Tan(baseRad / 2f) * refAspect / aspect);
-        return Mathf.Lerp(baseFov, fullCorrectedRad * Mathf.Rad2Deg, strength);
+        return 2f * Mathf.Atan(Mathf.Tan(baseRad / 2f) * refAspect / aspect) * Mathf.Rad2Deg;
     }
 }
 
