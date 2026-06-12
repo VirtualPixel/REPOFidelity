@@ -28,27 +28,30 @@ internal static class CameraZoomFovOverride
         if (!_originals.ContainsKey(cz))
             _originals[cz] = cz.playerZoomDefault;
 
-        // Slider override (>0) wins. Otherwise the default scales with aspect:
-        // 16:9 = vanilla, 21:9 ~80, 32:9 = 90.
+        // Slider override (>0) wins. Otherwise pure HOR+: vanilla vertical FOV at
+        // any aspect, capped only at extreme widths.
         float target = Settings.VerticalFovOverride > 0
             ? Settings.VerticalFovOverride
             : ComputeAspectAwareDefault(_originals[cz]);
         StartFovAnim(cz, target);
     }
 
+    // Pure HOR+: keep the vanilla vertical FOV so wider panels reveal more world at
+    // the sides with the same center framing. The old default ramped vertical FOV
+    // to 80 at 21:9 on top of the horizontal gain, putting horizontal FOV near 127
+    // degrees; rectilinear projection smears the outer screen so badly there that
+    // the genuinely-new side content reads as pure stretch. Only intervene when
+    // plain HOR+ would push horizontal FOV past 120 degrees (32:9 territory):
+    // lower vertical FOV just enough to hold that cap.
     internal static float ComputeAspectAwareDefault(float vanilla16x9Fov)
     {
         if (Screen.height == 0) return vanilla16x9Fov;
         float aspect = (float)Screen.width / Screen.height;
-        const float a169 = 16f / 9f;
-        const float a219 = 2.389f;
-        const float a329 = 32f / 9f;
-        if (aspect <= a169 + 0.01f) return vanilla16x9Fov;
-        if (aspect <= a219)
-            return Mathf.Lerp(vanilla16x9Fov, 80f, Mathf.InverseLerp(a169, a219, aspect));
-        if (aspect <= a329)
-            return Mathf.Lerp(80f, 90f, Mathf.InverseLerp(a219, a329, aspect));
-        return 90f;
+        const float maxHFovRad = 120f * Mathf.Deg2Rad;
+        float vFovRad = vanilla16x9Fov * Mathf.Deg2Rad;
+        float hFovRad = 2f * Mathf.Atan(Mathf.Tan(vFovRad / 2f) * aspect);
+        if (hFovRad <= maxHFovRad) return vanilla16x9Fov;
+        return 2f * Mathf.Atan(Mathf.Tan(maxHFovRad / 2f) / aspect) * Mathf.Rad2Deg;
     }
 
     internal static void Restore(CameraZoom cz)
@@ -491,6 +494,7 @@ internal static class OverlayCameraWiden
         }
         HudCursorRemap.Active = _applied;
         HudCoverStretch.Tick(_applied);
+        MenuEdgeArtExtend.Tick(_applied);
     }
 }
 
@@ -598,6 +602,124 @@ internal static class HudCoverStretch
         foreach (var (rt, vanilla) in _stretched)
             if (rt != null) rt.localScale = vanilla;
         _stretched.Clear();
+    }
+}
+
+// The main menu's dark side gradient ("Background", sprite "gradient") is NOT a
+// cover: it is positioned art, full canvas height but anchored to the left half
+// of the canvas (spans the canvas left edge to just past center). Under the
+// widened capture it stops short of the capture edge and leaves a bare strip
+// where the vignette visibly cuts off. A center stretch would shift its falloff
+// across the screen, so instead it gets extended toward the capture edge with
+// the OPPOSITE edge held fixed: scale around the far edge, compensate the
+// anchored position. Classified, not named: any full-height gradient art that
+// touches exactly one horizontal canvas edge gets the same treatment.
+internal static class MenuEdgeArtExtend
+{
+    static readonly List<(RectTransform Rect, Vector3 Scale, Vector2 Pos)> _extended = new();
+    static float _rescanTimer;
+    static bool _active;
+
+    internal static void Tick(bool widenActive)
+    {
+        if (widenActive && !_active)
+        {
+            _active = true;
+            _rescanTimer = 0f;
+            Rescan();
+        }
+        else if (!widenActive && _active)
+        {
+            _active = false;
+            RestoreAll();
+        }
+        else if (_active)
+        {
+            _rescanTimer += Time.unscaledDeltaTime;
+            if (_rescanTimer >= 0.4f)
+            {
+                _rescanTimer = 0f;
+                Rescan();
+            }
+        }
+    }
+
+    internal static void Rescan()
+    {
+        if (!_active || Screen.height == 0) return;
+        var hud = HUDCanvas.instance;
+        if (hud == null || hud.rect == null) return;
+
+        const float refAspect = 16f / 9f;
+        float aspect = (float)Screen.width / Screen.height;
+        float xFactor = aspect > refAspect ? aspect / refAspect : 1f;
+        float yFactor = aspect < refAspect ? refAspect / aspect : 1f;
+        if (xFactor <= 1f && yFactor <= 1f) return;
+
+        float canvasHalfW = hud.rect.sizeDelta.x * 0.5f;
+        float canvasH = hud.rect.sizeDelta.y;
+        float captureHalfW = canvasHalfW * xFactor;
+
+        foreach (var g in hud.rect.GetComponentsInChildren<Graphic>(true))
+        {
+            if (g is not Image && g is not RawImage) continue;
+            var rt = g.rectTransform;
+            // point anchors and centered pivot only; the shift math below assumes
+            // localScale grows the rect symmetrically around its center
+            if (rt.anchorMin.x != rt.anchorMax.x) continue;
+            if (!Mathf.Approximately(rt.pivot.x, 0.5f) || !Mathf.Approximately(rt.pivot.y, 0.5f)) continue;
+
+            string art = g is Image img ? (img.sprite != null ? img.sprite.name : "")
+                       : g is RawImage raw ? (raw.texture != null ? raw.texture.name : "") : "";
+            if (!(g.gameObject.name + "|" + art).ToLowerInvariant().Contains("gradient")) continue;
+
+            float w = rt.rect.width * Mathf.Abs(rt.lossyScale.x);
+            float h = rt.rect.height * Mathf.Abs(rt.lossyScale.y);
+            if (w < 100f || w >= 600f) continue;        // covers are HudCoverStretch's job
+            if (h < canvasH * 0.9f) continue;            // full-height art only
+
+            Vector2 center = hud.rect.InverseTransformPoint(rt.TransformPoint(rt.rect.center));
+            float leftEdge = center.x - w * 0.5f;
+            float rightEdge = center.x + w * 0.5f;
+            bool touchesLeft = leftEdge <= -canvasHalfW + 8f;
+            bool touchesRight = rightEdge >= canvasHalfW - 8f;
+            if (touchesLeft == touchesRight) continue;   // both = cover, neither = floating
+
+            bool seen = false;
+            foreach (var (r, _, _) in _extended)
+                if (r == rt) { seen = true; break; }
+            if (seen) continue;
+
+            var s = rt.localScale;
+            var p = rt.anchoredPosition;
+            _extended.Add((rt, s, p));
+
+            if (xFactor > 1f)
+            {
+                // grow toward the touched edge, hold the far edge in place
+                float f = touchesLeft ? (rightEdge + captureHalfW) / w
+                                      : (captureHalfW - leftEdge) / w;
+                float shift = (f - 1f) * w * 0.5f;
+                rt.localScale = new Vector3(s.x * f, s.y * yFactor, s.z);
+                rt.anchoredPosition = new Vector2(p.x + (touchesLeft ? -shift : shift), p.y);
+            }
+            else
+            {
+                rt.localScale = new Vector3(s.x, s.y * yFactor, s.z);
+            }
+            Plugin.Log.LogDebug($"[ultrawide] edge art extended: {g.gameObject.name} ({art})");
+        }
+    }
+
+    static void RestoreAll()
+    {
+        foreach (var (rt, scale, pos) in _extended)
+        {
+            if (rt == null) continue;
+            rt.localScale = scale;
+            rt.anchoredPosition = pos;
+        }
+        _extended.Clear();
     }
 }
 
