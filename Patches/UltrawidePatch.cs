@@ -708,9 +708,14 @@ internal static class MenuEdgeArtExtend
 
             if (xFactor > 1f)
             {
-                // grow toward the touched edge, hold the far edge in place
-                float f = touchesLeft ? (rightEdge + captureHalfW) / w
-                                      : (captureHalfW - leftEdge) / w;
+                // grow toward the touched edge, hold the far edge in place.
+                // Overshoot past the capture edge: the gradient sprite's leading
+                // texel column is soft (one texel is ~7 canvas units at this
+                // stretch), and it left a thin bright strip when the rect landed
+                // exactly on the edge. The overshoot region is off-display.
+                const float overshoot = 16f;
+                float f = touchesLeft ? (rightEdge + captureHalfW + overshoot) / w
+                                      : (captureHalfW + overshoot - leftEdge) / w;
                 float shift = (f - 1f) * w * 0.5f;
                 rt.localScale = new Vector3(s.x * f, s.y * yFactor, s.z);
                 rt.anchoredPosition = new Vector2(p.x + (touchesLeft ? -shift : shift), p.y);
@@ -1315,6 +1320,10 @@ internal static class MenuPageStartUltrawidePatch
         UltrawideCanvasFix.RefreshAll();
         MenuCameraFovOverride.Apply();
         HudCoverStretch.Rescan();
+        // same-frame extension for freshly spawned pages; the 0.4s cadence alone
+        // shows the bare strip for a visible beat on every menu open
+        MenuEdgeArtExtend.Rescan();
+        HudParkedShift.Rescan();
         MenuArtDump.DumpOnce(__instance);
     }
 }
