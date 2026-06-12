@@ -837,6 +837,115 @@ internal static class HudParkedShift
     }
 }
 
+// Panini projection for the world view. The wide render is rectilinear, and at
+// 21:9 the horizontal FOV runs near 118 degrees; flat projection magnifies the
+// outer screen so hard that the extra world reads as smear instead of view.
+// The render is NOT touched (FOV, aspect, jitter and the upscaler stay exactly
+// as they are); the underlay that PRESENTS the world texture draws a warped
+// strip mesh whose UVs implement the inverse Panini mapping. Same image, full
+// wide view, nothing cropped: the horizontal pixels are redistributed so edge
+// proportions stay close to natural. Vertical lines stay straight (the Panini
+// cylinder is vertical). Narrow panels warp the vertical axis instead, since
+// their letterbox kill over-magnifies top/bottom the same way. The mapping is
+// separable per column, so a strip mesh is exact to within bilinear filtering.
+internal class PaniniRawImage : RawImage
+{
+    internal float Strength;      // Panini distance d; 0 = flat rectilinear quad
+    internal float SourceHalfTan; // tan of the source half-FOV along the warped axis
+    internal bool WarpVertical;
+
+    protected override void OnPopulateMesh(VertexHelper vh)
+    {
+        if (Strength <= 0f || SourceHalfTan < 1e-3f)
+        {
+            base.OnPopulateMesh(vh);
+            return;
+        }
+
+        var r = GetPixelAdjustedRect();
+        Color32 c32 = color;
+        const int segments = 96;
+        float d = Strength;
+        float th = SourceHalfTan;
+        float phiMax = Mathf.Atan(th);
+        // forward map: h = (1+d) sin(phi) / (d + cos(phi))
+        float hMax = (1f + d) * Mathf.Sin(phiMax) / (d + Mathf.Cos(phiMax));
+
+        vh.Clear();
+        for (int i = 0; i <= segments; i++)
+        {
+            float t = (float)i / segments;
+            float h = (t * 2f - 1f) * hMax;
+            // exact inverse: (1+d) sin(phi) - h cos(phi) = h d
+            float R = Mathf.Sqrt((1f + d) * (1f + d) + h * h);
+            float phi = Mathf.Asin(Mathf.Clamp(h * d / R, -1f, 1f)) + Mathf.Atan2(h, 1f + d);
+            float src = 0.5f + 0.5f * Mathf.Tan(phi) / th;
+
+            if (!WarpVertical)
+            {
+                float x = r.xMin + t * r.width;
+                vh.AddVert(new Vector3(x, r.yMin), c32, new Vector2(src, 0f));
+                vh.AddVert(new Vector3(x, r.yMax), c32, new Vector2(src, 1f));
+            }
+            else
+            {
+                float y = r.yMin + t * r.height;
+                vh.AddVert(new Vector3(r.xMin, y), c32, new Vector2(0f, src));
+                vh.AddVert(new Vector3(r.xMax, y), c32, new Vector2(1f, src));
+            }
+        }
+        // UI/Default culls neither face, winding is irrelevant
+        for (int i = 0; i < segments; i++)
+        {
+            int b = i * 2;
+            vh.AddTriangle(b, b + 1, b + 3);
+            vh.AddTriangle(b, b + 3, b + 2);
+        }
+    }
+}
+
+internal static class PaniniWarp
+{
+    static float _lastStrength = -1f;
+    static float _lastTan = -1f;
+    static bool _lastVertical;
+
+    internal static void Tick()
+    {
+        var img = UltrawideCanvasFix.UnderlayImage;
+        if (img == null) return;
+
+        float strength = 0f, halfTan = 0f;
+        bool vertical = false;
+        var cam = Camera.main;
+        if (cam != null && !cam.orthographic
+            && Settings.ModEnabled && Settings.UltrawideUiFix
+            && Settings.UltrawidePanini > 0
+            && !VRCompat.Active && !UltrawideCompareResolution.IsCompareActive
+            && Screen.height > 0)
+        {
+            const float refAspect = 16f / 9f;
+            float aspect = (float)Screen.width / Screen.height;
+            float tv = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            if (aspect > refAspect + 0.01f) halfTan = tv * cam.aspect;
+            else if (aspect < refAspect - 0.01f) { halfTan = tv; vertical = true; }
+            if (halfTan > 0f) strength = Settings.UltrawidePanini / 100f;
+        }
+
+        // FOV animates (sprint zoom, overrides); rebuild the strip only on real change
+        if (Mathf.Abs(strength - _lastStrength) < 0.005f
+            && Mathf.Abs(halfTan - _lastTan) < 0.01f
+            && vertical == _lastVertical) return;
+        _lastStrength = strength;
+        _lastTan = halfTan;
+        _lastVertical = vertical;
+        img.Strength = strength;
+        img.SourceHalfTan = halfTan;
+        img.WarpVertical = vertical;
+        img.SetVerticesDirty();
+    }
+}
+
 // One-shot UI-pipeline dump. The ultrawide HUD work has failed repeatedly on
 // assumptions about which canvas hosts the visible HUD, where the cursor is
 // parented, and what the overlay texture actually contains. This logs the ground
@@ -1046,7 +1155,9 @@ internal static class UltrawideCanvasFix
 
     static GameObject? _ultrawideUnderlay;
     static GameObject? _underlayCanvasGo;
-    static RawImage? _underlayRawImage;
+    static PaniniRawImage? _underlayRawImage;
+
+    internal static PaniniRawImage? UnderlayImage => _underlayRawImage;
 
     static RawImage? _hiddenMainImage;
     static bool _hiddenMainImageWasEnabled;
@@ -1147,7 +1258,7 @@ internal static class UltrawideCanvasFix
             CanvasScaler.ScaleMode.ConstantPixelSize;
 
         _ultrawideUnderlay = new GameObject("REPOFidelity Ultrawide Underlay",
-            typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(PaniniRawImage));
         _ultrawideUnderlay.transform.SetParent(_underlayCanvasGo.transform, false);
 
         var rt = _ultrawideUnderlay.GetComponent<RectTransform>();
@@ -1157,7 +1268,7 @@ internal static class UltrawideCanvasFix
         rt.anchoredPosition = Vector2.zero;
         rt.sizeDelta = Vector2.zero;
 
-        _underlayRawImage = _ultrawideUnderlay.GetComponent<RawImage>();
+        _underlayRawImage = _ultrawideUnderlay.GetComponent<PaniniRawImage>();
         _underlayRawImage.texture = worldRT;
         _underlayRawImage.color = Color.white;
         _underlayRawImage.raycastTarget = false;

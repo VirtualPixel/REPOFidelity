@@ -151,6 +151,8 @@ internal class SettingsData
     // Screen.aspect runs above ~16:9, so menus don't stretch on ultra-wide.
     public bool ultrawideUiFix = true;
     public bool ultrawideHudUnstretch = true;
+    // Panini re-projection of the world view on non-16:9 panels; 0-100 -> d 0..1
+    public int paniniStrength = 60;
 
     public int shadowBudget = -1;
 
