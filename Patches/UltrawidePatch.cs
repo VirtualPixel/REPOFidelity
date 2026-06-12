@@ -512,7 +512,7 @@ internal static class OverlayCameraWiden
         HudCoverStretch.Tick(_applied);
         MenuEdgeArtExtend.Tick(_applied);
         HudParkedShift.Tick(_applied);
-        RevealCensus.Tick(_applied);
+        RevealGuard.Tick(_applied);
     }
 }
 
@@ -920,17 +920,21 @@ internal static class HudParkedShift
     }
 }
 
-// Field-debug census: name everything that is only visible BECAUSE the widened
-// capture sees past the vanilla canvas. Enumerates enabled Graphics under the
-// HUD canvas and logs (once, at Info, so a default LogOutput.log carries it)
-// any whose rect pokes outside the canvas but inside the capture. This is the
-// tool for "I see a thing at the screen edge that shouldn't be there" reports
-// from machines we can't touch: modded UI (e.g. third-party chat windows)
-// parked off-canvas is invisible vanilla but lands in our revealed band, and
-// no SemiUI-based fix can know about it. Covers and edge art this mod
-// stretches on purpose are skipped.
-internal static class RevealCensus
+// The widened capture renders HUD-canvas space that vanilla never shows, and
+// anything a mod (or the game) leaves out there becomes visible: third-party
+// chat windows placed by raw coordinates, art staged off-canvas, parking spots
+// our SemiUI shift doesn't know about. Principle: a Graphic whose rect lies
+// ENTIRELY outside the vanilla canvas is invisible on every 16:9 machine by
+// construction, so hiding it always restores vanilla appearance. Cull those at
+// the CanvasRenderer (no component state touched). Anything culled that starts
+// moving or rescaling is unculled the same frame, so woosh-in animations and
+// sliding menu pages are never eaten; the next scan re-evaluates wherever it
+// settles. Partial spills stay untouched (their on-canvas part is legit) but
+// get logged once at Info, same as culls, so a default LogOutput.log from a
+// machine we can't touch names every revealed element.
+internal static class RevealGuard
 {
+    static readonly List<(Graphic G, Vector3 Pos, Vector3 Scale)> _culled = new();
     static readonly HashSet<int> _logged = new();
     static readonly Vector3[] _corners = new Vector3[4];
     static float _timer;
@@ -947,14 +951,37 @@ internal static class RevealCensus
         else if (!widenActive && _active)
         {
             _active = false;
+            UncullAll();
         }
         else if (_active)
         {
+            WatchCulled();
             _timer += Time.unscaledDeltaTime;
             if (_timer >= 1f)
             {
                 _timer = 0f;
                 Scan();
+            }
+        }
+    }
+
+    // Uncull the moment a culled element moves, rescales, or deactivates; a
+    // 1s scan cadence is far too slow to hand a shown element back.
+    static void WatchCulled()
+    {
+        for (int i = _culled.Count - 1; i >= 0; i--)
+        {
+            var (g, pos, scale) = _culled[i];
+            if (g == null)
+            {
+                _culled.RemoveAt(i);
+                continue;
+            }
+            var t = g.rectTransform;
+            if (!g.isActiveAndEnabled || t.localPosition != pos || t.localScale != scale)
+            {
+                g.canvasRenderer.cull = false;
+                _culled.RemoveAt(i);
             }
         }
     }
@@ -1001,15 +1028,32 @@ internal static class RevealCensus
             if (HudCoverStretch.Manages(rt) || MenuEdgeArtExtend.Manages(rt)) continue;
             var cg = g.GetComponentInParent<CanvasGroup>();
             if (cg != null && cg.alpha < 0.01f) continue;
-            if (!_logged.Add(g.GetInstanceID())) continue;
 
+            // fully off-canvas = invisible vanilla = safe to hide
+            bool fullyOutside = max.x <= -halfW + 1f || min.x >= halfW - 1f
+                             || max.y <= -halfH + 1f || min.y >= halfH - 1f;
+            if (fullyOutside && !g.canvasRenderer.cull)
+            {
+                g.canvasRenderer.cull = true;
+                _culled.Add((g, rt.localPosition, rt.localScale));
+            }
+
+            if (!_logged.Add(g.GetInstanceID())) continue;
             string path = g.transform.parent != null
                 ? g.transform.parent.name + "/" + g.gameObject.name
                 : g.gameObject.name;
             Plugin.Log.LogInfo($"[ultrawide] reveal: {path} <{g.GetType().Name}> " +
+                $"{(fullyOutside ? "hidden" : "spills")} " +
                 $"rect=({min.x:F0},{min.y:F0})..({max.x:F0},{max.y:F0}) " +
                 $"canvas=({halfW:F0},{halfH:F0}) cap=({capW:F0},{capH:F0}) a={g.color.a:F2}");
         }
+    }
+
+    static void UncullAll()
+    {
+        foreach (var (g, _, _) in _culled)
+            if (g != null) g.canvasRenderer.cull = false;
+        _culled.Clear();
     }
 }
 
