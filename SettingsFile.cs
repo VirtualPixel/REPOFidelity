@@ -146,6 +146,7 @@ internal class SettingsData
     // auto-correct CanvasScaler.matchWidthOrHeight to height-match when
     // Screen.aspect runs above ~16:9, so menus don't stretch on ultra-wide.
     public bool ultrawideUiFix = true;
+    public bool ultrawideHudUnstretch = true;
 
     public int shadowBudget = -1;
 

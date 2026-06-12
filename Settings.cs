@@ -154,6 +154,15 @@ internal static class Settings
         get => D.ultrawideUiFix;
         set { D.ultrawideUiFix = value; _file.Save(); OnSettingTweaked(); }
     }
+    // Display the HUD/post-FX overlay at a centered aspect-correct 16:9 box
+    // instead of stretched across the panel, with cursor mapping compensated.
+    // On by default so non-16:9 panels just work; the toggle is the opt-out
+    // back to the classic stretched presentation. Inert on 16:9 displays.
+    internal static bool UltrawideHudUnstretch
+    {
+        get => D.ultrawideHudUnstretch;
+        set { D.ultrawideHudUnstretch = value; _file.Save(); OnSettingTweaked(); }
+    }
     internal static KeyCode ToggleKey
     {
         get => (KeyCode)D.toggleKey;

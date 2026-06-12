@@ -24,7 +24,7 @@ internal static class MenuIntegration
     private static REPOToggle? _flickerToggle, _overlayToggle;
     private static REPOSlider? _windowModeSlider, _resolutionSlider, _fpsSlider, _gammaSlider;
     private static REPOSlider? _fovSlider;
-    private static REPOToggle? _ultrawideUiToggle;
+    private static REPOToggle? _ultrawideUiToggle, _ultrawideHudToggle;
     private static REPOToggle? _vsyncToggle, _bloomToggle, _glitchToggle;
     private static REPOSlider? _perfExplosionSlider, _perfItemLightSlider;
     private static REPOSlider? _perfAnimLightSlider, _perfParticleSlider, _perfTinySlider, _perfPointLightSlider;
@@ -225,6 +225,8 @@ internal static class MenuIntegration
             v => ModSet(() => Settings.VerticalFovOverride = v), out _fovSlider);
         AddModToggle("Ultra-Wide UI Fix", Settings.UltrawideUiFix,
             b => ModSet(() => Settings.UltrawideUiFix = b), out _ultrawideUiToggle);
+        AddModToggle("Ultra-Wide HUD Unstretch", Settings.UltrawideHudUnstretch,
+            b => ModSet(() => Settings.UltrawideHudUnstretch = b), out _ultrawideHudToggle);
 
         // Quality
         AddLabel("Quality");
@@ -548,6 +550,7 @@ internal static class MenuIntegration
         _overlayToggle?.SetState(Settings.DebugOverlay, false);
         SetNum(_fovSlider, Settings.VerticalFovOverride);
         _ultrawideUiToggle?.SetState(Settings.UltrawideUiFix, false);
+        _ultrawideHudToggle?.SetState(Settings.UltrawideHudUnstretch, false);
         SyncPerf(_perfExplosionSlider, Settings.PerfExplosionShadows);
         SyncPerf(_perfItemLightSlider, Settings.PerfItemLightShadows);
         SyncPerf(_perfAnimLightSlider, Settings.PerfAnimatedLightShadows);

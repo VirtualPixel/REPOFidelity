@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection.Emit;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
@@ -338,6 +339,82 @@ internal static class UltrawideCompareResolution
     }
 }
 
+// HUD-unstretch mode (Settings.UltrawideHudUnstretch): instead of stretching the
+// overlay mirror across the panel, display it as a centered aspect-correct 16:9 box.
+// The game's capture pipeline is never touched (the overlay RT resize attempt proved
+// every consumer of that geometry breaks at once), so the HUD, menus, and the
+// warp/CRT material all read exactly like vanilla; the box just doesn't cover the
+// side regions. The one thing this breaks alone is cursor mapping: the game converts
+// mouse to HUD-canvas coords assuming the HUD displays full-screen. Both converters
+// (SemiFunc.UIMousePosToUIPos, UIPositionToUIPosition) are linear in the input screen
+// coords, so remapping the input from the displayed box to the full virtual screen
+// is exact regardless of the magic constants downstream. The reverse helper
+// UIGetRectTransformPositionOnScreen works purely in canvas space and needs nothing.
+internal static class HudCursorRemap
+{
+    internal static bool Active;
+
+    internal static Vector3 Correct(Vector3 screenPos)
+    {
+        if (!Active || Screen.height == 0) return screenPos;
+        float aspect = (float)Screen.width / Screen.height;
+        const float refAspect = 16f / 9f;
+        if (aspect > refAspect + 0.01f)
+        {
+            float boxW = Screen.height * refAspect;
+            float left = (Screen.width - boxW) * 0.5f;
+            screenPos.x = (screenPos.x - left) * (Screen.width / boxW);
+        }
+        else if (aspect < refAspect - 0.01f)
+        {
+            float boxH = Screen.width / refAspect;
+            float bottom = (Screen.height - boxH) * 0.5f;
+            screenPos.y = (screenPos.y - bottom) * (Screen.height / boxH);
+        }
+        return screenPos;
+    }
+
+    internal static Vector3 CorrectedMousePosition() => Correct(Input.mousePosition);
+}
+
+// UIMousePosToUIPos reads Input.mousePosition directly, so the input correction is
+// injected by swapping that property read for CorrectedMousePosition. A no-op when
+// HudCursorRemap.Active is false, so 16:9 players and the classic stretch mode run
+// vanilla math untouched.
+[HarmonyPatch(typeof(SemiFunc), nameof(SemiFunc.UIMousePosToUIPos))]
+internal static class UIMousePosRemapPatch
+{
+    static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+    {
+        var getMouse = AccessTools.PropertyGetter(typeof(Input), nameof(Input.mousePosition));
+        var corrected = AccessTools.Method(typeof(HudCursorRemap), nameof(HudCursorRemap.CorrectedMousePosition));
+        int swapped = 0;
+        foreach (var code in instructions)
+        {
+            if (code.opcode == OpCodes.Call && Equals(code.operand, getMouse))
+            {
+                yield return new CodeInstruction(OpCodes.Call, corrected)
+                {
+                    labels = code.labels,
+                    blocks = code.blocks,
+                };
+                swapped++;
+                continue;
+            }
+            yield return code;
+        }
+        if (swapped == 0)
+            Plugin.Log.LogWarning("[ultrawide] UIMousePosToUIPos transpiler matched nothing; " +
+                "HUD-unstretch cursor remap is inactive this session. Report this if it appears after a game update.");
+    }
+}
+
+[HarmonyPatch(typeof(SemiFunc), nameof(SemiFunc.UIPositionToUIPosition))]
+internal static class UIPositionRemapPatch
+{
+    static void Prefix(ref Vector3 position) => position = HudCursorRemap.Correct(position);
+}
+
 // Renders the world to a full-screen RawImage on a sortOrder=0 canvas behind the game's
 // UI canvas (sortOrder=1), so the world fills the wide screen while the game's UI
 // hierarchy stays untouched. The game's full-screen Background (which letterboxes the
@@ -375,6 +452,7 @@ internal static class UltrawideCanvasFix
         bool active = Settings.ModEnabled && Settings.UltrawideUiFix && RequiresAspectFix();
         if (!active) { RestoreAll(); return; }
         EnsureUltrawideUnderlay();
+        HudCursorRemap.Active = Settings.UltrawideHudUnstretch;
     }
 
     // Wider than 16:9 (21:9, 32:9). Used by callers that specifically want the wider case
@@ -533,10 +611,46 @@ internal static class UltrawideCanvasFix
             if (_postFxRawImage.texture != overlayTex) _postFxRawImage.texture = overlayTex;
             if (_postFxRawImage.material != overlayMat) _postFxRawImage.material = overlayMat;
         }
+        ApplyPostFxRect();
+    }
+
+    // Mirror rect for the overlay (HUD + post-FX): stretched full-screen (classic mode)
+    // or a centered aspect-correct 16:9 box (HUD-unstretch), where the overlay texture
+    // displays 1:1 so text, element proportions, and the warp/CRT material read exactly
+    // like vanilla. Wider panels box horizontally, narrower (16:10/4:3) vertically.
+    // Rect writes re-mesh the RawImage, which shows as a flash, so only write on change.
+    static void ApplyPostFxRect()
+    {
+        if (_ultrawidePostFx == null) return;
+        var prt = _ultrawidePostFx.GetComponent<RectTransform>();
+        if (Settings.UltrawideHudUnstretch && Screen.height > 0)
+        {
+            const float refAspect = 16f / 9f;
+            float aspect = (float)Screen.width / Screen.height;
+            Vector2 box = aspect >= refAspect
+                ? new Vector2(Screen.height * refAspect, Screen.height)
+                : new Vector2(Screen.width, Screen.width / refAspect);
+            var center = new Vector2(0.5f, 0.5f);
+            if (prt.anchorMin != center || prt.anchorMax != center || prt.sizeDelta != box)
+            {
+                prt.anchorMin = center;
+                prt.anchorMax = center;
+                prt.anchoredPosition = Vector2.zero;
+                prt.sizeDelta = box;
+            }
+        }
+        else if (prt.anchorMin != Vector2.zero || prt.anchorMax != Vector2.one || prt.sizeDelta != Vector2.zero)
+        {
+            prt.anchorMin = Vector2.zero;
+            prt.anchorMax = Vector2.one;
+            prt.anchoredPosition = Vector2.zero;
+            prt.sizeDelta = Vector2.zero;
+        }
     }
 
     internal static void RestoreAll()
     {
+        HudCursorRemap.Active = false;
         if (_hiddenMainImage != null)
         {
             _hiddenMainImage.enabled = _hiddenMainImageWasEnabled;
