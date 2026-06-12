@@ -465,6 +465,90 @@ internal static class HudPreSqueeze
     }
 }
 
+// One-shot UI-pipeline dump. The ultrawide HUD work has failed repeatedly on
+// assumptions about which canvas hosts the visible HUD, where the cursor is
+// parented, and what the overlay texture actually contains. This logs the ground
+// truth from the running game the first time the ultrawide path engages; the next
+// design decision gets made from this output, not from theory. Temporary: remove
+// once HUD-unstretch is settled.
+internal static class UltrawideDiagDump
+{
+    static bool _dumped;
+
+    internal static void DumpOnce()
+    {
+        if (_dumped) return;
+        _dumped = true;
+        var log = Plugin.Log;
+        log.LogInfo($"[uw-dump] screen {Screen.width}x{Screen.height}");
+
+        foreach (var canvas in Object.FindObjectsOfType<Canvas>(true))
+        {
+            var rt = canvas.GetComponent<RectTransform>();
+            var scaler = canvas.GetComponent<CanvasScaler>();
+            log.LogInfo($"[uw-dump] canvas {Path(canvas.transform)} mode={canvas.renderMode} sort={canvas.sortingOrder}" +
+                $" sizeDelta={rt.sizeDelta} localScale={rt.localScale} lossy={rt.lossyScale}" +
+                $" cam={(canvas.worldCamera != null ? canvas.worldCamera.name : "null")}" +
+                (scaler != null ? $" scaler={scaler.uiScaleMode} ref={scaler.referenceResolution} match={scaler.matchWidthOrHeight}" : ""));
+        }
+
+        foreach (var img in Object.FindObjectsOfType<RawImage>(true))
+        {
+            var rt = img.rectTransform;
+            string tex = img.texture != null ? $"{img.texture.name}({img.texture.width}x{img.texture.height})" : "null";
+            string mat = img.material != null && img.material.shader != null ? img.material.shader.name : "null";
+            log.LogInfo($"[uw-dump] rawimage {Path(img.transform)} enabled={img.enabled} tex={tex} mat={mat}" +
+                $" anchors={rt.anchorMin}-{rt.anchorMax} sizeDelta={rt.sizeDelta} lossy={rt.lossyScale} children={img.transform.childCount}");
+        }
+
+        var rtm = RenderTextureMain.instance;
+        if (rtm != null)
+        {
+            log.LogInfo($"[uw-dump] rtm.renderTexture={(rtm.renderTexture != null ? $"{rtm.renderTexture.width}x{rtm.renderTexture.height}" : "null")}");
+            if (rtm.overlayRawImage != null)
+                for (int i = 0; i < rtm.overlayRawImage.transform.childCount; i++)
+                    log.LogInfo($"[uw-dump] overlayRawImage child[{i}]={rtm.overlayRawImage.transform.GetChild(i).name}");
+        }
+
+        var oc = CameraOverlay.instance != null ? CameraOverlay.instance.overlayCamera : null;
+        if (oc != null)
+            log.LogInfo($"[uw-dump] overlayCamera tex={(oc.targetTexture != null ? $"{oc.targetTexture.name}({oc.targetTexture.width}x{oc.targetTexture.height})" : "null")}" +
+                $" ortho={oc.orthographic} size={oc.orthographicSize} fov={oc.fieldOfView} rect={oc.pixelRect}");
+
+        if (HUDCanvas.instance != null && HUDCanvas.instance.rect != null)
+        {
+            var hr = HUDCanvas.instance.rect;
+            log.LogInfo($"[uw-dump] HUDCanvas {Path(hr)} sizeDelta={hr.sizeDelta} localScale={hr.localScale} lossy={hr.lossyScale} children={hr.childCount}");
+            for (int i = 0; i < Mathf.Min(hr.childCount, 12); i++)
+                log.LogInfo($"[uw-dump]   hud child[{i}]={hr.GetChild(i).name}");
+        }
+
+        if (MenuCursor.instance != null)
+            log.LogInfo($"[uw-dump] MenuCursor {Path(MenuCursor.instance.transform)} localScale={MenuCursor.instance.transform.localScale}");
+
+        var ppo = GameObject.Find("Post Processing Overlay");
+        if (ppo != null)
+        {
+            string comps = string.Join(",", System.Array.ConvertAll(ppo.GetComponents<Component>(), c => c.GetType().Name));
+            log.LogInfo($"[uw-dump] PostProcessingOverlay {Path(ppo.transform)} comps={comps} localScale={ppo.transform.localScale}");
+        }
+
+        var semis = Object.FindObjectsOfType<SemiUI>(true);
+        for (int i = 0; i < Mathf.Min(semis.Length, 15); i++)
+            log.LogInfo($"[uw-dump] semiui {semis[i].GetType().Name} {Path(semis[i].transform)}");
+        if (semis.Length > 15)
+            log.LogInfo($"[uw-dump] semiui ... {semis.Length - 15} more omitted");
+    }
+
+    static string Path(Transform t)
+    {
+        string s = t.name;
+        int guard = 0;
+        while (t.parent != null && ++guard < 24) { t = t.parent; s = t.name + "/" + s; }
+        return s;
+    }
+}
+
 // Aspect ratios change at runtime (resolution dropdown, window drag, monitor hop).
 // All the aspect-derived state above is recomputed by RefreshAll, but those refreshes
 // ride scene/menu/settings events, so a bare resolution switch would leave the
@@ -526,16 +610,15 @@ internal static class UltrawideCanvasFix
         bool active = Settings.ModEnabled && Settings.UltrawideUiFix && RequiresAspectFix();
         if (!active) { RestoreAll(); return; }
         EnsureUltrawideUnderlay();
-        if (Settings.UltrawideHudUnstretch)
-        {
-            HudPreSqueeze.Apply();
-            HudCursorRemap.Active = true;
-        }
-        else
-        {
-            HudPreSqueeze.Restore();
-            HudCursorRemap.Active = false;
-        }
+        UltrawideDiagDump.DumpOnce();
+        // HUD-unstretch is stood down until the pipeline dump settles which canvas
+        // actually hosts the visible HUD. Attempt 5 squeezed HUDCanvas and the
+        // on-screen elements stretched anyway, so the squeeze target is wrong and
+        // the cursor remap (calibrated to a squeezed display) must stay inert with
+        // it. The menu toggle currently selects the classic stretched presentation
+        // either way.
+        HudPreSqueeze.Restore();
+        HudCursorRemap.Active = false;
     }
 
     // Wider than 16:9 (21:9, 32:9). Used by callers that specifically want the wider case
