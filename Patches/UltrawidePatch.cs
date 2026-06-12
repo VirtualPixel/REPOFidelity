@@ -495,6 +495,7 @@ internal static class OverlayCameraWiden
         HudCursorRemap.Active = _applied;
         HudCoverStretch.Tick(_applied);
         MenuEdgeArtExtend.Tick(_applied);
+        HudParkedShift.Tick(_applied);
     }
 }
 
@@ -720,6 +721,115 @@ internal static class MenuEdgeArtExtend
             rt.anchoredPosition = pos;
         }
         _extended.Clear();
+    }
+}
+
+// SemiUI "hides" HUD elements by parking them at hidePosition just OUTSIDE the
+// canvas, children still active (deactivation only happens after a full
+// show/hide cycle; elements that never get Show()n, like the arena race timer
+// on the title screen, sit parked and alive forever). Vanilla never renders
+// past the canvas, but the widened capture does: on narrow panels the extra
+// VERTICAL headroom exposed the whole parking lot (friend's 5:4 report). Push
+// every off-canvas parked spot outward by the capture's extra margin so
+// elements clear the capture edge with the same clearance they had against the
+// canvas edge. The hide/show woosh animations are untouched, just longer.
+internal static class HudParkedShift
+{
+    static readonly List<(SemiUI Ui, Vector2 Hide)> _shifted = new();
+    static float _rescanTimer;
+    static bool _active;
+
+    internal static void Tick(bool widenActive)
+    {
+        if (widenActive && !_active)
+        {
+            _active = true;
+            _rescanTimer = 0f;
+            Rescan();
+        }
+        else if (!widenActive && _active)
+        {
+            _active = false;
+            RestoreAll();
+        }
+        else if (_active)
+        {
+            _rescanTimer += Time.unscaledDeltaTime;
+            if (_rescanTimer >= 0.4f)
+            {
+                _rescanTimer = 0f;
+                Rescan();
+            }
+        }
+    }
+
+    internal static void Rescan()
+    {
+        if (!_active || Screen.height == 0) return;
+        var hud = HUDCanvas.instance;
+        if (hud == null || hud.rect == null) return;
+
+        const float refAspect = 16f / 9f;
+        float aspect = (float)Screen.width / Screen.height;
+        float xFactor = aspect > refAspect ? aspect / refAspect : 1f;
+        float yFactor = aspect < refAspect ? refAspect / aspect : 1f;
+        if (xFactor <= 1f && yFactor <= 1f) return;
+
+        float halfW = hud.rect.sizeDelta.x * 0.5f;
+        float halfH = hud.rect.sizeDelta.y * 0.5f;
+        float extX = halfW * (xFactor - 1f) + 8f;
+        float extY = halfH * (yFactor - 1f) + 8f;
+
+        foreach (var ui in hud.rect.GetComponentsInChildren<SemiUI>(true))
+        {
+            if (ui.allChildren == null) continue; // Start hasn't run; hidePosition is still a raw offset
+            bool seen = false;
+            foreach (var (u, _) in _shifted)
+                if (u == ui) { seen = true; break; }
+            if (seen) continue;
+
+            var mover = ui.animateTheEntireObject ? ui.transform : ui.textRectTransform;
+            if (mover == null || mover.parent == null) continue;
+
+            Vector2 parked = hud.rect.InverseTransformPoint(
+                mover.parent.TransformPoint(new Vector3(ui.hidePosition.x, ui.hidePosition.y, 0f)));
+
+            // push only along axes where the parked point already cleared the canvas
+            // edge; parked-inside elements (hide-in-place, shrink hides) stay put
+            var push = Vector2.zero;
+            if (xFactor > 1f)
+            {
+                if (parked.x >= halfW) push.x = extX;
+                else if (parked.x <= -halfW) push.x = -extX;
+            }
+            if (yFactor > 1f)
+            {
+                if (parked.y >= halfH) push.y = extY;
+                else if (parked.y <= -halfH) push.y = -extY;
+            }
+            if (push == Vector2.zero) continue;
+
+            Vector2 localPush = mover.parent.InverseTransformVector(
+                hud.rect.TransformVector(new Vector3(push.x, push.y, 0f)));
+
+            _shifted.Add((ui, ui.hidePosition));
+            bool atPark = ui.hidePositionCurrent == ui.hidePosition;
+            ui.hidePosition += localPush;
+            if (atPark) ui.hidePositionCurrent = ui.hidePosition;
+            Plugin.Log.LogDebug($"[ultrawide] parked HUD shifted: {ui.gameObject.name} push={push}");
+        }
+    }
+
+    static void RestoreAll()
+    {
+        foreach (var (ui, hide) in _shifted)
+        {
+            if (ui == null) continue;
+            bool atPark = ui.hidePositionCurrent == ui.hidePosition;
+            ui.hidePosition = hide;
+            if (atPark) ui.hidePositionCurrent = hide;
+        }
+        _shifted.Clear();
     }
 }
 
