@@ -683,7 +683,14 @@ internal static class MenuEdgeArtExtend
             if (w < 100f || w >= 600f) continue;        // covers are HudCoverStretch's job
             if (h < canvasH * 0.9f) continue;            // full-height art only
 
-            Vector2 center = hud.rect.InverseTransformPoint(rt.TransformPoint(rt.rect.center));
+            // Classify in parent-relative coords, NOT canvas space: menu pages
+            // slide in when opened, and a canvas-space scan caught mid-slide once
+            // classified the left gradient as RIGHT-touching (measured span
+            // [0,478]). anchoredPosition doesn't move during the page slide; at
+            // rest the page is centered, so these ARE canvas units then. Skip
+            // scaled parents where that equivalence breaks.
+            if (rt.parent is RectTransform pr && Mathf.Abs(pr.lossyScale.x - 1f) > 0.05f) continue;
+            Vector2 center = rt.anchoredPosition;
             float leftEdge = center.x - w * 0.5f;
             float rightEdge = center.x + w * 0.5f;
             bool touchesLeft = leftEdge <= -canvasHalfW + 8f;
@@ -713,12 +720,12 @@ internal static class MenuEdgeArtExtend
                 rt.localScale = new Vector3(s.x, s.y * yFactor, s.z);
             }
 
-            // measured post-apply reach in canvas units, against the capture edge,
-            // so a persisting bar shows WHERE the extension actually landed
-            Vector2 after = hud.rect.InverseTransformPoint(rt.TransformPoint(rt.rect.center));
+            // measured post-apply reach (parent-relative = canvas units at page
+            // rest), so a persisting bar shows WHERE the extension landed
             float wAfter = rt.rect.width * Mathf.Abs(rt.lossyScale.x);
+            float cAfter = rt.anchoredPosition.x;
             Plugin.Log.LogDebug($"[ultrawide] edge art extended: {g.gameObject.name} ({art})" +
-                $" span=[{after.x - wAfter * 0.5f:F1},{after.x + wAfter * 0.5f:F1}] capture=[{-captureHalfW:F1},{captureHalfW:F1}]");
+                $" span=[{cAfter - wAfter * 0.5f:F1},{cAfter + wAfter * 0.5f:F1}] capture=[{-captureHalfW:F1},{captureHalfW:F1}]");
         }
     }
 
