@@ -154,14 +154,6 @@ internal static class Settings
         get => D.ultrawideUiFix;
         set { D.ultrawideUiFix = value; _file.Save(); OnSettingTweaked(); }
     }
-    // Panini re-projection strength for the world view on non-16:9 panels.
-    // 0 = flat rectilinear, 100 = Panini distance 1. Presentation-only: the
-    // render keeps its FOV and nothing is cropped.
-    internal static int UltrawidePanini
-    {
-        get => D.paniniStrength;
-        set { D.paniniStrength = Mathf.Clamp(value, 0, 100); _file.Save(); OnSettingTweaked(); }
-    }
     // Display the HUD/post-FX overlay at a centered aspect-correct 16:9 box
     // instead of stretched across the panel, with cursor mapping compensated.
     // On by default so non-16:9 panels just work; the toggle is the opt-out

@@ -23,7 +23,7 @@ internal static class MenuIntegration
     private static REPOToggle? _motionBlurToggle, _caToggle, _lensToggle, _grainToggle;
     private static REPOToggle? _flickerToggle, _overlayToggle;
     private static REPOSlider? _windowModeSlider, _resolutionSlider, _fpsSlider, _gammaSlider;
-    private static REPOSlider? _fovSlider, _paniniSlider;
+    private static REPOSlider? _fovSlider;
     private static REPOToggle? _ultrawideUiToggle, _ultrawideHudToggle;
     private static REPOToggle? _vsyncToggle, _bloomToggle, _glitchToggle;
     private static REPOSlider? _perfExplosionSlider, _perfItemLightSlider;
@@ -227,10 +227,6 @@ internal static class MenuIntegration
             b => ModSet(() => Settings.UltrawideUiFix = b), out _ultrawideUiToggle);
         AddModToggle("Ultra-Wide HUD Unstretch", Settings.UltrawideHudUnstretch,
             b => ModSet(() => Settings.UltrawideHudUnstretch = b), out _ultrawideHudToggle);
-        // Panini re-projection of the world view; only does anything off 16:9
-        AddIntSlider("Ultra-Wide Edge Compression", "Tames edge stretch on wide screens; 0 = off",
-            0, 100, Settings.UltrawidePanini, "%",
-            v => ModSet(() => Settings.UltrawidePanini = v), out _paniniSlider);
 
         // Quality
         AddLabel("Quality");
@@ -553,7 +549,6 @@ internal static class MenuIntegration
         _flickerToggle?.SetState(Settings.ExtractionPointFlicker, false);
         _overlayToggle?.SetState(Settings.DebugOverlay, false);
         SetNum(_fovSlider, Settings.VerticalFovOverride);
-        SetNum(_paniniSlider, Settings.UltrawidePanini);
         _ultrawideUiToggle?.SetState(Settings.UltrawideUiFix, false);
         _ultrawideHudToggle?.SetState(Settings.UltrawideHudUnstretch, false);
         SyncPerf(_perfExplosionSlider, Settings.PerfExplosionShadows);
