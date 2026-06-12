@@ -339,24 +339,17 @@ internal static class UltrawideCompareResolution
     }
 }
 
-// HUD-unstretch mode (Settings.UltrawideHudUnstretch): the overlay mirror stays
-// full-screen, so the post pass (grading, vignette, warp) spans the whole panel in
-// one continuous image; the HUD canvas is PRE-SQUEEZED horizontally by the exact
-// inverse of the display stretch, so for UI elements the two cancel and text and
-// element proportions read exactly like vanilla. A centered-16:9-box display was
-// tried first and rejected on test: the box's baked grading/vignette against raw
-// world strips reads as a hard seam mid-screen. The squeeze touches localScale only;
-// the game's HUD positioning math reads HUDCanvas.rect.sizeDelta, which is untouched,
-// and nothing in the game ever writes that localScale.
-//
-// The squeezed HUD displays as a centered 16:9 region, so cursor mapping needs the
-// same compensation either way: the game converts mouse to HUD-canvas coords assuming
-// the HUD spans the full screen. Both converters (SemiFunc.UIMousePosToUIPos,
-// UIPositionToUIPosition) are linear in the input screen coords, so remapping the
-// input from the displayed region to the full virtual screen is exact regardless of
-// the magic constants downstream, and the output is clamped so the cursor parks
-// visibly at the HUD edge instead of leaving the canvas and vanishing. The reverse
-// helper UIGetRectTransformPositionOnScreen works purely in canvas space.
+// HUD-unstretch cursor compensation (active only while OverlayCameraWiden is
+// applied): with the overlay camera framing the panel aspect, the HUD canvas
+// renders into the central 16:9 region of the overlay texture, so it DISPLAYS as
+// a centered 16:9 region of the screen, while the game converts mouse to
+// HUD-canvas coords assuming the HUD spans the full screen. Both converters
+// (SemiFunc.UIMousePosToUIPos, UIPositionToUIPosition) are linear in the input
+// screen coords, so remapping the input from the displayed region to the full
+// virtual screen is exact regardless of the magic constants downstream, and the
+// output is clamped so the cursor parks visibly at the HUD edge instead of
+// leaving the canvas and vanishing. The reverse helper
+// UIGetRectTransformPositionOnScreen works purely in canvas space, needs nothing.
 internal static class HudCursorRemap
 {
     internal static bool Active;
@@ -422,46 +415,70 @@ internal static class UIPositionRemapPatch
     static void Prefix(ref Vector3 position) => position = HudCursorRemap.Correct(position);
 }
 
-// Pre-squeezes the HUD canvas by the inverse of the full-screen display stretch so
-// the two cancel for UI elements. World-space canvas, so localScale doesn't disturb
-// sizeDelta (the value the game's HUD math reads). The squeeze factor is always
-// computed from the captured vanilla scale, never the current one, so repeat applies
-// and aspect switches can't compound.
-internal static class HudPreSqueeze
+// Grounded in the runtime pipeline dump (2026-06-12): every visible HUD element,
+// the menus and the cursor live on the world-space HUD Canvas (712x400), captured
+// by the ORTHO overlay camera (size 200, target = the 16:9 overlay texture) whose
+// framing exactly fits that canvas; the vignette comes from a PostProcessVolume on
+// that camera, so it's baked into the texture in FRAME space. Vanilla letterboxes
+// the overlay texture; our underlay displays it stretched full-screen, and THAT
+// stretch is the HUD distortion users report. Fix at the camera: override its
+// aspect (and size, on narrower panels, so the canvas isn't cropped) to match the
+// panel. The canvas then renders pre-squeezed into the texture and the display
+// stretch cancels exactly, while the frame-space vignette spans the full panel
+// with no seam. No transform, RT, or canvas is touched. Enforced per frame from
+// UpscalerManager: the canvas-squeeze attempt died to a boot-order race where its
+// one-shot apply no-opped while the cursor remap stayed on; a per-frame tick that
+// derives BOTH from the same condition can't desynchronize like that.
+internal static class OverlayCameraWiden
 {
-    static RectTransform? _rect;
-    static Vector3 _vanillaScale;
+    static Camera? _cam;
+    static float _vanillaSize;
     static bool _applied;
 
-    internal static void Apply()
+    internal static void Tick()
     {
-        var hud = HUDCanvas.instance;
-        var rect = hud != null ? hud.rect : null;
-        if (rect == null || Screen.height == 0) return;
-
-        if (_rect != rect)
+        var cam = CameraOverlay.instance != null ? CameraOverlay.instance.overlayCamera : null;
+        if (cam == null)
         {
-            // New canvas instance (scene rebuild): the old one is gone, capture fresh.
-            _rect = rect;
-            _vanillaScale = rect.localScale;
+            _cam = null;
+            _applied = false;
+            HudCursorRemap.Active = false;
+            return;
+        }
+        if (_cam != cam)
+        {
+            _cam = cam;
+            _vanillaSize = cam.orthographicSize;
             _applied = false;
         }
 
-        const float refAspect = 16f / 9f;
-        float aspect = (float)Screen.width / Screen.height;
-        Vector3 want = _vanillaScale;
-        if (aspect > refAspect + 0.01f) want.x = _vanillaScale.x * (refAspect / aspect);
-        else if (aspect < refAspect - 0.01f) want.y = _vanillaScale.y * (aspect / refAspect);
+        bool want = Settings.ModEnabled
+                    && Settings.UltrawideUiFix
+                    && Settings.UltrawideHudUnstretch
+                    && !VRCompat.Active
+                    && !UltrawideCompareResolution.IsCompareActive
+                    && UltrawideCanvasFix.RequiresAspectFix()
+                    && Screen.height > 0;
 
-        if (rect.localScale != want) rect.localScale = want;
-        _applied = true;
-    }
-
-    internal static void Restore()
-    {
-        if (_applied && _rect != null) _rect.localScale = _vanillaScale;
-        _applied = false;
-        _rect = null;
+        if (want)
+        {
+            const float refAspect = 16f / 9f;
+            float aspect = (float)Screen.width / Screen.height;
+            // Wider panels: hold the vertical size, the extra aspect widens the
+            // capture. Narrower panels: hold the horizontal half-span instead
+            // (size grows), or the canvas edges would crop out of frame.
+            float size = Mathf.Max(_vanillaSize, _vanillaSize * refAspect / aspect);
+            if (!Mathf.Approximately(cam.aspect, aspect)) cam.aspect = aspect;
+            if (!Mathf.Approximately(cam.orthographicSize, size)) cam.orthographicSize = size;
+            _applied = true;
+        }
+        else if (_applied)
+        {
+            cam.orthographicSize = _vanillaSize;
+            cam.ResetAspect();
+            _applied = false;
+        }
+        HudCursorRemap.Active = _applied;
     }
 }
 
@@ -611,14 +628,8 @@ internal static class UltrawideCanvasFix
         if (!active) { RestoreAll(); return; }
         EnsureUltrawideUnderlay();
         UltrawideDiagDump.DumpOnce();
-        // HUD-unstretch is stood down until the pipeline dump settles which canvas
-        // actually hosts the visible HUD. Attempt 5 squeezed HUDCanvas and the
-        // on-screen elements stretched anyway, so the squeeze target is wrong and
-        // the cursor remap (calibrated to a squeezed display) must stay inert with
-        // it. The menu toggle currently selects the classic stretched presentation
-        // either way.
-        HudPreSqueeze.Restore();
-        HudCursorRemap.Active = false;
+        // HUD-unstretch itself runs from OverlayCameraWiden.Tick (per frame, owns
+        // HudCursorRemap.Active too) so it can't race scene construction.
     }
 
     // Wider than 16:9 (21:9, 32:9). Used by callers that specifically want the wider case
@@ -781,8 +792,6 @@ internal static class UltrawideCanvasFix
 
     internal static void RestoreAll()
     {
-        HudCursorRemap.Active = false;
-        HudPreSqueeze.Restore();
         if (_hiddenMainImage != null)
         {
             _hiddenMainImage.enabled = _hiddenMainImageWasEnabled;

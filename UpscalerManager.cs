@@ -386,6 +386,7 @@ internal class UpscalerManager : MonoBehaviour
         Patches.UltrawideCompareResolution.TickEnforcement();
         Patches.UltrawideMenuTweaks.Tick();
         Patches.UltrawideResolutionWatcher.Tick();
+        Patches.OverlayCameraWiden.Tick();
 
         if (!_benchmarkActive && !_togglePending && !MenuIntegration.IsGraphicsPageOpen
             && Input.GetKeyDown(Settings.ToggleKey))
