@@ -1,6 +1,5 @@
 ## 1.7.1
 
-- The HUD and menus no longer stretch on ultrawide (and 16:10/4:3) panels. Root cause: the game draws the HUD and post-FX through one fixed 16:9 overlay render texture, and the ultrawide path displayed that texture across the full panel, so every HUD pixel stretched with it. The overlay texture is now resized to the true panel aspect; the overlay camera follows its target texture, so the HUD renders centered at its normal 16:9 proportions with the wide world visible alongside, and the full-screen display becomes 1:1. Nothing re-anchors or resizes the HUD canvas itself, so menus and cursor hit detection behave exactly like 16:9. Thanks to Mortycio and AncientPixel-Aron for the reports and screenshots (#3).
 - Typography pass over every text surface (readme, changelog, config descriptions, log lines). No behavior change.
 - The load banner logs the display resolution and aspect ratio now, since that's the first question in every ultrawide report.
 
