@@ -338,6 +338,71 @@ internal static class UltrawideCompareResolution
     }
 }
 
+// The HUD-stretch root cause: HUD elements and post-FX render through the overlay
+// camera into ONE fixed 16:9 render texture, and our underlay mirrors that texture
+// full-screen, so on 21:9/32:9 every HUD pixel stretches with it. Fix: resize the
+// overlay TEXTURE to the true panel aspect. The overlay camera derives its aspect
+// from its target texture, so it captures more horizontal space; the world-space
+// HUD canvas is a fixed-size object in front of it and lands centered, unstretched,
+// with empty capture alongside; the full-screen mirror then displays 1:1. Cursor
+// mapping survives because capture and display are both full-screen, and nothing
+// re-parents or resizes HUDCanvas, which is what mangled menus in earlier attempts.
+// Narrower-than-16:9 panels extend the height instead so the HUD is never cropped.
+internal static class OverlayAspectWiden
+{
+    static RenderTexture? _rt;
+    static int _vanillaWidth;
+    static int _vanillaHeight;
+    static bool _applied;
+
+    internal static void Apply()
+    {
+        var rtm = RenderTextureMain.instance;
+        var overlay = rtm != null ? rtm.overlayRawImage : null;
+        var rt = overlay != null ? overlay.texture as RenderTexture : null;
+        if (rt == null || Screen.height == 0) return;
+
+        if (_rt != rt)
+        {
+            _rt = rt;
+            _vanillaWidth = rt.width;
+            _vanillaHeight = rt.height;
+            _applied = false;
+        }
+
+        // Always size from the vanilla dims, never the current ones, so repeat
+        // refreshes can't compound.
+        float aspect = (float)Screen.width / Screen.height;
+        const float refAspect = 16f / 9f;
+        int wantW = _vanillaWidth;
+        int wantH = _vanillaHeight;
+        if (aspect > refAspect) wantW = Mathf.RoundToInt(_vanillaHeight * aspect);
+        else wantH = Mathf.RoundToInt(_vanillaWidth / aspect);
+
+        if (rt.width == wantW && rt.height == wantH) { _applied = true; return; }
+
+        rt.Release();
+        rt.width = wantW;
+        rt.height = wantH;
+        rt.Create();
+        _applied = true;
+        Plugin.Log.LogInfo($"[ultrawide] overlay RT {_vanillaWidth}x{_vanillaHeight} -> {wantW}x{wantH}");
+    }
+
+    internal static void Restore()
+    {
+        if (!_applied || _rt == null || _vanillaWidth <= 0) return;
+        if (_rt.width != _vanillaWidth || _rt.height != _vanillaHeight)
+        {
+            _rt.Release();
+            _rt.width = _vanillaWidth;
+            _rt.height = _vanillaHeight;
+            _rt.Create();
+        }
+        _applied = false;
+    }
+}
+
 // Renders the world to a full-screen RawImage on a sortOrder=0 canvas behind the game's
 // UI canvas (sortOrder=1), so the world fills the wide screen while the game's UI
 // hierarchy stays untouched. The game's full-screen Background (which letterboxes the
@@ -375,6 +440,7 @@ internal static class UltrawideCanvasFix
         bool active = Settings.ModEnabled && Settings.UltrawideUiFix && RequiresAspectFix();
         if (!active) { RestoreAll(); return; }
         EnsureUltrawideUnderlay();
+        OverlayAspectWiden.Apply();
     }
 
     // Wider than 16:9 (21:9, 32:9). Used by callers that specifically want the wider case
@@ -537,6 +603,7 @@ internal static class UltrawideCanvasFix
 
     internal static void RestoreAll()
     {
+        OverlayAspectWiden.Restore();
         if (_hiddenMainImage != null)
         {
             _hiddenMainImage.enabled = _hiddenMainImageWasEnabled;
