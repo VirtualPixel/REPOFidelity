@@ -195,6 +195,14 @@ Remove it. REPO Fidelity does everything REPO HD does:
 
 Report bugs on [GitHub](https://github.com/VirtualPixel/REPOFidelity/issues).
 
+## Credits
+
+Endershade tested the aspect-ratio update on a 5:4 monitor like it was 2004 and demanded, quote, "a big icon called endershade best tester" as payment.
+
+# ENDERSHADE: BEST TESTER
+
+That's the biggest heading markdown has. Consider the invoice settled.
+
 ---
 
 ## Contact
