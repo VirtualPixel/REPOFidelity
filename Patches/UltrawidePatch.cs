@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection.Emit;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.Rendering.PostProcessing;
 using UnityEngine.UI;
 
 namespace REPOFidelity.Patches;
@@ -456,12 +457,18 @@ internal static class OverlayCameraWiden
             _applied = false;
         }
 
+        // UnderlayActive matters during boot: the capture must only widen once the
+        // full-screen mirror actually displays it. Widening against the game's
+        // vanilla boxed display shows a squeezed HUD through the whole boot
+        // sequence (splash, loading) until the first menu refresh builds the
+        // underlay.
         bool want = Settings.ModEnabled
                     && Settings.UltrawideUiFix
                     && Settings.UltrawideHudUnstretch
                     && !VRCompat.Active
                     && !UltrawideCompareResolution.IsCompareActive
                     && UltrawideCanvasFix.RequiresAspectFix()
+                    && UltrawideCanvasFix.UnderlayActive
                     && Screen.height > 0;
 
         if (want)
@@ -546,6 +553,23 @@ internal static class UltrawideDiagDump
 
         if (MenuCursor.instance != null)
             log.LogInfo($"[uw-dump] MenuCursor {Path(MenuCursor.instance.transform)} localScale={MenuCursor.instance.transform.localScale}");
+
+        // The vignette hunt: which cameras carry a PostProcessLayer, which volumes
+        // hold a Vignette, and what does each camera render into.
+        foreach (var cam in Object.FindObjectsOfType<Camera>(true))
+        {
+            var ppl = cam.GetComponent<PostProcessLayer>();
+            string tex = cam.targetTexture != null ? $"{cam.targetTexture.name}({cam.targetTexture.width}x{cam.targetTexture.height})" : "screen";
+            log.LogInfo($"[uw-dump] camera {Path(cam.transform)} enabled={cam.enabled} tex={tex} aspect={cam.aspect:F3} ortho={cam.orthographic}" +
+                (ppl != null ? $" ppLayer={ppl.enabled} volLayer={ppl.volumeLayer.value}" : " ppLayer=none"));
+        }
+        foreach (var vol in Object.FindObjectsOfType<PostProcessVolume>(true))
+        {
+            string vig = "none";
+            if (vol.profile != null && vol.profile.TryGetSettings<Vignette>(out var v))
+                vig = $"intensity={v.intensity.value:F2} smooth={v.smoothness.value:F2} rounded={v.rounded.value}";
+            log.LogInfo($"[uw-dump] ppvolume {Path(vol.transform)} enabled={vol.enabled} global={vol.isGlobal} goLayer={vol.gameObject.layer} weight={vol.weight} vignette={vig}");
+        }
 
         var ppo = GameObject.Find("Post Processing Overlay");
         if (ppo != null)
@@ -635,6 +659,11 @@ internal static class UltrawideCanvasFix
         // HUD-unstretch itself runs from OverlayCameraWiden.Tick (per frame, owns
         // HudCursorRemap.Active too) so it can't race scene construction.
     }
+
+    // True while the full-screen mirror presentation is actually in place.
+    // OverlayCameraWiden gates on this so the capture never widens against the
+    // game's vanilla boxed display (boot sequence, mid-restore).
+    internal static bool UnderlayActive => _underlayCanvasGo != null && _postFxRawImage != null;
 
     // Wider than 16:9 (21:9, 32:9). Used by callers that specifically want the wider case
     // (e.g. menu camera narrowing, FOV bump, F10 vanilla-compare).
