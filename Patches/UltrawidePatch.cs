@@ -526,6 +526,7 @@ internal static class OverlayCameraWiden
         MenuEdgeArtExtend.Tick(_applied);
         HudParkedShift.Tick(_applied);
         RevealGuard.Tick(_applied);
+        RevealLeakProbe.Tick(_applied);
     }
 }
 
@@ -1134,6 +1135,104 @@ internal static class RevealGuard
         foreach (var (g, _, _, _) in _culled)
             if (g != null) g.canvasRenderer.cull = false;
         _culled.Clear();
+    }
+}
+
+// Field diagnostic for the upgrades-stay-on-screen report (Mortycio, 1.7.5). The
+// reveal-cull only ever logged each Graphic once per session and only when it happened
+// to be scanned mid-reveal, so a parked element the cull misses never named itself. This
+// censuses, in short bursts while the widen is active, every active Graphic that is
+// currently sitting in the reveal band (past the vanilla canvas but inside the capture)
+// and is NOT already culled, tagging each with how its owning SemiUI chain reads. The
+// probe skips graphics the cull already grabbed, so every line is a leak the cull missed:
+//   ancestorParked = an owner sits at its hide anchor, yet the cull did NOT hide this
+//   shown          = no owner is parked, so the game still considers it visible
+//   hide==show     = owner hides in place (shrink/alpha), not by moving
+//   noSemi         = stray off-canvas art under no SemiUI at all
+// A default LogOutput.log from the affected panel then names exactly what leaks and why
+// the cull skipped it, so the real fix lands against measured state instead of a guess.
+internal static class RevealLeakProbe
+{
+    static readonly Vector3[] _corners = new Vector3[4];
+    static float _timer;
+    static int _budget;
+    static bool _active;
+
+    internal static void Tick(bool widenActive)
+    {
+        if (!widenActive) { _active = false; _budget = 0; return; }
+        // Fresh burst each time the widen engages (scene load, menu open): enough passes
+        // to span the upgrades' ~5s show-then-hide without logging forever.
+        // prime the timer to the cadence so the first census fires on the activation frame
+        if (!_active) { _active = true; _budget = 12; _timer = 0.5f; }
+        if (_budget <= 0) return;
+        _timer += Time.unscaledDeltaTime;
+        if (_timer < 0.5f) return;
+        _timer = 0f;
+        _budget--;
+        Census();
+    }
+
+    static void Census()
+    {
+        var hud = HUDCanvas.instance;
+        if (hud == null || hud.rect == null || Screen.height == 0) return;
+
+        const float refAspect = 16f / 9f;
+        float aspect = (float)Screen.width / Screen.height;
+        float xFactor = aspect > refAspect ? aspect / refAspect : 1f;
+        float yFactor = aspect < refAspect ? refAspect / aspect : 1f;
+        if (xFactor <= 1f && yFactor <= 1f) return;
+
+        float halfW = hud.rect.sizeDelta.x * 0.5f;
+        float halfH = hud.rect.sizeDelta.y * 0.5f;
+        float capW = halfW * xFactor;
+        float capH = halfH * yFactor;
+
+        int found = 0;
+        foreach (var g in hud.rect.GetComponentsInChildren<Graphic>(false))
+        {
+            if (!g.enabled || g.color.a < 0.01f || g.canvasRenderer.cull) continue;
+
+            var rt = g.rectTransform;
+            rt.GetWorldCorners(_corners);
+            Vector2 min = new(float.MaxValue, float.MaxValue);
+            Vector2 max = new(float.MinValue, float.MinValue);
+            for (int i = 0; i < 4; i++)
+            {
+                Vector2 c = hud.rect.InverseTransformPoint(_corners[i]);
+                min = Vector2.Min(min, c);
+                max = Vector2.Max(max, c);
+            }
+
+            bool outsideCanvas = min.x < -halfW - 1f || max.x > halfW + 1f
+                              || min.y < -halfH - 1f || max.y > halfH + 1f;
+            if (!outsideCanvas) continue;
+            bool inCapture = min.x < capW && max.x > -capW && min.y < capH && max.y > -capH;
+            if (!inCapture) continue;
+
+            string path = g.transform.parent != null
+                ? g.transform.parent.name + "/" + g.gameObject.name
+                : g.gameObject.name;
+            Plugin.Log.LogInfo($"[ultrawide] leak-probe: {path} <{g.GetType().Name}> {ParkStatus(g)} " +
+                $"rect=({min.x:F0},{min.y:F0})..({max.x:F0},{max.y:F0}) cap=({capW:F0},{capH:F0}) a={g.color.a:F2}");
+            found++;
+        }
+        if (found == 0)
+            Plugin.Log.LogInfo("[ultrawide] leak-probe: reveal band clear");
+    }
+
+    static string ParkStatus(Graphic g)
+    {
+        bool anySemi = false, anyParked = false, anyShown = false;
+        foreach (var s in g.GetComponentsInParent<SemiUI>(true))
+        {
+            anySemi = true;
+            if (s.hidePosition == s.showPosition) continue;
+            if ((s.hidePositionCurrent - s.hidePosition).sqrMagnitude < 1f) anyParked = true;
+            else anyShown = true;
+        }
+        return !anySemi ? "noSemi" : anyParked ? "ancestorParked" : anyShown ? "shown" : "hide==show";
     }
 }
 

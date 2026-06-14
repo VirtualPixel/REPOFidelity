@@ -194,6 +194,7 @@ REPOFidelity has experimental RepoXR support. What it does in a headset is narro
 ## Compatibility
 
 - Works alongside most mods; only conflicts with other render pipeline mods
+- **BetterView**: turn off its `RenderTexture` options when using REPOFidelity. Both mods drive the same render texture, so `BlockRenderTextureSizeChange` and `RenderResolutionScale` fight the upscaler and garble the view (the TAB map especially). Set `BlockRenderTextureSizeChange` = false, `RenderResolutionScale` = 1.0, `BlockTemporaryResolutionDrop` = false, and let REPOFidelity own the resolution. BetterView's lighting and color effects are fine to keep
 - MenuLib powers the in-game settings menu (soft dependency; without it, settings fall back to REPOConfig). Remove it for RepoXR/VR
 - Singleplayer and multiplayer
 - Windows and Linux (Proton)
