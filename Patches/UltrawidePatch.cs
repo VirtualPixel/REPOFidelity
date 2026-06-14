@@ -978,6 +978,23 @@ internal static class RevealGuard
         }
     }
 
+    // The first SemiUI in a Graphic's ancestry (self upward) that is currently sitting
+    // at its hide anchor, or null if none is parked. Walks the WHOLE chain, not just the
+    // nearest SemiUI: the inventory parks the parent InventoryUI while each child slot
+    // keeps its own independent SemiUI, so a slot that still holds an item reads "shown"
+    // at the slot level yet is carried fully off-screen by the parked parent. Parked is
+    // judged by the SemiUI's own hidePositionCurrent (the animated value) reaching
+    // hidePosition; both are fields in the same space, so it holds for
+    // animateTheEntireObject either way, unlike a transform.localPosition read.
+    static SemiUI? ParkedOwner(Graphic g)
+    {
+        foreach (var s in g.GetComponentsInParent<SemiUI>(true))
+            if (s.hidePosition != s.showPosition
+                && (s.hidePositionCurrent - s.hidePosition).sqrMagnitude < 1f)
+                return s;
+        return null;
+    }
+
     // Uncull the moment a culled element moves, rescales, or deactivates; a
     // 1s scan cadence is far too slow to hand a shown element back.
     static void WatchCulled()
@@ -992,9 +1009,12 @@ internal static class RevealGuard
             }
             // A parked-SemiUI cull is released the instant the owner leaves its hide
             // anchor (it has started animating open); the child Graphic's own
-            // localPosition never moves on a show, so the parent has to be watched.
+            // localPosition never moves on a show, so the owner has to be watched. Read
+            // its animated hidePositionCurrent against the parked target rather than the
+            // transform: that pair lives in the same space for both animate-modes, and a
+            // parked parent that carries a "shown" child slot is caught either way.
             bool unparked = semi != null
-                && ((Vector2)semi.transform.localPosition - semi.hidePosition).sqrMagnitude >= 1f;
+                && (semi.hidePositionCurrent - semi.hidePosition).sqrMagnitude >= 1f;
             var t = g.rectTransform;
             if (!g.isActiveAndEnabled || t.localPosition != pos || t.localScale != scale || unparked)
             {
@@ -1066,24 +1086,19 @@ internal static class RevealGuard
             if (cg != null && cg.alpha < 0.01f) continue;
 
             // A Graphic under a currently-parked SemiUI element is not authored-visible
-            // HUD: vanilla shows none of it in this state. SemiUI parks by moving its
-            // transform to hidePosition and disabling only the child uiText; it does not
+            // HUD: vanilla shows none of it in this state. SemiUI parks by sliding its
+            // mover to hidePosition and disabling only the child uiText; it does not
             // deactivate its other children (AllChildrenSetActive(false)) until a full
             // show/hide cycle has run. An element that never opens in a given scene
             // (chat on the title screen) therefore leaves its frame/box children active
             // at the parked anchor, and the widened capture reveals them past the canvas
             // edge. Those children usually only SPILL the edge (the parent pivot sits
             // just inside), so the fullyOutside test below leaves them showing. Promote
-            // the spill to cullable when the owning SemiUI is parked: the whole element
-            // is meant to be hidden, and WatchCulled unculls the frame it animates open
-            // (localPosition leaves the park).
-            bool parkedSemiUI = false;
-            var semi = g.GetComponentInParent<SemiUI>();
-            if (semi != null && semi.hidePosition != semi.showPosition)
-            {
-                parkedSemiUI = ((Vector2)semi.transform.localPosition - semi.hidePosition)
-                    .sqrMagnitude < 1f;
-            }
+            // the spill to cullable when an owning SemiUI is parked: the whole element
+            // is meant to be hidden, and WatchCulled unculls it the moment that owner
+            // animates open.
+            var semi = ParkedOwner(g);
+            bool parkedSemiUI = semi != null;
 
             // Cull only what the game itself has parked out of sight (a SemiUI sitting at
             // its hide anchor). The geometric "fully past the vanilla canvas" test used to

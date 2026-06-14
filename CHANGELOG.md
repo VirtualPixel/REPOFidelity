@@ -1,3 +1,9 @@
+## 1.7.5
+
+- Ultrawide: stowing the map clears the inventory off the wide panel again. 1.7.4 dropped the geometric reveal-cull and left only the parked-element culling, but that only ever checked the nearest SemiUI above a revealed graphic. The inventory parks as a whole (the parent slides off-canvas) while every slot keeps its own SemiUI, so a slot still holding an item read as "shown" at the slot level even though the parked parent had carried it past the canvas edge, and its icon and battery bars sat in the revealed band on a 21:9/32:9 panel instead of hiding with everything else. The cull now walks the whole SemiUI chain above a revealed graphic and judges parked by the element's own animated hide position instead of its transform, so a slot carried off by a parked parent is caught the same as one parked on its own, and un-culls the instant anything in that chain animates open. Reported by AncientPixel-Aron on 21:9.
+
+---
+
 ## 1.7.4
 
 - Ultrawide: the main-menu scene renders right on a wide panel. The title truck used to render fat and stretched while the in-game world looked correct. The upscaler resizes the shared render texture to the panel resolution and the game re-enables its listed cameras to pick that up, but the menu camera is not in that list, so its aspect stayed at the boot-time 16:9 and a 16:9 view got stretched across the panel. The menu camera now tracks the panel aspect like the world cameras, and widens HOR+ (vanilla vertical framing, held at 120 degrees horizontal so 32:9 doesn't fisheye) so the truck sits back at its real size instead of stretched or zoomed. Reported by Mortycio on 32:9 and AncientPixel-Aron on 21:9. (Wide panels for now; the tall sub-16:9 case is still a follow-up.)
