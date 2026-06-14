@@ -155,33 +155,46 @@ internal static class MenuCameraFovOverride
         float corrected = ApplyAspectCorrection(_vanillaFov);
         if (!Mathf.Approximately(cam.fieldOfView, corrected))
             cam.fieldOfView = corrected;
+
+        // The world cameras get their aspect forced to the panel: the upscaler resizes
+        // the shared game RT to the panel resolution and RenderTextureMain re-enables its
+        // listed cameras to refresh them. The menu camera (CameraNoPlayerTarget) is not in
+        // that list, so its aspect stays pinned at the boot-time 16:9 while it renders into
+        // the panel-aspect RT, and the 16:9 view is stretched across the panel (the fat
+        // truck on the title screen at 32:9). Force it to the panel aspect so it renders
+        // pre-squeezed; the HOR+ FOV above then fills the wider panel at correct
+        // proportions with no stretch. Wide panels only for now (the tall <16:9 case is
+        // still unhandled for the menu camera).
+        if (Screen.height != 0)
+        {
+            float panelAspect = (float)Screen.width / Screen.height;
+            if (panelAspect > 16f / 9f + 0.01f && !Mathf.Approximately(cam.aspect, panelAspect))
+                cam.aspect = panelAspect;
+        }
     }
 
     internal static void Restore()
     {
         if (_captured && _trackedCam != null)
+        {
             _trackedCam.fieldOfView = _vanillaFov;
+            _trackedCam.ResetAspect();
+        }
         _captured = false;
         _trackedCam = null;
     }
 
-    // Full VERT- on the menu camera: vFOV reduced so the horizontal span matches
-    // the 16:9 framing the title set was built for. The menu set has hard edges
-    // (black void past the backdrop); any extra horizontal reveal shows them as a
-    // hard stop line. The old partial 0.51 strength left exactly that visible at
-    // 21:9. Menu framing is static art, so cropping a little vertical costs
-    // nothing.
-    static float ApplyAspectCorrection(float baseFov)
-    {
-        if (Screen.height == 0) return baseFov;
-        float aspect = (float)Screen.width / Screen.height;
-        const float refAspect = 16f / 9f;
-        if (aspect <= refAspect + 0.01f) return baseFov;
-
-        // target_vFov = 2 * atan(tan(baseFov/2) * refAspect / aspect)
-        float baseRad = baseFov * Mathf.Deg2Rad;
-        return 2f * Mathf.Atan(Mathf.Tan(baseRad / 2f) * refAspect / aspect) * Mathf.Rad2Deg;
-    }
+    // HOR+ on the menu camera: keep the vanilla vertical FOV so a wider panel reveals
+    // more of the title scene at the sides, with the truck sitting back at its authored
+    // size, instead of cropping vertical and zooming in. Reuses the same capped-HOR+
+    // curve as the gameplay default (aspect-aware, held at 120 degrees horizontal so
+    // 32:9 doesn't fisheye), paired with the panel-aspect set below so there is no
+    // stretch. The earlier VERT- crop held a strict 16:9 horizontal framing to dodge the
+    // menu set's hard edges, but the set extends far enough horizontally that the wider
+    // view reads clean (matches the reference wide shot), and the extended side gradient
+    // covers the near edge.
+    static float ApplyAspectCorrection(float baseFov) =>
+        CameraZoomFovOverride.ComputeAspectAwareDefault(baseFov);
 }
 
 [HarmonyPatch(typeof(CameraNoPlayerTarget), "Awake")]
@@ -1072,13 +1085,22 @@ internal static class RevealGuard
                     .sqrMagnitude < 1f;
             }
 
-            // fully off-canvas = invisible vanilla = safe to hide
+            // Cull only what the game itself has parked out of sight (a SemiUI sitting at
+            // its hide anchor). The geometric "fully past the vanilla canvas" test used to
+            // cull on its own, but on a widened panel that band is exactly where
+            // legitimately-shown UI lives: the rightmost inventory slot, scrolled settings
+            // rows, MenuLib controls. It kept eating real UI, and WatchCulled popped it
+            // back the instant it moved (the settings arrows flickering in while you
+            // scroll). Parked-SemiUI culling plus the named cover/edge-art handlers cover
+            // the real reveal cases (the parked HUD lot, e.g. the Arena Race timer on the
+            // title screen), so the blanket geometric cull is gone. fullyOutside is kept
+            // for the diagnostic log line only.
             bool fullyOutside = max.x <= -halfW + 1f || min.x >= halfW - 1f
                              || max.y <= -halfH + 1f || min.y >= halfH - 1f;
-            if ((fullyOutside || parkedSemiUI) && !g.canvasRenderer.cull)
+            if (parkedSemiUI && !g.canvasRenderer.cull)
             {
                 g.canvasRenderer.cull = true;
-                _culled.Add((g, rt.localPosition, rt.localScale, parkedSemiUI ? semi : null));
+                _culled.Add((g, rt.localPosition, rt.localScale, semi));
             }
 
             if (!_logged.Add(g.GetInstanceID())) continue;
@@ -1086,7 +1108,7 @@ internal static class RevealGuard
                 ? g.transform.parent.name + "/" + g.gameObject.name
                 : g.gameObject.name;
             Plugin.Log.LogInfo($"[ultrawide] reveal: {path} <{g.GetType().Name}> " +
-                $"{(fullyOutside ? "hidden" : parkedSemiUI ? "parked-hidden" : "spills")} " +
+                $"{(parkedSemiUI ? "parked-hidden" : fullyOutside ? "outside" : "spills")} " +
                 $"rect=({min.x:F0},{min.y:F0})..({max.x:F0},{max.y:F0}) " +
                 $"canvas=({halfW:F0},{halfH:F0}) cap=({capW:F0},{capH:F0}) a={g.color.a:F2}");
         }

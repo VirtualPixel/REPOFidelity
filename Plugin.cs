@@ -28,14 +28,24 @@ public class Plugin : BaseUnityPlugin
                            "Please remove REPO_HD to avoid conflicts.");
         }
 
-        // Hide from REPOConfig; we use our own settings menu via MenuLib
-        Config.Bind("_", "Hidden", true,
-            new BepInEx.Configuration.ConfigDescription("", null, "HideFromREPOConfig"));
-        Config.SaveOnConfigSet = false;
+        bool menuLib = BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("nickklmao.menulib");
+
+        // The HideFromREPOConfig marker is presence-based: REPOConfig hides the mod
+        // whenever the tag exists, regardless of the bound value. So bind it only when
+        // MenuLib is the settings surface; without MenuLib, skip it so REPOConfig shows
+        // the entries as the only in-game config surface.
+        if (menuLib)
+            Config.Bind("_", "Hidden", true,
+                new BepInEx.Configuration.ConfigDescription("", null, "HideFromREPOConfig"));
+        Config.SaveOnConfigSet = true;
 
         Settings.Init();
         GPUDetector.Detect();
         Settings.ResolveAutoDefaults();
+
+        // Bind settings to ConfigEntries after defaults resolve so the getters
+        // return real values. Visibility is conditional; the binding is not.
+        ConfigIntegration.Initialize(Config);
 
         _harmony = new Harmony(PluginGuid);
         // Patch each class individually so one bad HarmonyPatch annotation
@@ -55,10 +65,14 @@ public class Plugin : BaseUnityPlugin
         Log.LogInfo($"Display: {UnityEngine.Screen.width}x{UnityEngine.Screen.height} (aspect {(float)UnityEngine.Screen.width / UnityEngine.Screen.height:F2})");
         Log.LogInfo($"DLSS Available: {GPUDetector.DlssAvailable}");
 
-        if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("nickklmao.menulib"))
+        if (menuLib)
         {
             MenuIntegration.Initialize();
             Log.LogInfo("MenuLib detected, settings added to graphics menu");
+        }
+        else
+        {
+            Log.LogInfo("MenuLib not found, settings exposed via REPOConfig / config file");
         }
     }
 

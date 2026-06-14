@@ -129,8 +129,19 @@ internal class DLSSUpscaler : IUpscaler
         // bridge caches shared handles by pointer, so drop the cache on re-init.
         NGXBridge.NGXBridge_ClearSharedCache();
 
+        // Match the DLSS output buffer to the game RT format (the camera renders into
+        // _outputRT, created at the game RT format by UpscalerManager). A hardcoded 8-bit
+        // ARGB32 here clamps every value to [0,1], so on an HDR display, where the game RT
+        // carries highlights above 1, the upscaled frame blows out to white ("overexposed"
+        // on a 32:9 HDR panel). The game RT format is already a working UAV target in this
+        // codebase (_outputRT uses it with enableRandomWrite), and DLSS outputs FP16
+        // natively, so matching it preserves range with no extra risk; a format NGX rejects
+        // simply falls back to the passthrough blit in OnRenderImage.
+        var outputFormat = _camera != null && _camera.targetTexture != null
+            ? _camera.targetTexture.format
+            : RenderTextureFormat.ARGB32;
         if (_dlssOutputRT != null) { _dlssOutputRT.Release(); UnityEngine.Object.Destroy(_dlssOutputRT); }
-        _dlssOutputRT = new RenderTexture(_outputWidth, _outputHeight, 0, RenderTextureFormat.ARGB32)
+        _dlssOutputRT = new RenderTexture(_outputWidth, _outputHeight, 0, outputFormat)
         {
             filterMode = FilterMode.Bilinear,
             enableRandomWrite = true

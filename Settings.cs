@@ -154,9 +154,10 @@ internal static class Settings
         get => D.ultrawideUiFix;
         set { D.ultrawideUiFix = value; _file.Save(); OnSettingTweaked(); }
     }
-    // Display the HUD/post-FX overlay at a centered aspect-correct 16:9 box
-    // instead of stretched across the panel, with cursor mapping compensated.
-    // On by default so non-16:9 panels just work; the toggle is the opt-out
+    // Render the HUD/post-FX overlay at the panel aspect (the overlay camera frames
+    // the full panel, the canvas renders pre-squeezed, and the display stretch cancels)
+    // so the HUD spans the screen aspect-correct instead of smeared, with cursor mapping
+    // compensated. On by default so non-16:9 panels just work; the toggle is the opt-out
     // back to the classic stretched presentation. Inert on 16:9 displays.
     internal static bool UltrawideHudUnstretch
     {
@@ -422,7 +423,6 @@ internal static class Settings
         LoadAutoTune();
 
         _initComplete = true;
-        MigrateOldConfig(dir);
         ValidateResolutionForCurrentMonitor();
         ValidateMachineForSettings();
     }
@@ -549,21 +549,6 @@ internal static class Settings
             ResolveAutoDefaults();
             OnSettingsChanged?.Invoke();
         }
-    }
-
-    private static void MigrateOldConfig(string pluginDir)
-    {
-        // nuke old BepInEx cfg so REPOConfig stops showing our entries
-        try
-        {
-            string oldCfg = Path.Combine(pluginDir, "..", "..", "config", "Vippy.REPOFidelity.cfg");
-            if (File.Exists(oldCfg))
-            {
-                File.Delete(oldCfg);
-                Plugin.Log.LogDebug("Deleted old BepInEx config");
-            }
-        }
-        catch { }
     }
 
     private static void OnChanged()

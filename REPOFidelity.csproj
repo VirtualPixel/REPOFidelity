@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <Authors>Vippy</Authors>
     <!-- Fourth component = tester iteration. BepInEx rejects SemVer pre-release tags. -->
-    <Version>1.7.3</Version>
+    <Version>1.7.4</Version>
     <RootNamespace>REPOFidelity</RootNamespace>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>

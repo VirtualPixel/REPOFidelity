@@ -168,7 +168,7 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 ## Installation
 
 1. Install [BepInEx 5](https://thunderstore.io/c/repo/p/BepInEx/BepInExPack/)
-2. Install [MenuLib](https://thunderstore.io/c/repo/p/nickklmao/MenuLib/) for the settings UI
+2. Install [MenuLib](https://thunderstore.io/c/repo/p/nickklmao/MenuLib/) for the in-game settings menu (optional; without it, settings appear in REPOConfig instead)
 3. Drop this mod in `BepInEx/plugins/`
 4. Launch: benchmark runs automatically on first level
 
@@ -182,10 +182,19 @@ Remove it. REPO Fidelity does everything REPO HD does:
 - Extraction point flicker fix
 - Plus: DLSS upscaling, auto-benchmark, CPU-aware tuning, shadow optimization, full settings menu, performance presets, 15+ configurable quality settings
 
+## VR (RepoXR)
+
+REPOFidelity has experimental RepoXR support. What it does in a headset is narrow on purpose:
+
+- **The visual features are flatscreen only.** DLSS/upscaling, the FOV and ultrawide handling, and the post-processing redirect and jitter the main camera in ways that assume one flat display and would break stereo rendering. When a VR headset is active the mod stands that whole pipeline down, so it does not change what you see in the headset.
+- **The optimization layer still runs in VR.** Shadow culling, the CPU/GC patches, and the quality settings (shadow, light, texture quality, draw distance) never touch the stereo view, so they still buy you frames.
+- **VR render resolution is RepoXR's job**, through its own CameraResolution setting.
+- **MenuLib and RepoXR conflict.** RepoXR is incompatible with MenuLib, which powers REPOFidelity's in-game graphics menu. Remove MenuLib from your VR profile: the mod is a soft dependency and runs fine without it, and its settings then appear in REPOConfig (or edit the config file directly). The performance settings are the ones that matter in VR anyway.
+
 ## Compatibility
 
 - Works alongside most mods; only conflicts with other render pipeline mods
-- MenuLib required for settings UI (soft dependency; mod works without it)
+- MenuLib powers the in-game settings menu (soft dependency; without it, settings fall back to REPOConfig). Remove it for RepoXR/VR
 - Singleplayer and multiplayer
 - Windows and Linux (Proton)
 
