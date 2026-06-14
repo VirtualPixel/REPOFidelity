@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <Authors>Vippy</Authors>
     <!-- Fourth component = tester iteration. BepInEx rejects SemVer pre-release tags. -->
-    <Version>1.7.1</Version>
+    <Version>1.7.2</Version>
     <RootNamespace>REPOFidelity</RootNamespace>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
@@ -146,7 +146,18 @@ namespace REPOFidelity
       <DlssSrc>$(OutputPath)nvngx_dlss.dll</DlssSrc>
       <ShaderBundleSrc>$(OutputPath)repofidelity_shaders</ShaderBundleSrc>
       <NgxBridgeSrc>$(OutputPath)ngx_bridge.dll</NgxBridgeSrc>
+      <EnforceDlssPackaging Condition="'$(EnforceDlssPackaging)' == ''">true</EnforceDlssPackaging>
     </PropertyGroup>
+
+    <!-- Hard gate: never ship a package without the DLSS runtime again. 1.7.1
+         went out missing both ngx DLLs because these were only Warnings and the
+         Copies were Exists()-guarded, so an absent file dropped silently. Fail
+         the package instead of warning. For a deliberate DLSS-less build, pass
+         -p:EnforceDlssPackaging=false. -->
+    <Error Condition="'$(EnforceDlssPackaging)' == 'true' and !Exists('$(DlssSrc)')"
+           Text="PackageMod ABORTED: nvngx_dlss.dll missing from $(OutputPath). This is the exact regression that shipped DLSS broken in 1.7.1. Restore the ngx DLLs to the build output before packaging (or pass -p:EnforceDlssPackaging=false to bypass)." />
+    <Error Condition="'$(EnforceDlssPackaging)' == 'true' and !Exists('$(NgxBridgeSrc)')"
+           Text="PackageMod ABORTED: ngx_bridge.dll missing from $(OutputPath). DLSS needs both ngx DLLs. Restore it before packaging (or pass -p:EnforceDlssPackaging=false to bypass)." />
 
     <UpdateManifestVersion ManifestPath="$(SourceManifest)" NewVersion="$(Version)" />
 

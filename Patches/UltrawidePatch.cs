@@ -934,7 +934,7 @@ internal static class HudParkedShift
 // machine we can't touch names every revealed element.
 internal static class RevealGuard
 {
-    static readonly List<(Graphic G, Vector3 Pos, Vector3 Scale)> _culled = new();
+    static readonly List<(Graphic G, Vector3 Pos, Vector3 Scale, SemiUI? Semi)> _culled = new();
     static readonly HashSet<int> _logged = new();
     static readonly Vector3[] _corners = new Vector3[4];
     static float _timer;
@@ -971,14 +971,19 @@ internal static class RevealGuard
     {
         for (int i = _culled.Count - 1; i >= 0; i--)
         {
-            var (g, pos, scale) = _culled[i];
+            var (g, pos, scale, semi) = _culled[i];
             if (g == null)
             {
                 _culled.RemoveAt(i);
                 continue;
             }
+            // A parked-SemiUI cull is released the instant the owner leaves its hide
+            // anchor (it has started animating open); the child Graphic's own
+            // localPosition never moves on a show, so the parent has to be watched.
+            bool unparked = semi != null
+                && ((Vector2)semi.transform.localPosition - semi.hidePosition).sqrMagnitude >= 1f;
             var t = g.rectTransform;
-            if (!g.isActiveAndEnabled || t.localPosition != pos || t.localScale != scale)
+            if (!g.isActiveAndEnabled || t.localPosition != pos || t.localScale != scale || unparked)
             {
                 g.canvasRenderer.cull = false;
                 _culled.RemoveAt(i);
@@ -1029,13 +1034,33 @@ internal static class RevealGuard
             var cg = g.GetComponentInParent<CanvasGroup>();
             if (cg != null && cg.alpha < 0.01f) continue;
 
+            // A Graphic under a currently-parked SemiUI element is not authored-visible
+            // HUD: vanilla shows none of it in this state. SemiUI parks by moving its
+            // transform to hidePosition and disabling only the child uiText; it does not
+            // deactivate its other children (AllChildrenSetActive(false)) until a full
+            // show/hide cycle has run. An element that never opens in a given scene
+            // (chat on the title screen) therefore leaves its frame/box children active
+            // at the parked anchor, and the widened capture reveals them past the canvas
+            // edge. Those children usually only SPILL the edge (the parent pivot sits
+            // just inside), so the fullyOutside test below leaves them showing. Promote
+            // the spill to cullable when the owning SemiUI is parked: the whole element
+            // is meant to be hidden, and WatchCulled unculls the frame it animates open
+            // (localPosition leaves the park).
+            bool parkedSemiUI = false;
+            var semi = g.GetComponentInParent<SemiUI>();
+            if (semi != null && semi.hidePosition != semi.showPosition)
+            {
+                parkedSemiUI = ((Vector2)semi.transform.localPosition - semi.hidePosition)
+                    .sqrMagnitude < 1f;
+            }
+
             // fully off-canvas = invisible vanilla = safe to hide
             bool fullyOutside = max.x <= -halfW + 1f || min.x >= halfW - 1f
                              || max.y <= -halfH + 1f || min.y >= halfH - 1f;
-            if (fullyOutside && !g.canvasRenderer.cull)
+            if ((fullyOutside || parkedSemiUI) && !g.canvasRenderer.cull)
             {
                 g.canvasRenderer.cull = true;
-                _culled.Add((g, rt.localPosition, rt.localScale));
+                _culled.Add((g, rt.localPosition, rt.localScale, parkedSemiUI ? semi : null));
             }
 
             if (!_logged.Add(g.GetInstanceID())) continue;
@@ -1043,7 +1068,7 @@ internal static class RevealGuard
                 ? g.transform.parent.name + "/" + g.gameObject.name
                 : g.gameObject.name;
             Plugin.Log.LogInfo($"[ultrawide] reveal: {path} <{g.GetType().Name}> " +
-                $"{(fullyOutside ? "hidden" : "spills")} " +
+                $"{(fullyOutside ? "hidden" : parkedSemiUI ? "parked-hidden" : "spills")} " +
                 $"rect=({min.x:F0},{min.y:F0})..({max.x:F0},{max.y:F0}) " +
                 $"canvas=({halfW:F0},{halfH:F0}) cap=({capW:F0},{capH:F0}) a={g.color.a:F2}");
         }
@@ -1051,7 +1076,7 @@ internal static class RevealGuard
 
     static void UncullAll()
     {
-        foreach (var (g, _, _) in _culled)
+        foreach (var (g, _, _, _) in _culled)
             if (g != null) g.canvasRenderer.cull = false;
         _culled.Clear();
     }

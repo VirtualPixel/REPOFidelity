@@ -1,3 +1,10 @@
+## 1.7.2
+
+- DLSS is back. 1.7.1 shipped without its two NVIDIA runtime files (`nvngx_dlss.dll` and `ngx_bridge.dll`), so every 1.7.1 install logged "nvngx_dlss.dll missing or invalid" on a loop and ran with DLSS/DLAA disabled. The package step pulled those DLLs from the build output and only warned when they were absent, so a clean output dir silently produced a DLL-less zip. They are restored, and the package step now hard-fails if either ngx file is missing instead of warning, so a release can't go out without them again. Reinstalling 1.7.1 didn't help, since the package itself had nothing to reinstall; update to 1.7.2 and DLSS works again (on Linux/Proton you still need NVAPI enabled for it to actually engage).
+- Ultrawide: parked HUD elements stop leaking past the widened capture. SemiUI hides an element by sliding its transform to a park anchor without deactivating the frame and box children, so on an element that never opens in a scene (the chat box on the title screen) the widened capture caught those children spilling past the canvas edge. A Graphic under a parked SemiUI is now culled even when it only spills the edge, and it un-culls the instant the element animates open, so what you see still matches a 16:9 player.
+
+---
+
 ## 1.7.1
 
 - The ultrawide HUD stretch is fixed (the 1.7.0 known issue, reported by Mortycio and AncientPixel-Aron). Since 1.6.0 the mod displayed the game's 16:9 HUD texture stretched across the full panel, so menus and HUD rendered smeared and off-center on 21:9/32:9. The HUD lives on a world-space canvas captured by an orthographic overlay camera, and the fix is at that camera: its aspect now matches the panel (the capture grows vertically on narrower-than-16:9 panels so nothing crops), the canvas renders pre-squeezed into the texture, and the full-screen display stretch cancels it exactly. The frame-space vignette spans the whole panel with no seam, and the mouse mapping derives from the same per-frame condition as the framing so the cursor and the geometry can't desync. Works at 21:9, 32:9, 16:10, 4:3 and 5:4.
