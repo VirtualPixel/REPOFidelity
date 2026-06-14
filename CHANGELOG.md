@@ -1,3 +1,9 @@
+## 1.7.3
+
+- Ultrawide: the menus stop disappearing. 1.7.2 added a pass that hides HUD graphics the widened capture reveals past the vanilla 16:9 canvas, on the premise that anything fully outside that canvas is invisible to a 16:9 player and safe to cull. That premise is wrong for anything interactive or animated, and the pass was eating the menus: the mouse cursor vanished (it follows the pointer 1:1 across the whole panel, so it spends most of its time past the canvas edge where it is genuinely visible), the main-menu buttons went invisible until you hovered them, and the Semibot model in the pause menu blinked out a second after the page opened. None of it could self-correct: the watchdog that hands a culled element back watches the element's own transform, but the cursor drives its parent, a parked button rests without moving, and the model sits on a render texture that never moves, so once culled they stayed gone. The cursor and everything under a menu page are now exempt from the cull, which only ever needed to own the in-game HUD parking lot and stray off-canvas art. Reported by AncientPixel-Aron, komkomissarov, b3nz1k and Mortycio. Thanks to everyone who reported it.
+
+---
+
 ## 1.7.2
 
 - DLSS is back. 1.7.1 shipped without its two NVIDIA runtime files (`nvngx_dlss.dll` and `ngx_bridge.dll`), so every 1.7.1 install logged "nvngx_dlss.dll missing or invalid" on a loop and ran with DLSS/DLAA disabled. The package step pulled those DLLs from the build output and only warned when they were absent, so a clean output dir silently produced a DLL-less zip. They are restored, and the package step now hard-fails if either ngx file is missing instead of warning, so a release can't go out without them again. Reinstalling 1.7.1 didn't help, since the package itself had nothing to reinstall; update to 1.7.2 and DLSS works again (on Linux/Proton you still need NVAPI enabled for it to actually engage).

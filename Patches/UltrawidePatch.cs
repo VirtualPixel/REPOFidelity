@@ -1031,6 +1031,24 @@ internal static class RevealGuard
             if (!inCapture) continue;
 
             if (HudCoverStretch.Manages(rt) || MenuEdgeArtExtend.Manages(rt)) continue;
+            // The mouse cursor follows the pointer across the whole panel: HudCursorRemap
+            // runs it 1:1 under the mouse, including past the vanilla canvas edges, so it
+            // is genuinely visible wherever it parks on a widened display. The
+            // "outside the canvas = invisible on 16:9" premise never holds for it, and the
+            // cull can't be self-correcting either: MenuCursor moves its PARENT transform,
+            // while the Graphic scanned here is the child mesh whose own localPosition and
+            // scale never change, so WatchCulled (which watches the Graphic's transform)
+            // can't hand it back even while the cursor moves. Exempt it outright.
+            if (g.GetComponentInParent<MenuCursor>() != null) continue;
+            // Menu pages are off-limits too. A MenuPage slides and animates as a whole
+            // unit, parks its buttons by SemiUI hover state, and hosts the rotating
+            // Semibot model on a render texture that never moves. The static
+            // outside-the-canvas test produces false positives across all of it (the
+            // whole main menu logged as "hidden"), and WatchCulled can't recover a button
+            // resting at its parked anchor or a still model. Whatever a page legitimately
+            // shows is its own business; the reveal cull only owns the in-game HUD parking
+            // lot and stray off-canvas art, neither of which lives under a MenuPage.
+            if (g.GetComponentInParent<MenuPage>() != null) continue;
             var cg = g.GetComponentInParent<CanvasGroup>();
             if (cg != null && cg.alpha < 0.01f) continue;
 
