@@ -85,5 +85,8 @@ public class Plugin : BaseUnityPlugin
     private void OnGUI()
     {
         Overlay.Draw();
+#if DEBUG
+        DebugUltrawideWindow.DrawLabel(); // Debug builds only: ultrawide sim label
+#endif
     }
 }

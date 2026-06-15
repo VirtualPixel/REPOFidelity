@@ -110,7 +110,8 @@ Surface detail on the vase and sharper edges on the clown figure. Shadows render
 
 **Ultrawide & Field of View**
 - **Aspect-ratio support - 21:9, 32:9, 16:10**: world view fills the full screen instead of being squashed into a centered 16:9 box; wider panels lose the side letterbox. 4:3 and 5:4 fall back to vanilla letterbox, the HUD is a fixed 16:9 layout and filling a much-taller panel either floats it or crops the edges, so vanilla's letterbox just looks right there. Post-processing (vignette, bloom, screen flashes) extends across the full aspect, HUD positioning untouched so other mods that hook the UI hierarchy still work
-- **Aspect-aware default FOV**: 16:9 stays at vanilla, 21:9 lerps up to ~80°, 32:9 hits 90°. 16:10 and narrower keep vanilla FOV (already covers what HOR+ shows). Slider override (0-110°) wins when set
+- **Sharp HUD**: the HUD, menus and text render at your panel's pixel density instead of the game's fixed low-res overlay texture, so they're crisp at every aspect (the difference is biggest on 4K and on ultrawide). Toggle in the post-processing section, on by default
+- **Aspect-aware default FOV**: pure HOR+, vertical FOV stays at vanilla and horizontal expands with the panel so wider screens show more at the sides, held at 135° horizontal at the extreme (32:9) so it doesn't fisheye. Slider override (0-110°) wins when set
 - **Vertical FOV slider** with smooth animation between values
 - **Title-screen polish on ultrawide**: menu camera narrows to hide the world edge past the truck, fog tightens to keep distant scene assets fading inside fog rather than popping at the rolling-treadmill despawn line
 - **F10 vanilla 16:9 compare view** for side-by-side comparison without losing your saved resolution

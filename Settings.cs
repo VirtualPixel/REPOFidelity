@@ -164,6 +164,15 @@ internal static class Settings
         get => D.ultrawideHudUnstretch;
         set { D.ultrawideHudUnstretch = value; _file.Save(); OnSettingTweaked(); }
     }
+    // Lift the overlay render texture to panel pixel density so the HUD/menus/text
+    // render crisp instead of riding the game's fixed low-res overlay RT. Applies at
+    // every aspect (independent of the ultrawide widen); the opt-out is the vanilla
+    // soft HUD.
+    internal static bool SharpHud
+    {
+        get => D.sharpHud;
+        set { D.sharpHud = value; _file.Save(); OnSettingTweaked(); }
+    }
     internal static KeyCode ToggleKey
     {
         get => (KeyCode)D.toggleKey;

@@ -21,7 +21,7 @@ internal static class MenuIntegration
     private static REPOSlider? _textureSlider, _lightDistSlider;
     private static REPOSlider? _fogSlider, _viewDistSlider;
     private static REPOToggle? _motionBlurToggle, _caToggle, _lensToggle, _grainToggle;
-    private static REPOToggle? _flickerToggle, _overlayToggle;
+    private static REPOToggle? _flickerToggle, _overlayToggle, _sharpHudToggle;
     private static REPOSlider? _windowModeSlider, _resolutionSlider, _fpsSlider, _gammaSlider;
     private static REPOSlider? _fovSlider;
     private static REPOToggle? _ultrawideUiToggle, _ultrawideHudToggle;
@@ -318,6 +318,8 @@ internal static class MenuIntegration
                 () => GraphicsManager.instance.UpdateGlitchLoop()), out _glitchToggle);
         AddModToggle("Pixelation (retro style)", Settings.Pixelation,
             b => ModSet(() => Settings.Pixelation = b), out _pixelationToggle);
+        AddModToggle("Sharp HUD", Settings.SharpHud,
+            b => ModSet(() => Settings.SharpHud = b), out _sharpHudToggle);
 
         // Performance
         AddLabel("Performance");
@@ -546,6 +548,7 @@ internal static class MenuIntegration
         _caToggle?.SetState(Settings.ChromaticAberration, false);
         _lensToggle?.SetState(Settings.LensDistortion, false);
         _grainToggle?.SetState(Settings.FilmGrain, false);
+        _sharpHudToggle?.SetState(Settings.SharpHud, false);
         _flickerToggle?.SetState(Settings.ExtractionPointFlicker, false);
         _overlayToggle?.SetState(Settings.DebugOverlay, false);
         SetNum(_fovSlider, Settings.VerticalFovOverride);

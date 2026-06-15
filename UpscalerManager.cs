@@ -382,6 +382,13 @@ internal class UpscalerManager : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.F11) && Settings.ToggleKey != KeyCode.F11)
             DispatchF11();
 
+#if DEBUG
+        // Debug builds only (compiled out of the Release buildzip): F7 forces
+        // ultrawide/narrow aspects on a 16:9 panel for local HUD testing.
+        if (Input.GetKeyDown(KeyCode.F7)) DebugUltrawideWindow.Toggle();
+        DebugUltrawideWindow.Tick();
+#endif
+
         Settings.TickDeferredWindowReset();
 
         // F10-compare aspect override and main-menu fog tightening. Both self-gated.
@@ -922,3 +929,117 @@ internal class UpscalerManager : MonoBehaviour
         Instance = null;
     }
 }
+
+#if DEBUG
+// Debug-build helper (compiled out of the Release buildzip): force the live game
+// window through ultrawide and narrow aspects on a 16:9 monitor so the ultrawide
+// HUD path (parked-shift, reveal-cull, overlay-RT lift) can be exercised locally
+// without an actual ultrawide panel. F7 cycles native -> 21:9 -> 32:9 -> 16:10 ->
+// 4:3 -> 5:4 -> native. Routes through the mod's Settings.SetResolution so the
+// upscaler re-renders AT the sim resolution (otherwise it stays at native output and
+// the world double-scales: the truck and scene stretch). Settings.SetResolution's
+// OnChanged only fires NotifyChanged; the <50%/aspect resolution validator runs only
+// at Init, so this does NOT trigger a deferred-reset fight. All modes force borderless
+// FullScreenWindow: it renders the requested backbuffer aspect scaled to fill the
+// whole display, so the sim stays fullscreen and the cursor spans the entire screen
+// (an earlier Windowed attempt boxed the cursor into a small window). Native-mode
+// clamping only bites exclusive fullscreen, not borderless. The cursor slowdown from
+// the overlay-RT lift is fixed separately by HudCursorRemap.OverlayScale. Re-asserts
+// if the game snaps the window back. NOTE: forcing a sim persists its resolution to
+// settings.json; the Init validator resets it to native on the next launch.
+internal static class DebugUltrawideWindow
+{
+    // Aspect, not absolute size: at toggle time we fit each aspect to the LARGEST
+    // window that fits the real desktop (full height for narrow aspects, full width
+    // for wide ones). A fixed small size like 1600x1280 on a 4K panel makes a tiny
+    // centered window the cursor gets boxed into; full-height windows stay usable.
+    static readonly (float Aspect, string Tag)[] Modes =
+    {
+        (0f, "native"),
+        (21f / 9f, "21:9"),
+        (32f / 9f, "32:9"),
+        (16f / 10f, "16:10"),
+        (4f / 3f, "4:3"),
+        (5f / 4f, "5:4"),
+    };
+
+    static int _index;
+    static int _targetW, _targetH;
+    static string _tag = "native";
+    static bool _forced;
+    static float _reassertTimer;
+    static bool _bootHealed;
+
+    internal static void Toggle()
+    {
+        _index = (_index + 1) % Modes.Length;
+        var m = Modes[_index];
+        int dw = Display.main != null ? Display.main.systemWidth : Screen.width;
+        int dh = Display.main != null ? Display.main.systemHeight : Screen.height;
+        // Force borderless so the backbuffer aspect fills the display (no exclusive
+        // mode clamp, no small window) then route through Settings.SetResolution: that
+        // re-renders the upscaler AT the sim resolution, so the world isn't double
+        // scaled (the raw-SetResolution path left the upscaler at native and the truck
+        // and scene stretched). The setter reads Screen.fullScreenMode synchronously,
+        // so the assignment above takes effect for it.
+        Screen.fullScreenMode = FullScreenMode.FullScreenWindow;
+        if (m.Aspect <= 0f)
+        {
+            _forced = false;
+            _tag = "native";
+            Settings.SetResolution($"{dw}x{dh}");
+            Plugin.Log.LogWarning($"[debug] sim -> native {dw}x{dh} (borderless)");
+        }
+        else
+        {
+            // Largest aspect-correct rectangle that fits the desktop.
+            int w = dw, h = Mathf.RoundToInt(dw / m.Aspect);
+            if (h > dh) { h = dh; w = Mathf.RoundToInt(dh * m.Aspect); }
+            _forced = true;
+            _targetW = w;
+            _targetH = h;
+            _tag = m.Tag;
+            Settings.SetResolution($"{w}x{h}");
+            Plugin.Log.LogWarning($"[debug] sim -> {m.Tag} {w}x{h} (borderless, aspect on {dw}x{dh})");
+        }
+    }
+
+    internal static void Tick()
+    {
+        // Boot self-heal: Unity persists the last windowed resolution across launches,
+        // so quitting while a sim was forced boxes the cursor on the next launch. Once
+        // the window is initialized, if we came up windowed, snap back to borderless
+        // native. Debug-only, so it never touches a shipped build.
+        if (!_bootHealed && Time.frameCount > 10)
+        {
+            _bootHealed = true;
+            if (!_forced && Screen.fullScreenMode == FullScreenMode.Windowed)
+            {
+                int w = Display.main != null ? Display.main.systemWidth : Screen.width;
+                int h = Display.main != null ? Display.main.systemHeight : Screen.height;
+                Screen.SetResolution(w, h, FullScreenMode.FullScreenWindow);
+                Plugin.Log.LogWarning($"[debug] boot heal -> native {w}x{h} (came up windowed)");
+            }
+        }
+
+        if (!_forced) return;
+        // Re-assert at most once a second if the game snaps the window back, so we
+        // recover without starting a per-frame SetResolution war.
+        if (Screen.width == _targetW && Screen.height == _targetH) { _reassertTimer = 0f; return; }
+        _reassertTimer += Time.unscaledDeltaTime;
+        if (_reassertTimer < 1f) return;
+        _reassertTimer = 0f;
+        Screen.fullScreenMode = FullScreenMode.FullScreenWindow;
+        Settings.SetResolution($"{_targetW}x{_targetH}");
+    }
+
+    internal static void DrawLabel()
+    {
+        float aspect = Screen.height > 0 ? (float)Screen.width / Screen.height : 0f;
+        var style = new GUIStyle { fontSize = 22, fontStyle = FontStyle.Bold };
+        style.normal.textColor = Color.yellow;
+        GUI.Label(new Rect(12f, 12f, 800f, 40f),
+            $"SIM {_tag} {Screen.width}x{Screen.height} ({aspect:F2})", style);
+    }
+}
+#endif

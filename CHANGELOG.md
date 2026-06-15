@@ -1,3 +1,11 @@
+## 1.7.7
+
+- The HUD, menus and text render sharp now, at every aspect. They're drawn by an orthographic overlay camera into a fixed ~1280x720 render texture and then displayed full-screen, so on any panel above 720p the whole HUD was a soft upscale, and on a widened panel it was worse: the HUD only filled a slice of that texture and got stretched out further from there. The overlay texture now lifts to your panel resolution while the fix is active, so the HUD renders at native pixel density. New "Sharp HUD" toggle in the graphics menu's post-processing section, on by default; turn it off for the vanilla soft look. Reported by Mortycio on 32:9.
+- The cursor stays 1:1 with the sharper HUD. The game maps the mouse into HUD space through the overlay camera's pixel size, which is that render texture, so lifting it would otherwise make the in-game cursor crawl at a fraction of the real pointer's speed. The mapping now compensates for the lift exactly, so it tracks the same at every aspect.
+- 32:9 keeps more vertical FOV. The wide-panel HOR+ default held horizontal FOV at 120 degrees by trimming vertical, which at 32:9 pulled vertical down to about 52 and read as zoomed in. The cap is 135 now, so 32:9 holds nearly its full vertical framing (around 68 of 70) and the trim only really engages past that.
+
+---
+
 ## 1.7.6
 
 - Ultrawide: the upgrades list goes away properly again. Holding the map shows your upgrades on the left; on a wide panel they used to get stuck there when you dropped the map instead of sliding off. 1.7.4 dropped a cull that was clipping hiding HUD at the vanilla edge (it was eating real shown UI), and that left the upgrades list, which parks deep inside the canvas and whose text overflows its box, lingering in the widened band. The cull is back but now keyed on the owning element actually heading for its hide anchor, so it never touches shown UI (inventory slots, settings arrows), and the list's hide is extended so it wooshes fully off the side on its own. Reported by AncientPixel-Aron.

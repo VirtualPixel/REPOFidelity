@@ -141,6 +141,12 @@ internal class SettingsData
     public bool lensDistortion = false;
     public bool filmGrain = true;
     public bool extractionFlickerFix = true;
+    // Render the HUD/menus into the overlay camera's target texture at panel pixel
+    // density instead of the game's fixed low-res overlay RT, so text is crisp at
+    // every aspect. On by default (this is an HD mod); the opt-out restores the
+    // vanilla soft HUD. Existing settings files lack the field, so the initializer
+    // here ships it on for them too.
+    public bool sharpHud = true;
 
     // ultra-wide / FOV
     // 0 = use the game's per-player default (70). Otherwise interpreted as

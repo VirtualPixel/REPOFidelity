@@ -43,17 +43,17 @@ internal static class CameraZoomFovOverride
     }
 
     // Pure HOR+: keep the vanilla vertical FOV so wider panels reveal more world at
-    // the sides with the same center framing. The old default ramped vertical FOV
-    // to 80 at 21:9 on top of the horizontal gain, putting horizontal FOV near 127
-    // degrees; rectilinear projection smears the outer screen so badly there that
-    // the genuinely-new side content reads as pure stretch. Only intervene when
-    // plain HOR+ would push horizontal FOV past 120 degrees (32:9 territory):
-    // lower vertical FOV just enough to hold that cap.
+    // the sides with the same center framing. Rectilinear projection smears the outer
+    // screen at very wide horizontal FOV, so there's a soft cap: only intervene when
+    // plain HOR+ would push horizontal FOV past 135 degrees, then lower vertical FOV
+    // just enough to hold that cap. 135 (vs the old 120) keeps 32:9 near its full
+    // vertical FOV (~68 of 70) instead of the noticeably zoomed ~52 the tighter cap
+    // forced; the trim only really engages past 32:9.
     internal static float ComputeAspectAwareDefault(float vanilla16x9Fov)
     {
         if (Screen.height == 0) return vanilla16x9Fov;
         float aspect = (float)Screen.width / Screen.height;
-        const float maxHFovRad = 120f * Mathf.Deg2Rad;
+        const float maxHFovRad = 135f * Mathf.Deg2Rad;
         float vFovRad = vanilla16x9Fov * Mathf.Deg2Rad;
         float hFovRad = 2f * Mathf.Atan(Mathf.Tan(vFovRad / 2f) * aspect);
         if (hFovRad <= maxHFovRad) return vanilla16x9Fov;
@@ -375,27 +375,43 @@ internal static class HudCursorRemap
 {
     internal static bool Active;
 
+    // Per-axis scale that neutralizes the Sharp HUD overlay-RT lift. REPO's
+    // UIMousePosToUIPos converts the mouse with
+    // overlayCamera.ScreenToViewportPoint(Input.mousePosition), which divides by the
+    // overlay camera's pixel size, and that size IS the overlay render texture. When
+    // OverlayCameraWiden lifts that RT to panel resolution the divisor grows, so the
+    // viewport (and the cursor) come out RT-scale times too small. Scaling the input
+    // mouse up by the same factor restores the vanilla mapping. 1,1 when not lifted.
+    internal static Vector2 OverlayScale = Vector2.one;
+
     internal static Vector3 Correct(Vector3 screenPos)
     {
-        if (!Active || Screen.height == 0) return screenPos;
-        float aspect = (float)Screen.width / Screen.height;
-        const float refAspect = 16f / 9f;
-        // No clamp: the widened capture renders UI beyond the canvas edges too,
-        // so coords past the virtual range put the cursor in the side regions,
-        // 1:1 under the mouse across the whole panel. (A clamp was needed when
-        // the display was a centered box and the side capture wasn't shown.)
-        if (aspect > refAspect + 0.01f)
+        if (Screen.height == 0) return screenPos;
+        if (Active)
         {
-            float boxW = Screen.height * refAspect;
-            float left = (Screen.width - boxW) * 0.5f;
-            screenPos.x = (screenPos.x - left) * (Screen.width / boxW);
+            float aspect = (float)Screen.width / Screen.height;
+            const float refAspect = 16f / 9f;
+            // No clamp: the widened capture renders UI beyond the canvas edges too,
+            // so coords past the virtual range put the cursor in the side regions,
+            // 1:1 under the mouse across the whole panel. (A clamp was needed when
+            // the display was a centered box and the side capture wasn't shown.)
+            if (aspect > refAspect + 0.01f)
+            {
+                float boxW = Screen.height * refAspect;
+                float left = (Screen.width - boxW) * 0.5f;
+                screenPos.x = (screenPos.x - left) * (Screen.width / boxW);
+            }
+            else if (aspect < refAspect - 0.01f)
+            {
+                float boxH = Screen.width / refAspect;
+                float bottom = (Screen.height - boxH) * 0.5f;
+                screenPos.y = (screenPos.y - bottom) * (Screen.height / boxH);
+            }
         }
-        else if (aspect < refAspect - 0.01f)
-        {
-            float boxH = Screen.width / refAspect;
-            float bottom = (Screen.height - boxH) * 0.5f;
-            screenPos.y = (screenPos.y - bottom) * (Screen.height / boxH);
-        }
+        // Applied after the unstretch remap (and on its own at native 16:9 when only
+        // the sharpening is active), so the cursor tracks the real mouse 1:1.
+        if (OverlayScale.x != 1f) screenPos.x *= OverlayScale.x;
+        if (OverlayScale.y != 1f) screenPos.y *= OverlayScale.y;
         return screenPos;
     }
 
@@ -513,6 +529,17 @@ internal static class OverlayCameraWiden
     static bool _panelLogged;
     static float _lastHudAspect = -1f;
 
+    // Overlay render-texture lift state. The HUD/menus/text render into the
+    // overlay camera's targetTexture, a fixed ~750x418 RT. Widening the camera
+    // makes that texel budget cover the whole wide view, so the HUD ends up
+    // squeezed into a fraction of the texture and stretched back out on the
+    // full-screen mirror: the pixelation reported on 32:9. While widened we
+    // lift the RT to panel resolution so the HUD renders 1:1, then restore its
+    // shipped size on the disable edge.
+    static RenderTexture? _overlayRT;
+    static int _overlayOrigW, _overlayOrigH;
+    static bool _overlayDiagLogged;
+
     internal static void Tick()
     {
         // One-shot panel report at Info: proves which build is running and what
@@ -532,6 +559,12 @@ internal static class OverlayCameraWiden
             _cam = null;
             _applied = false;
             HudCursorRemap.Active = false;
+            HudCursorRemap.OverlayScale = Vector2.one;
+            // Keep _overlayRT and its captured original size: if the overlay camera
+            // blips null for a frame and returns with the same still-lifted RT,
+            // discarding the original here would make the next lift re-capture the
+            // lifted size as the "original" and the RT could never be restored. A
+            // genuinely new RT differs by reference and re-captures cleanly anyway.
             return;
         }
         if (_cam != cam)
@@ -575,6 +608,21 @@ internal static class OverlayCameraWiden
         }
         HudCursorRemap.Active = _applied;
 
+        // Overlay-RT sharpening, independent of the widen. The HUD/menus render into
+        // the overlay camera's target texture, a fixed low-res RT; lift it to panel
+        // pixel density so text is crisp at every aspect. While widened we size to the
+        // full panel (the widen relies on the RT aspect matching the panel so the
+        // squeeze cancels); otherwise we keep the shipped overlay aspect and only
+        // raise the resolution, so the HUD doesn't shift. Gated by the Sharp HUD
+        // toggle; off restores the vanilla soft RT.
+        bool wantSharp = Settings.ModEnabled
+                         && Settings.SharpHud
+                         && !VRCompat.Active
+                         && !UltrawideCompareResolution.IsCompareActive
+                         && Screen.height > 0;
+        if (wantSharp) LiftOverlayResolution(cam, _applied);
+        else RestoreOverlayResolution(cam);
+
         // Re-evaluate the HUD handlers from scratch when the panel aspect changes
         // (resolution switch, monitor hop). Their shifts and culls are aspect-specific, but
         // they otherwise only reset on the widen on/off edge, which never fires when one
@@ -595,6 +643,97 @@ internal static class OverlayCameraWiden
         MenuEdgeArtExtend.Tick(_applied);
         HudParkedShift.Tick(_applied);
         RevealGuard.Tick(_applied);
+    }
+
+    // Lift the overlay camera's render texture to panel resolution so the HUD
+    // renders 1:1 with the display instead of being squeezed into the fixed
+    // ~750x418 RT and stretched back out. Captures the shipped size once so the
+    // restore is exact. Only resizes on an actual size mismatch, so a stable
+    // panel costs nothing per frame; a live resolution switch is picked up
+    // because the new panel size won't match the lifted RT. The world view is
+    // untouched, it rides RenderTextureMain.renderTexture which the upscaler
+    // already sizes to the panel. The HUD positioning handlers key off the
+    // camera's size/aspect, not texture resolution, so nothing moves.
+    static void LiftOverlayResolution(Camera cam, bool widened)
+    {
+        var rt = cam.targetTexture;
+        if (rt == null) return;
+
+        if (_overlayRT != rt)
+        {
+            // First lift of this RT (or the game swapped the object): remember
+            // its native size so the restore returns exactly what shipped, and so
+            // the non-widened path can preserve the shipped aspect.
+            _overlayRT = rt;
+            _overlayOrigW = rt.width;
+            _overlayOrigH = rt.height;
+        }
+
+        if (!_overlayDiagLogged)
+        {
+            _overlayDiagLogged = true;
+            var rtm = RenderTextureMain.instance;
+            var shown = rtm != null && rtm.overlayRawImage != null ? rtm.overlayRawImage.texture : null;
+            Plugin.Log.LogInfo($"[ultrawide] overlay RT {rt.width}x{rt.height} id={rt.GetInstanceID()} " +
+                $"displayedTex={(shown != null ? $"{shown.width}x{shown.height} id={shown.GetInstanceID()}" : "null")} " +
+                $"screen={Screen.width}x{Screen.height} widened={widened}");
+        }
+
+        int w, h;
+        if (widened)
+        {
+            // Widen path: the overlay camera frames the full panel aspect, so the RT
+            // must match it for the display squeeze to cancel.
+            w = Screen.width;
+            h = Screen.height;
+        }
+        else
+        {
+            // Sharp-only path: the orthographic overlay camera frames the HUD canvas
+            // against the shipped RT aspect. Changing that aspect would shift or crop
+            // the HUD, so keep it and only multiply the texel count up to panel
+            // vertical resolution.
+            h = Screen.height;
+            w = _overlayOrigH > 0
+                ? Mathf.Max(1, Mathf.RoundToInt((float)h * _overlayOrigW / _overlayOrigH))
+                : Screen.width;
+        }
+        if (w <= 0 || h <= 0) return;
+
+        // Tell the cursor remap how much the RT grew so UIMousePosToUIPos stays 1:1.
+        // Set every frame (even when the size already matches) so it can never drift.
+        HudCursorRemap.OverlayScale = (_overlayOrigW > 0 && _overlayOrigH > 0)
+            ? new Vector2((float)w / _overlayOrigW, (float)h / _overlayOrigH)
+            : Vector2.one;
+
+        if (rt.width == w && rt.height == h) return;
+        ResizeBoundRT(cam, rt, w, h);
+    }
+
+    static void RestoreOverlayResolution(Camera cam)
+    {
+        HudCursorRemap.OverlayScale = Vector2.one;
+        if (_overlayRT == null) return;
+        if (_overlayRT.width != _overlayOrigW || _overlayRT.height != _overlayOrigH)
+            ResizeBoundRT(cam, _overlayRT, _overlayOrigW, _overlayOrigH);
+        _overlayRT = null;
+    }
+
+    // Resize a render texture that is the camera's live target. Releasing an RT while
+    // it is still bound as Camera.targetTexture makes Unity log "Releasing render
+    // texture that is set as Camera.targetTexture!" and can detach the camera (it
+    // falls back to rendering to the screen for a frame), which scrambles the HUD
+    // overlay and cursor mapping. Unbind first, resize, then rebind, all within one
+    // Update tick so the camera never actually renders to the screen.
+    static void ResizeBoundRT(Camera cam, RenderTexture rt, int w, int h)
+    {
+        bool bound = cam.targetTexture == rt;
+        if (bound) cam.targetTexture = null;
+        rt.Release();
+        rt.width = w;
+        rt.height = h;
+        rt.Create();
+        if (bound) cam.targetTexture = rt;
     }
 }
 
