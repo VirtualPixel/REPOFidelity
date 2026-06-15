@@ -440,6 +440,57 @@ internal static class UIPositionRemapPatch
     static void Prefix(ref Vector3 position) => position = HudCursorRemap.Correct(position);
 }
 
+// World-space trackers (the valuable value box, value-lost popups, player-name tags) place
+// themselves with SemiFunc.UIWorldToCanvasPosition: it projects the world point through the
+// main camera to a viewport coord, then maps 0..1 across the 16:9 HUD canvas (sizeDelta). On a
+// widened panel the camera is HOR+/panel-aspect so the projection is right, but the capture
+// shows MORE than the canvas (capW = halfW * xFactor), so the canvas edge sits ~74% out, not at
+// the screen edge. The tracker therefore lags the item toward center. Scale the canvas result by
+// the same capture factors the rest of the HUD uses so it tracks 1:1 across the full panel. The
+// off-screen sentinel the game returns is already far out of frame and stays there when scaled.
+[HarmonyPatch(typeof(SemiFunc), nameof(SemiFunc.UIWorldToCanvasPosition))]
+internal static class WorldToCanvasUltrawidePatch
+{
+    static void Postfix(ref Vector3 __result) => UltrawideWorldTrackScale.Apply(ref __result);
+}
+
+// The valuable discover box (corner brackets + middle fill that snap onto a valuable the first
+// time you see it). It does NOT use SemiFunc: it builds a viewport-space bounds Rect, projects
+// the corners through its own GetScreenPosition, AND sizes the middle fill straight off that
+// Rect's width/height. Scaling only the corner projection widened the brackets but left the fill
+// skinny. Scaling the source Rect once, about the viewport center, fixes both: the box tracks the
+// item across the full panel and stays the right width. (Scaling about 0.5 moves the rect's
+// center out toward the panel edge AND grows its size by the same factor.)
+[HarmonyPatch(typeof(ValuableDiscoverGraphic), "RendererBoundsInScreenSpace")]
+internal static class ValuableDiscoverUltrawidePatch
+{
+    static void Postfix(ref Rect __result)
+    {
+        if (!Settings.ModEnabled || !Settings.UltrawideUiFix || VRCompat.Active) return;
+        if (!UltrawideCanvasFix.RequiresAspectFix() || Screen.height == 0) return;
+        const float refAspect = 16f / 9f;
+        float aspect = (float)Screen.width / Screen.height;
+        float xF = aspect > refAspect ? aspect / refAspect : 1f;
+        float yF = aspect < refAspect ? refAspect / aspect : 1f;
+        __result = Rect.MinMaxRect(
+            0.5f + (__result.xMin - 0.5f) * xF, 0.5f + (__result.yMin - 0.5f) * yF,
+            0.5f + (__result.xMax - 0.5f) * xF, 0.5f + (__result.yMax - 0.5f) * yF);
+    }
+}
+
+internal static class UltrawideWorldTrackScale
+{
+    internal static void Apply(ref Vector3 canvasPos)
+    {
+        if (!Settings.ModEnabled || !Settings.UltrawideUiFix || VRCompat.Active) return;
+        if (!UltrawideCanvasFix.RequiresAspectFix() || Screen.height == 0) return;
+        const float refAspect = 16f / 9f;
+        float aspect = (float)Screen.width / Screen.height;
+        if (aspect > refAspect) canvasPos.x *= aspect / refAspect;
+        else canvasPos.y *= refAspect / aspect;
+    }
+}
+
 // Grounded in the runtime pipeline dump (2026-06-12): every visible HUD element,
 // the menus and the cursor live on the world-space HUD Canvas (712x400), captured
 // by the ORTHO overlay camera (size 200, target = the 16:9 overlay texture) whose
@@ -460,6 +511,7 @@ internal static class OverlayCameraWiden
     static float _vanillaSize;
     static bool _applied;
     static bool _panelLogged;
+    static float _lastHudAspect = -1f;
 
     internal static void Tick()
     {
@@ -522,11 +574,27 @@ internal static class OverlayCameraWiden
             _applied = false;
         }
         HudCursorRemap.Active = _applied;
+
+        // Re-evaluate the HUD handlers from scratch when the panel aspect changes
+        // (resolution switch, monitor hop). Their shifts and culls are aspect-specific, but
+        // they otherwise only reset on the widen on/off edge, which never fires when one
+        // ultrawide aspect changes straight to another, so a 21:9 horizontal shift would
+        // persist into a narrower panel that needs a vertical one. A Tick(false) drops each
+        // handler's state; the Tick(_applied) below re-scans fresh.
+        float hudAspect = Screen.height > 0 ? (float)Screen.width / Screen.height : 0f;
+        if (Mathf.Abs(hudAspect - _lastHudAspect) > 0.01f)
+        {
+            _lastHudAspect = hudAspect;
+            HudCoverStretch.Tick(false);
+            MenuEdgeArtExtend.Tick(false);
+            HudParkedShift.Tick(false);
+            RevealGuard.Tick(false);
+        }
+
         HudCoverStretch.Tick(_applied);
         MenuEdgeArtExtend.Tick(_applied);
         HudParkedShift.Tick(_applied);
         RevealGuard.Tick(_applied);
-        RevealLeakProbe.Tick(_applied);
     }
 }
 
@@ -884,18 +952,32 @@ internal static class HudParkedShift
             Vector2 parked = hud.rect.InverseTransformPoint(
                 mover.parent.TransformPoint(new Vector3(ui.hidePosition.x, ui.hidePosition.y, 0f)));
 
-            // push only along axes where the parked point already cleared the canvas
-            // edge; parked-inside elements (hide-in-place, shrink hides) stay put
+            // Where it hides to, and which way it slides to get there.
+            Vector2 shown = hud.rect.InverseTransformPoint(
+                mover.parent.TransformPoint(new Vector3(ui.showPosition.x, ui.showPosition.y, 0f)));
+            Vector2 slide = parked - shown;
+            float capW = halfW * xFactor;
+            float capH = halfH * yFactor;
+            // An element already parked at/past the canvas edge just needs the extra capture
+            // margin. One that hides by sliding to a point still INSIDE the canvas (the upgrades
+            // list parks at x=-139, then its overflowing name column shows in the widened band)
+            // has to travel all the way out to the capture edge plus a margin so wide content
+            // clears. Hide-in-place elements (no slide, parked inside) stay put.
+            const float clearMargin = 120f;
             var push = Vector2.zero;
             if (xFactor > 1f)
             {
                 if (parked.x >= halfW) push.x = extX;
                 else if (parked.x <= -halfW) push.x = -extX;
+                else if (slide.x < -1f) push.x = -(capW + clearMargin) - parked.x;
+                else if (slide.x > 1f) push.x = (capW + clearMargin) - parked.x;
             }
             if (yFactor > 1f)
             {
                 if (parked.y >= halfH) push.y = extY;
                 else if (parked.y <= -halfH) push.y = -extY;
+                else if (slide.y < -1f) push.y = -(capH + clearMargin) - parked.y;
+                else if (slide.y > 1f) push.y = (capH + clearMargin) - parked.y;
             }
             if (push == Vector2.zero)
             {
@@ -948,7 +1030,7 @@ internal static class HudParkedShift
 // machine we can't touch names every revealed element.
 internal static class RevealGuard
 {
-    static readonly List<(Graphic G, Vector3 Pos, Vector3 Scale, SemiUI? Semi)> _culled = new();
+    static readonly List<(Graphic G, SemiUI? Semi)> _culled = new();
     static readonly HashSet<int> _logged = new();
     static readonly Vector3[] _corners = new Vector3[4];
     static float _timer;
@@ -971,7 +1053,9 @@ internal static class RevealGuard
         {
             WatchCulled();
             _timer += Time.unscaledDeltaTime;
-            if (_timer >= 1f)
+            // Fast cadence: a hide animation is ~0.25s, so a 1s scan would let the upgrades
+            // list slide all the way across the widened band before it ever got clipped.
+            if (_timer >= 0.2f)
             {
                 _timer = 0f;
                 Scan();
@@ -987,37 +1071,45 @@ internal static class RevealGuard
     // judged by the SemiUI's own hidePositionCurrent (the animated value) reaching
     // hidePosition; both are fields in the same space, so it holds for
     // animateTheEntireObject either way, unlike a transform.localPosition read.
-    static SemiUI? ParkedOwner(Graphic g)
+    static SemiUI? HidingOwner(Graphic g)
     {
         foreach (var s in g.GetComponentsInParent<SemiUI>(true))
-            if (s.hidePosition != s.showPosition
-                && (s.hidePositionCurrent - s.hidePosition).sqrMagnitude < 1f)
-                return s;
+        {
+            if (s.hidePosition == s.showPosition) continue;
+            // At OR moving toward the hide anchor: this owner is on its way out, so its
+            // children should clip at the vanilla edge exactly as a 16:9 player sees, not
+            // slide on through the widened band. Comparing distance-to-hide against
+            // distance-to-show (rather than "within 1 of hide") catches the whole hide
+            // animation, while a SHOWN element, the inventory slot, settings arrows, is
+            // always closer to its show anchor and never qualifies.
+            float toHide = (s.hidePositionCurrent - s.hidePosition).sqrMagnitude;
+            float toShow = (s.hidePositionCurrent - s.showPosition).sqrMagnitude;
+            if (toHide <= toShow) return s;
+        }
         return null;
     }
 
-    // Uncull the moment a culled element moves, rescales, or deactivates; a
-    // 1s scan cadence is far too slow to hand a shown element back.
+    // Hand a cull back the frame its owner turns back toward show, or the graphic
+    // deactivates. Runs every frame because the 0.2s scan is too coarse to release in time.
     static void WatchCulled()
     {
         for (int i = _culled.Count - 1; i >= 0; i--)
         {
-            var (g, pos, scale, semi) = _culled[i];
+            var (g, semi) = _culled[i];
             if (g == null)
             {
                 _culled.RemoveAt(i);
                 continue;
             }
-            // A parked-SemiUI cull is released the instant the owner leaves its hide
-            // anchor (it has started animating open); the child Graphic's own
-            // localPosition never moves on a show, so the owner has to be watched. Read
-            // its animated hidePositionCurrent against the parked target rather than the
-            // transform: that pair lives in the same space for both animate-modes, and a
-            // parked parent that carries a "shown" child slot is caught either way.
-            bool unparked = semi != null
-                && (semi.hidePositionCurrent - semi.hidePosition).sqrMagnitude >= 1f;
-            var t = g.rectTransform;
-            if (!g.isActiveAndEnabled || t.localPosition != pos || t.localScale != scale || unparked)
+            // Hand the cull back the instant the owner turns around and heads for its show
+            // anchor (animating open). We do NOT release on the graphic merely moving: a
+            // hiding element slides the whole time, and clipping it at the vanilla edge for
+            // that whole slide is the point. Judge by the owner's animated hidePositionCurrent
+            // crossing the show/hide midpoint, which works for both animate-modes.
+            bool showing = semi == null
+                || (semi.hidePositionCurrent - semi.showPosition).sqrMagnitude
+                   < (semi.hidePositionCurrent - semi.hidePosition).sqrMagnitude;
+            if (!g.isActiveAndEnabled || showing)
             {
                 g.canvasRenderer.cull = false;
                 _culled.RemoveAt(i);
@@ -1060,9 +1152,11 @@ internal static class RevealGuard
             bool outsideCanvas = min.x < -halfW - 1f || max.x > halfW + 1f
                               || min.y < -halfH - 1f || max.y > halfH + 1f;
             if (!outsideCanvas) continue;
-            // entirely past the capture too: still invisible, ignore
+            // in the widened band (between the vanilla edge and the capture edge). The
+            // fully-hidden override below can cull past this too: a TMP upgrades list parks
+            // its rectTransform off-capture while the rendered text still bleeds into view,
+            // so the box lies and we trust the owner's hide state instead.
             bool inCapture = min.x < capW && max.x > -capW && min.y < capH && max.y > -capH;
-            if (!inCapture) continue;
 
             if (HudCoverStretch.Manages(rt) || MenuEdgeArtExtend.Manages(rt)) continue;
             // The mouse cursor follows the pointer across the whole panel: HudCursorRemap
@@ -1098,8 +1192,14 @@ internal static class RevealGuard
             // the spill to cullable when an owning SemiUI is parked: the whole element
             // is meant to be hidden, and WatchCulled unculls it the moment that owner
             // animates open.
-            var semi = ParkedOwner(g);
-            bool parkedSemiUI = semi != null;
+            var semi = HidingOwner(g);
+            bool hidingSemiUI = semi != null;
+            // Owner settled at its hide anchor: vanilla shows none of it, so cull every
+            // child regardless of where its box measures (the upgrades-list text overflows
+            // its parked-off-screen rect). Mid-slide owners still need the box in the band.
+            bool fullyHidden = semi != null
+                && (semi.hidePositionCurrent - semi.hidePosition).sqrMagnitude < 1f;
+            if (!inCapture && !fullyHidden) continue;
 
             // Cull only what the game itself has parked out of sight (a SemiUI sitting at
             // its hide anchor). The geometric "fully past the vanilla canvas" test used to
@@ -1113,10 +1213,10 @@ internal static class RevealGuard
             // for the diagnostic log line only.
             bool fullyOutside = max.x <= -halfW + 1f || min.x >= halfW - 1f
                              || max.y <= -halfH + 1f || min.y >= halfH - 1f;
-            if (parkedSemiUI && !g.canvasRenderer.cull)
+            if (hidingSemiUI && !g.canvasRenderer.cull)
             {
                 g.canvasRenderer.cull = true;
-                _culled.Add((g, rt.localPosition, rt.localScale, semi));
+                _culled.Add((g, semi));
             }
 
             if (!_logged.Add(g.GetInstanceID())) continue;
@@ -1124,7 +1224,7 @@ internal static class RevealGuard
                 ? g.transform.parent.name + "/" + g.gameObject.name
                 : g.gameObject.name;
             Plugin.Log.LogInfo($"[ultrawide] reveal: {path} <{g.GetType().Name}> " +
-                $"{(parkedSemiUI ? "parked-hidden" : fullyOutside ? "outside" : "spills")} " +
+                $"{(hidingSemiUI ? "hiding" : fullyOutside ? "outside" : "spills")} " +
                 $"rect=({min.x:F0},{min.y:F0})..({max.x:F0},{max.y:F0}) " +
                 $"canvas=({halfW:F0},{halfH:F0}) cap=({capW:F0},{capH:F0}) a={g.color.a:F2}");
         }
@@ -1132,107 +1232,9 @@ internal static class RevealGuard
 
     static void UncullAll()
     {
-        foreach (var (g, _, _, _) in _culled)
+        foreach (var (g, _) in _culled)
             if (g != null) g.canvasRenderer.cull = false;
         _culled.Clear();
-    }
-}
-
-// Field diagnostic for the upgrades-stay-on-screen report (Mortycio, 1.7.5). The
-// reveal-cull only ever logged each Graphic once per session and only when it happened
-// to be scanned mid-reveal, so a parked element the cull misses never named itself. This
-// censuses, in short bursts while the widen is active, every active Graphic that is
-// currently sitting in the reveal band (past the vanilla canvas but inside the capture)
-// and is NOT already culled, tagging each with how its owning SemiUI chain reads. The
-// probe skips graphics the cull already grabbed, so every line is a leak the cull missed:
-//   ancestorParked = an owner sits at its hide anchor, yet the cull did NOT hide this
-//   shown          = no owner is parked, so the game still considers it visible
-//   hide==show     = owner hides in place (shrink/alpha), not by moving
-//   noSemi         = stray off-canvas art under no SemiUI at all
-// A default LogOutput.log from the affected panel then names exactly what leaks and why
-// the cull skipped it, so the real fix lands against measured state instead of a guess.
-internal static class RevealLeakProbe
-{
-    static readonly Vector3[] _corners = new Vector3[4];
-    static float _timer;
-    static int _budget;
-    static bool _active;
-
-    internal static void Tick(bool widenActive)
-    {
-        if (!widenActive) { _active = false; _budget = 0; return; }
-        // Fresh burst each time the widen engages (scene load, menu open): enough passes
-        // to span the upgrades' ~5s show-then-hide without logging forever.
-        // prime the timer to the cadence so the first census fires on the activation frame
-        if (!_active) { _active = true; _budget = 12; _timer = 0.5f; }
-        if (_budget <= 0) return;
-        _timer += Time.unscaledDeltaTime;
-        if (_timer < 0.5f) return;
-        _timer = 0f;
-        _budget--;
-        Census();
-    }
-
-    static void Census()
-    {
-        var hud = HUDCanvas.instance;
-        if (hud == null || hud.rect == null || Screen.height == 0) return;
-
-        const float refAspect = 16f / 9f;
-        float aspect = (float)Screen.width / Screen.height;
-        float xFactor = aspect > refAspect ? aspect / refAspect : 1f;
-        float yFactor = aspect < refAspect ? refAspect / aspect : 1f;
-        if (xFactor <= 1f && yFactor <= 1f) return;
-
-        float halfW = hud.rect.sizeDelta.x * 0.5f;
-        float halfH = hud.rect.sizeDelta.y * 0.5f;
-        float capW = halfW * xFactor;
-        float capH = halfH * yFactor;
-
-        int found = 0;
-        foreach (var g in hud.rect.GetComponentsInChildren<Graphic>(false))
-        {
-            if (!g.enabled || g.color.a < 0.01f || g.canvasRenderer.cull) continue;
-
-            var rt = g.rectTransform;
-            rt.GetWorldCorners(_corners);
-            Vector2 min = new(float.MaxValue, float.MaxValue);
-            Vector2 max = new(float.MinValue, float.MinValue);
-            for (int i = 0; i < 4; i++)
-            {
-                Vector2 c = hud.rect.InverseTransformPoint(_corners[i]);
-                min = Vector2.Min(min, c);
-                max = Vector2.Max(max, c);
-            }
-
-            bool outsideCanvas = min.x < -halfW - 1f || max.x > halfW + 1f
-                              || min.y < -halfH - 1f || max.y > halfH + 1f;
-            if (!outsideCanvas) continue;
-            bool inCapture = min.x < capW && max.x > -capW && min.y < capH && max.y > -capH;
-            if (!inCapture) continue;
-
-            string path = g.transform.parent != null
-                ? g.transform.parent.name + "/" + g.gameObject.name
-                : g.gameObject.name;
-            Plugin.Log.LogInfo($"[ultrawide] leak-probe: {path} <{g.GetType().Name}> {ParkStatus(g)} " +
-                $"rect=({min.x:F0},{min.y:F0})..({max.x:F0},{max.y:F0}) cap=({capW:F0},{capH:F0}) a={g.color.a:F2}");
-            found++;
-        }
-        if (found == 0)
-            Plugin.Log.LogInfo("[ultrawide] leak-probe: reveal band clear");
-    }
-
-    static string ParkStatus(Graphic g)
-    {
-        bool anySemi = false, anyParked = false, anyShown = false;
-        foreach (var s in g.GetComponentsInParent<SemiUI>(true))
-        {
-            anySemi = true;
-            if (s.hidePosition == s.showPosition) continue;
-            if ((s.hidePositionCurrent - s.hidePosition).sqrMagnitude < 1f) anyParked = true;
-            else anyShown = true;
-        }
-        return !anySemi ? "noSemi" : anyParked ? "ancestorParked" : anyShown ? "shown" : "hide==show";
     }
 }
 
@@ -1324,9 +1326,15 @@ internal static class UltrawideCanvasFix
 {
     // Wider than this triggers the underlay for the 21:9 / 32:9 case (kills horizontal letterbox).
     const float WideThreshold = 1.85f;
-    // Narrower than this triggers the underlay for the 16:10 / 4:3 / 5:4 case (kills vertical letterbox).
+    // Narrower than this triggers the underlay for the 16:10 / 3:2 case (kills vertical letterbox).
     // 16:9 = 1.7777..., so 1.768 catches anything definitively narrower while leaving exact 16:9 untouched.
     const float NarrowThreshold = 1.768f;
+    // ...but stop at 4:3. The HUD is a fixed 16:9 layout, and on a panel this much taller than
+    // 16:9 there is no way to fill the screen without either floating the HUD in a centered band
+    // (inventory rides high, off-canvas strip leaks) or cropping the edge HUD (buttons fall off).
+    // Vanilla just letterboxes there and looks right, so 4:3 (1.333) and narrower fall back to it.
+    // 16:10 (1.6) and 3:2 (1.5) only inset a sliver, so they keep the fill.
+    const float NarrowFloor = 1.4f;
 
     static GameObject? _ultrawideUnderlay;
     static GameObject? _underlayCanvasGo;
@@ -1385,7 +1393,7 @@ internal static class UltrawideCanvasFix
     {
         if (Screen.height == 0) return false;
         float aspect = (float)Screen.width / Screen.height;
-        return aspect > WideThreshold || aspect < NarrowThreshold;
+        return aspect > WideThreshold || (aspect < NarrowThreshold && aspect > NarrowFloor);
     }
 
     static void EnsureUltrawideUnderlay()

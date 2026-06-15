@@ -1,6 +1,6 @@
 # REPO Fidelity - HD Graphics & Performance Mod for R.E.P.O.
 
-Better than REPO HD. Graphics overhaul that goes both ways: **squeeze more FPS on potato PCs** or **push visuals on high-end rigs**. Auto-detects your hardware and picks the best settings. Full in-game settings menu. DLSS, FSR, SMAA, shadow control, **21:9 / 32:9 / 16:10 / 4:3 aspect-ratio support**, and an FOV slider.
+Better than REPO HD. Graphics overhaul that goes both ways: **squeeze more FPS on potato PCs** or **push visuals on high-end rigs**. Auto-detects your hardware and picks the best settings. Full in-game settings menu. DLSS, FSR, SMAA, shadow control, **21:9 / 32:9 / 16:10 aspect-ratio support**, and an FOV slider.
 
 **Replaces REPO HD.** Everything it does, plus DLSS, auto-benchmark, CPU/GPU-aware tuning, performance optimizations, ultrawide / aspect-ratio fixes, and way more control. If you have REPO HD installed, remove it.
 
@@ -109,7 +109,7 @@ Surface detail on the vase and sharper edges on the clown figure. Shadows render
 - All optimizations scale with preset: Ultra keeps full visual quality
 
 **Ultrawide & Field of View**
-- **Full aspect-ratio support - 21:9, 32:9, 16:10, 4:3, 5:4**: world view fills the full screen instead of being squashed into a centered 16:9 box. Wider panels lose the side letterbox; narrower panels lose the top/bottom letterbox. Post-processing (vignette, bloom, screen flashes) extends across the full aspect, HUD positioning untouched so other mods that hook the UI hierarchy still work
+- **Aspect-ratio support - 21:9, 32:9, 16:10**: world view fills the full screen instead of being squashed into a centered 16:9 box; wider panels lose the side letterbox. 4:3 and 5:4 fall back to vanilla letterbox, the HUD is a fixed 16:9 layout and filling a much-taller panel either floats it or crops the edges, so vanilla's letterbox just looks right there. Post-processing (vignette, bloom, screen flashes) extends across the full aspect, HUD positioning untouched so other mods that hook the UI hierarchy still work
 - **Aspect-aware default FOV**: 16:9 stays at vanilla, 21:9 lerps up to ~80°, 32:9 hits 90°. 16:10 and narrower keep vanilla FOV (already covers what HOR+ shows). Slider override (0-110°) wins when set
 - **Vertical FOV slider** with smooth animation between values
 - **Title-screen polish on ultrawide**: menu camera narrows to hide the world edge past the truck, fog tightens to keep distant scene assets fading inside fog rather than popping at the rolling-treadmill despawn line
