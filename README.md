@@ -153,7 +153,7 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 | Shadow Distance | 5-200m | Varies | Max shadow render distance |
 | Shadow Limit | 0-50 | Varies | Max nearby shadows. 0 = unlimited. Closest lights get priority |
 | Pixel Lights | 1-16 | Varies | Per-object dynamic lights |
-| LOD Bias | 0.5-4.0 | Varies | Level of detail distance |
+| Detail Distance | 0.5-4.0 | Varies | LOD bias |
 | Texture Quality | Full | Full | Locked to full; R.E.P.O.'s textures are too small for mip reduction to matter |
 | Anisotropic Filtering | Off / 2x / 4x / 8x / 16x | Varies | Texture sharpness at angles |
 | Light Distance | 10-100m | Varies | Max light render range |

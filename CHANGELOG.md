@@ -7,7 +7,7 @@
 - Auto-Tune pressed outside a level now actually runs. It queued a benchmark, said "AUTO-TUNE QUEUED (WILL RUN ON NEXT LEVEL)", and then nothing happened: the call meant to invalidate the stored profile cleared a field the staleness check does not read, and the queue flag was never cleared, so the button stayed stuck on that label and turned into a cancel that dropped you to High.
 - Sharp HUD is in the config file now. It shipped in 1.7.7 as a menu toggle only, so anyone running without MenuLib could not reach it from REPOConfig or a hand-edited config.
 - Smaller fixes: DLSS leaked a native parameter block every time the resolution or render scale changed; a failed load of the DLSS bridge reported success to everything that asked afterwards, turning a clean warning into an exception; and the debug overlay swept every loaded text object twice a frame on any scene where it could not find the game font.
-- Three crash-hunt switches under `[Diagnostics]` in the config file, all on by default, each standing down one scene change so a report can be narrowed down without a custom build per run. Leave them alone unless asked.
+- Three crash-hunt switches under `[Diagnostics]` in the config file, all on by default, each standing down one of the changes the mod makes to a loaded scene, so a report can be narrowed down without a custom build per run. Leave them alone unless asked.
 
 ---
 
