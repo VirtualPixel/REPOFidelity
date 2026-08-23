@@ -16,8 +16,8 @@ static class ExplosionShadowPatch
 {
     static void Postfix(ParticlePrefabExplosion __instance)
     {
-        if (Settings.ShouldOptimize(Settings.PerfOpt.ExplosionShadows) && __instance.light != null)
-            __instance.light.shadows = LightShadows.None;
+        if (Settings.ShouldOptimize(Settings.PerfOpt.ExplosionShadows))
+            SceneOptimizer.CullExplosionLightShadow(__instance.light);
     }
 }
 
@@ -26,8 +26,8 @@ static class ItemLightShadowPatch
 {
     static void Postfix(ItemLight __instance)
     {
-        if (Settings.ShouldOptimize(Settings.PerfOpt.ItemLightShadows) && __instance.itemLight != null)
-            __instance.itemLight.shadows = LightShadows.None;
+        if (Settings.ShouldOptimize(Settings.PerfOpt.ItemLightShadows))
+            SceneOptimizer.CullItemLightShadow(__instance.itemLight);
     }
 }
 
@@ -63,16 +63,16 @@ static class SceneOptimizer
         ApplyZeroIntensityShadows(Settings.OptimizationsActive);
         ApplyParticleAutoCull(Settings.OptimizationsActive && Diagnostics.ParticleAutoCull.Value);
 
-        // diagnostic gate skips the call entirely so particle renderers keep their
-        // vanilla shadow state instead of being force-set either way
+        // diagnostic gate skips the pass entirely so particle renderers keep whatever
+        // shadow state the prefab shipped
         if (Diagnostics.ParticleShadows.Value)
-            SetParticleShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ParticleShadows));
+            ApplyParticleShadowCull(Settings.ShouldOptimize(Settings.PerfOpt.ParticleShadows));
         ApplyTinyRendererCull(Settings.ShouldOptimize(Settings.PerfOpt.TinyRendererCulling));
         ApplyAnimatedLightCull(Settings.ShouldOptimize(Settings.PerfOpt.AnimatedLightShadows));
 
         // scan existing lights in the scene so switching presets mid-level works
-        SetItemLightShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ItemLightShadows));
-        SetExplosionLightShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ExplosionShadows));
+        ApplyItemLightShadowCull(Settings.ShouldOptimize(Settings.PerfOpt.ItemLightShadows));
+        ApplyExplosionLightShadowCull(Settings.ShouldOptimize(Settings.PerfOpt.ExplosionShadows));
         ApplyPointLightShadowCull(Settings.ShouldOptimize(Settings.PerfOpt.PointLightShadows));
 
         // must run AFTER other passes: renderers they've set to Off should stay out of the watchlist
@@ -166,6 +166,9 @@ static class SceneOptimizer
     static readonly Dictionary<Light, LightShadows> _zeroIntensityOrig = new();
     static readonly Dictionary<Material, bool> _gpuInstancingOrig = new();
     static readonly Dictionary<ParticleSystem, ParticleSystemCullingMode> _particleCullOrig = new();
+    static readonly Dictionary<ParticleSystemRenderer, ShadowCastingMode> _particleShadowOrig = new();
+    static readonly Dictionary<Light, LightShadows> _itemLightOrig = new();
+    static readonly Dictionary<Light, LightShadows> _explosionLightOrig = new();
 
     // Local-avatar renderers that must stay out of our scene-wide MeshRenderer scans.
     // PlayerAvatar.playerAvatarVisuals and .flashlightController are inspector-linked
@@ -478,6 +481,11 @@ static class SceneOptimizer
     static readonly List<Light> _shadowBudgetWatchlist = new();
     static readonly List<(Light light, float dist)> _budgetCandidates = new();
     static readonly Dictionary<int, float> _shadowStrengths = new();
+    // shadows mode each glow light shipped with. The budget hands the closest N a
+    // soft shadow whether or not the prefab had one, so "restore" has to mean this,
+    // not "everything soft": F10 was leaving every glow light in the truck casting
+    // when vanilla casts none of them.
+    static readonly Dictionary<Light, LightShadows> _shadowBudgetOrig = new();
     const float FadeSpeed = 3f;
 
     internal static void ResetShadowBudget()
@@ -487,6 +495,9 @@ static class SceneOptimizer
 
     static void CaptureShadowBudgetWatchlist()
     {
+        // put the previous watchlist back before rescanning, or a light the budget
+        // had faded gets re-captured with the faded mode as its "original"
+        RestoreManagedLights();
         _shadowBudgetWatchlist.Clear();
         if (!Settings.OptimizationsActive) return;
 
@@ -495,6 +506,7 @@ static class SceneOptimizer
             if (light.type != LightType.Point) continue;
             if (light.intensity >= 1f || light.range >= 5f) continue;
             _shadowBudgetWatchlist.Add(light);
+            _shadowBudgetOrig[light] = light.shadows;
         }
         if (_shadowBudgetWatchlist.Count > 0)
             Plugin.Log.LogDebug($"shadow budget watchlist: {_shadowBudgetWatchlist.Count} item glow lights");
@@ -504,17 +516,18 @@ static class SceneOptimizer
     {
         if (cam == null) return;
 
-        // mod / optimizations disabled or budget unlimited: restore all managed lights
+        // mod / optimizations disabled: back to what the prefabs shipped
         if (!Settings.OptimizationsActive)
         {
             RestoreManagedLights();
             return;
         }
 
+        // budget unlimited: every glow light casts
         int budget = Settings.ResolvedShadowBudget;
         if (budget <= 0)
         {
-            RestoreManagedLights();
+            UnlimitedManagedLights();
             return;
         }
 
@@ -556,6 +569,19 @@ static class SceneOptimizer
     }
 
     static void RestoreManagedLights()
+    {
+        if (_shadowBudgetOrig.Count == 0) return;
+        foreach (var kv in _shadowBudgetOrig)
+        {
+            if (kv.Key == null) continue;
+            kv.Key.shadows = kv.Value;
+            kv.Key.shadowStrength = 1f;
+        }
+        _shadowBudgetOrig.Clear();
+        _shadowStrengths.Clear();
+    }
+
+    static void UnlimitedManagedLights()
     {
         if (_shadowStrengths.Count == 0) return;
         for (int i = _shadowBudgetWatchlist.Count - 1; i >= 0; i--)
@@ -624,27 +650,33 @@ static class SceneOptimizer
             Plugin.Log.LogDebug($"disabled shadows on {count} zero-intensity lights");
     }
 
-    static void SetParticleShadows(bool on)
+    // Shadow casting on particle renderers: strip it when the preset optimizes, put
+    // back exactly what the prefab shipped otherwise. Until 1.7.8 the "on" branch
+    // flipped every Off renderer to On, so at Ultra the mod was forcing shadow
+    // casting onto hundreds of systems vanilla never shadows (907 on Museum, 1316
+    // on Wizard in the #14 log; the 28 it "restored" on the title screen had never
+    // been touched by anything), and F10 could not take it back because nothing
+    // recorded the starting state. Hundreds of mostly-culled particle systems
+    // feeding shadow geometry jobs is also the mutation that lines up with the
+    // JobTempAlloc leak warnings in that report, so it stays off the table.
+    static void ApplyParticleShadowCull(bool enable)
     {
-        var mode = on ? ShadowCastingMode.On : ShadowCastingMode.Off;
+        foreach (var kv in _particleShadowOrig)
+            if (kv.Key != null) kv.Key.shadowCastingMode = kv.Value;
+        _particleShadowOrig.Clear();
+
+        if (!enable) return;
+
         int count = 0;
-        foreach (var ps in Object.FindObjectsOfType<ParticleSystemRenderer>())
+        foreach (var psr in Object.FindObjectsOfType<ParticleSystemRenderer>())
         {
-            if (on && ps.shadowCastingMode == ShadowCastingMode.Off)
-            {
-                ps.shadowCastingMode = ShadowCastingMode.On;
-                ps.receiveShadows = true;
-                count++;
-            }
-            else if (!on && ps.shadowCastingMode != ShadowCastingMode.Off)
-            {
-                ps.shadowCastingMode = ShadowCastingMode.Off;
-                ps.receiveShadows = false;
-                count++;
-            }
+            if (psr.shadowCastingMode == ShadowCastingMode.Off) continue;
+            _particleShadowOrig[psr] = psr.shadowCastingMode;
+            psr.shadowCastingMode = ShadowCastingMode.Off;
+            count++;
         }
         if (count > 0)
-            Plugin.Log.LogDebug($"{(on ? "restored" : "disabled")} shadows on {count} particle renderers");
+            Plugin.Log.LogDebug($"disabled shadow casting on {count} particle renderers");
     }
 
     // off-screen and non-emitting systems still tick every frame unless culling is explicit.
@@ -739,23 +771,44 @@ static class SceneOptimizer
             Plugin.Log.LogDebug($"disabled shadow casting on {count} tiny renderers");
     }
 
-    static void SetItemLightShadows(bool on)
+    // Same shape as the particle pass: the Start postfixes above only ever cut
+    // shadows, so the scene sweep cuts and restores too instead of stamping Soft on
+    // every item light whenever the preset does not optimize.
+    // Flashlights are handled by UpdateFlashlightShadowBudget; not touched here.
+    static void ApplyItemLightShadowCull(bool enable)
     {
+        foreach (var kv in _itemLightOrig)
+            if (kv.Key != null) kv.Key.shadows = kv.Value;
+        _itemLightOrig.Clear();
+
+        if (!enable) return;
+
         foreach (var il in Object.FindObjectsOfType<ItemLight>())
-        {
-            if (il.itemLight == null) continue;
-            il.itemLight.shadows = on ? LightShadows.Soft : LightShadows.None;
-        }
-        // Flashlights are handled by UpdateFlashlightShadowBudget; don't touch here.
+            CullItemLightShadow(il.itemLight);
     }
 
-    static void SetExplosionLightShadows(bool on)
+    static void ApplyExplosionLightShadowCull(bool enable)
     {
+        foreach (var kv in _explosionLightOrig)
+            if (kv.Key != null) kv.Key.shadows = kv.Value;
+        _explosionLightOrig.Clear();
+
+        if (!enable) return;
+
         foreach (var ex in Object.FindObjectsOfType<ParticlePrefabExplosion>())
-        {
-            if (ex.light == null) continue;
-            ex.light.shadows = on ? LightShadows.Soft : LightShadows.None;
-        }
+            CullExplosionLightShadow(ex.light);
+    }
+
+    // Shared with the Start postfixes so a light spawned mid-level is on the same
+    // restore list as the ones the scene sweep found.
+    internal static void CullItemLightShadow(Light? light) => CullLightShadow(_itemLightOrig, light);
+    internal static void CullExplosionLightShadow(Light? light) => CullLightShadow(_explosionLightOrig, light);
+
+    static void CullLightShadow(Dictionary<Light, LightShadows> orig, Light? light)
+    {
+        if (light == null || light.shadows == LightShadows.None) return;
+        if (!orig.ContainsKey(light)) orig[light] = light.shadows;
+        light.shadows = LightShadows.None;
     }
 
     static void ApplyAnimatedLightCull(bool enable)
@@ -791,7 +844,10 @@ static class SceneOptimizer
         int avatarPpl = PlayerAvatarMenuAAPatch.AvatarPplCount;
         int mutations = _tinyRendererOrig.Count + _animatedLightOrig.Count
                       + _zeroIntensityOrig.Count + _gpuInstancingOrig.Count
-                      + _particleCullOrig.Count + shadowRes + avatarRt + avatarPpl
+                      + _particleCullOrig.Count + _particleShadowOrig.Count
+                      + _itemLightOrig.Count + _explosionLightOrig.Count
+                      + _shadowBudgetOrig.Count
+                      + shadowRes + avatarRt + avatarPpl
                       + _flashlightBudgetOrig.Count + _pointLightShadowOrig.Count
                       + _playerAvatarShadowOrig.Count + _playerAvatarSmrUpdateOrig.Count;
         string prefix = mutations == 0 ? "OK" : "LEAK";
@@ -802,6 +858,10 @@ static class SceneOptimizer
             $"zeroInt={_zeroIntensityOrig.Count} " +
             $"gpuInst={_gpuInstancingOrig.Count} " +
             $"particleCull={_particleCullOrig.Count} " +
+            $"particleShadow={_particleShadowOrig.Count} " +
+            $"itemLight={_itemLightOrig.Count} " +
+            $"explosionLight={_explosionLightOrig.Count} " +
+            $"glowBudget={_shadowBudgetOrig.Count} " +
             $"shadowRes={shadowRes} " +
             $"avatarRt={avatarRt} " +
             $"avatarPpl={avatarPpl} " +
@@ -866,6 +926,12 @@ static class PlayerAvatarMenuAAPatch
     internal static void ApplyToMenu(PlayerAvatarMenu __instance)
     {
         if (!Diagnostics.AvatarPreviewUpgrade.Value) return;
+
+        // The game tears the preview down itself when its page closes
+        // (PlayerAvatarMenu.Update destroys cameraAndStuff, PlayerAvatarMenuHover
+        // releases and destroys the RT), so every menu open leaves a dead key
+        // behind. Drop them here or the F10 restore-state line reads LEAK forever.
+        PruneDead();
 
         // only the pause-menu preview gets the bump. expressionAvatar variants exist
         // during gameplay (one per player) and must keep vanilla behaviour; an
@@ -958,15 +1024,10 @@ static class PlayerAvatarMenuAAPatch
                     newH = Mathf.RoundToInt(newH * shrink);
                 }
 
-                bool wasCreated = rt.IsCreated();
-                if (wasCreated) rt.Release();
-                rt.width = newW;
-                rt.height = newH;
-                rt.antiAliasing = TargetMsaa;
-                if (wasCreated) rt.Create();
+                ResizeBoundRt(cam, rt, newW, newH, TargetMsaa);
 
                 Plugin.Log.LogDebug($"avatar preview: RT '{rt.name}' bumped {_rtOrig[rt].w}x{_rtOrig[rt].h} " +
-                    $"aa={_rtOrig[rt].aa} → {newW}x{newH} aa={TargetMsaa}");
+                    $"aa={_rtOrig[rt].aa} -> {newW}x{newH} aa={TargetMsaa}");
             }
         }
 
@@ -977,33 +1038,82 @@ static class PlayerAvatarMenuAAPatch
         gate.cam = cam;
     }
 
-    // F10 hook. Unity leaves RTs in a bad state if mutated while a camera's
-    // actively rendering them, so cycle cam.enabled around the resize.
+    // Resize a render texture that is the live target of an enabled camera.
+    // PlayerAvatarMenuHover.Awake creates the RT, calls Create() and binds it to the
+    // preview camera before PlayerAvatarMenu.Start ever runs, so by the time the
+    // postfix gets here the texture is created and bound. Releasing it in that
+    // state is the "Releasing render texture that is set as Camera.targetTexture!"
+    // case; the camera keeps a pointer to a surface that no longer exists until the
+    // next Create, and 1.7.7 did exactly that on every pause-menu open. Unbind and
+    // idle the camera first, resize, then hand it back, all inside one call so it
+    // never renders to the screen in between (same shape as ResizeBoundRT in
+    // UltrawidePatch for the overlay texture).
+    static void ResizeBoundRt(Camera cam, RenderTexture rt, int w, int h, int aa)
+    {
+        bool bound = cam.targetTexture == rt;
+        bool wasEnabled = cam.enabled;
+        if (bound)
+        {
+            cam.enabled = false;
+            cam.targetTexture = null;
+        }
+        bool wasCreated = rt.IsCreated();
+        if (wasCreated) rt.Release();
+        rt.width = w;
+        rt.height = h;
+        rt.antiAliasing = aa;
+        if (wasCreated) rt.Create();
+        if (bound)
+        {
+            cam.targetTexture = rt;
+            cam.enabled = wasEnabled;
+        }
+    }
+
+    static void PruneDead()
+    {
+        List<RenderTexture>? deadRts = null;
+        foreach (var rt in _rtOrig.Keys)
+            if (rt == null) (deadRts ??= new List<RenderTexture>()).Add(rt);
+        if (deadRts != null)
+            foreach (var rt in deadRts) _rtOrig.Remove(rt);
+
+        List<Camera>? deadCams = null;
+        foreach (var cam in _pplState.Keys)
+            if (cam == null) (deadCams ??= new List<Camera>()).Add(cam);
+        if (deadCams != null)
+            foreach (var cam in deadCams) _pplState.Remove(cam);
+    }
+
+    // F10 hook: put every live preview RT back to the size and sample count the
+    // game created it with, then strip the AA layer and the gate.
     internal static void RestoreAvatarRt()
     {
-        if (_rtOrig.Count == 0) return;
+        PruneDead();
+        if (_rtOrig.Count == 0 && _pplState.Count == 0) return;
 
-        // collect cameras targeting our tracked RTs, disable during mutation
+        // cameras targeting our tracked RTs; the gate comes off them at the end
         var affectedCams = new List<Camera>();
-        foreach (var cam in Object.FindObjectsOfType<Camera>())
-        {
+        foreach (var cam in Object.FindObjectsOfType<Camera>(true))
             if (cam.targetTexture != null && _rtOrig.ContainsKey(cam.targetTexture))
-            {
-                cam.enabled = false;
                 affectedCams.Add(cam);
-            }
-        }
 
         foreach (var kv in _rtOrig)
         {
             var rt = kv.Key;
             if (rt == null) continue;
-            bool wasCreated = rt.IsCreated();
-            if (wasCreated) rt.Release();
-            rt.width = kv.Value.w;
-            rt.height = kv.Value.h;
-            rt.antiAliasing = kv.Value.aa;
-            if (wasCreated) rt.Create();
+            var owner = affectedCams.Find(c => c.targetTexture == rt);
+            if (owner != null)
+                ResizeBoundRt(owner, rt, kv.Value.w, kv.Value.h, kv.Value.aa);
+            else
+            {
+                bool wasCreated = rt.IsCreated();
+                if (wasCreated) rt.Release();
+                rt.width = kv.Value.w;
+                rt.height = kv.Value.h;
+                rt.antiAliasing = kv.Value.aa;
+                if (wasCreated) rt.Create();
+            }
         }
         _rtOrig.Clear();
 
