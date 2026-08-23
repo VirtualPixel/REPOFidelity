@@ -79,6 +79,8 @@ internal static class ConfigIntegration
             () => Settings.FilmGrain, v => Settings.FilmGrain = v);
         BindBool(cfg, "Post Processing", "Pixelation",
             () => Settings.Pixelation, v => Settings.Pixelation = v);
+        BindBool(cfg, "Post Processing", "Sharp HUD",
+            () => Settings.SharpHud, v => Settings.SharpHud = v);
 
         BindPerf(cfg, "Performance", "Explosion Shadows",
             () => Settings.PerfExplosionShadows, v => Settings.PerfExplosionShadows = v);

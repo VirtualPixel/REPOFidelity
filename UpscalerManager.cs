@@ -647,6 +647,7 @@ internal class UpscalerManager : MonoBehaviour
 
     private void StartBenchmark()
     {
+        MenuIntegration.ClearQueuedBenchmark();
         _benchmarkActive = true;
         _benchmarkTimer = 0f;
         _benchmarkWarmup = WarmupDuration;

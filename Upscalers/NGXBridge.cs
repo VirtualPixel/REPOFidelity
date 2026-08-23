@@ -73,15 +73,19 @@ internal static class NGXBridge
 
     private static LogCallbackDelegate? _logDelegate;
     private static bool _logHooked;
-    private static bool _preloaded;
+    private static bool _preloadTried;
+    private static bool _preloadOk;
 
     [System.Runtime.InteropServices.DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern IntPtr LoadLibraryW(string path);
 
     internal static bool Preload()
     {
-        if (_preloaded) return true;
-        _preloaded = true;
+        // Cache the RESULT, not the attempt. Until 1.7.8 a failed preload was
+        // remembered as a success, so the second caller skipped the clean warning
+        // in DLSSUpscaler and walked into a DllNotFoundException instead.
+        if (_preloadTried) return _preloadOk;
+        _preloadTried = true;
 
         var dllPath = System.IO.Path.Combine(
             System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "",
@@ -101,6 +105,7 @@ internal static class NGXBridge
         }
 
         Plugin.Log.LogDebug($"Preloaded ngx_bridge.dll from: {dllPath}");
+        _preloadOk = true;
         return true;
     }
 

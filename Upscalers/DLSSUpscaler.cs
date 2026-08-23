@@ -258,11 +258,6 @@ internal class DLSSUpscaler : IUpscaler
         CleanupCapture();
         CleanupFeature();
         if (_dlssOutputRT != null) { _dlssOutputRT.Release(); UnityEngine.Object.Destroy(_dlssOutputRT); _dlssOutputRT = null; }
-        if (_evalParams != IntPtr.Zero)
-        {
-            NGXBridge.NGXBridge_DestroyParams_D3D12(_evalParams);
-            _evalParams = IntPtr.Zero;
-        }
     }
 
     private void CleanupFeature()
@@ -271,6 +266,14 @@ internal class DLSSUpscaler : IUpscaler
         {
             NGXBridge.NGXBridge_ReleaseDLSS_D3D12(_dlssHandle);
             _dlssHandle = IntPtr.Zero;
+        }
+        // Initialize allocates a fresh parameter block every time, and
+        // OnResolutionChanged runs straight back into it, so leaving this to
+        // Dispose leaked one native block per resolution or render-scale change.
+        if (_evalParams != IntPtr.Zero)
+        {
+            NGXBridge.NGXBridge_DestroyParams_D3D12(_evalParams);
+            _evalParams = IntPtr.Zero;
         }
     }
 

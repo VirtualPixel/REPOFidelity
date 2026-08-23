@@ -302,9 +302,18 @@ internal static class Overlay
         };
     }
 
+    static float _nextAssetScan;
+
     static void FindGameAssets()
     {
         if (_gameFont != null) return;
+        // BuildNative bails without a font and gets retried every frame the overlay
+        // has lines, so a scene with no usable TMP font meant two
+        // Resources.FindObjectsOfTypeAll sweeps per frame. Once a second is plenty
+        // for catching the font as the HUD comes up.
+        if (Time.unscaledTime < _nextAssetScan) return;
+        _nextAssetScan = Time.unscaledTime + 1f;
+
         foreach (var tmp in Resources.FindObjectsOfTypeAll<TextMeshProUGUI>())
         {
             if (tmp.font != null && tmp.gameObject.scene.isLoaded)

@@ -90,6 +90,10 @@ internal static class MenuIntegration
     public static void PrefixControls() => ClosePage();
 
     [HarmonyPrefix]
+    [HarmonyPatch(typeof(MenuPageSettings), nameof(MenuPageSettings.ButtonEventLanguage))]
+    public static void PrefixLanguage() => ClosePage();
+
+    [HarmonyPrefix]
     [HarmonyPatch(typeof(MenuPageSettings), nameof(MenuPageSettings.ButtonEventBack))]
     public static void PrefixBack() => ClosePage();
 
@@ -165,6 +169,16 @@ internal static class MenuIntegration
             perf = $"{bottleneck} • {ms:F1} ms / {fps:F0} fps";
         }
         return $"{perf}  •  {resLine}";
+    }
+
+    // UpscalerManager calls this when a benchmark actually starts. Without it the
+    // queued flag never cleared, so after the run the button kept reading
+    // "AUTO-TUNE QUEUED" and behaved as a cancel that dropped the preset to High.
+    internal static void ClearQueuedBenchmark()
+    {
+        if (!_benchmarkQueued) return;
+        _benchmarkQueued = false;
+        RefreshDynamicLabels();
     }
 
     private static string BuildAutoTuneLabel()

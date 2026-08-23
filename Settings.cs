@@ -201,9 +201,14 @@ internal static class Settings
     }
     internal static bool AutoConfigured => !_autoTune.IsStale();
 
+    // Clearing `version` did nothing: IsStale never reads that field, so pressing
+    // Auto-Tune from the menu left the stored profile fully valid and the queued
+    // run never fired. Drop the revision instead, which is what both the staleness
+    // check and the auto-benchmark gate actually look at.
     internal static void InvalidateAutoTune()
     {
         _autoTune.version = "";
+        _autoTune.revision = 0;
     }
 
     internal static bool ModEnabled = true;
