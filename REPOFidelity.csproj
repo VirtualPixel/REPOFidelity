@@ -38,6 +38,12 @@
   <ItemGroup>
     <Compile Remove="UnityShaderProject\**" />
     <None Remove="UnityShaderProject\**" />
+    <Compile Remove="REPOFidelity.Tests\**" />
+    <None Remove="REPOFidelity.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="REPOFidelity.Tests" />
   </ItemGroup>
 
   <ItemGroup>

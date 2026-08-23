@@ -916,13 +916,8 @@ static class PlayerAvatarStartPatch
 [HarmonyPatch(typeof(PlayerAvatarMenu), "Start")]
 static class PlayerAvatarMenuAAPatch
 {
-    // Target is the LONG edge. Until 1.7.8 it was the short one, and since the
-    // aspect is preserved the vanilla 208x416 preview landed at 1024x2048 aa=4:
-    // four times the surface the constant claims, on a UI slot about 400px tall,
-    // reallocated on every pause-menu open. 1024 on the long edge is still 2.5x
-    // the displayed size, and MSAA + SMAA handles the rest.
-    const int TargetLongDim = 1024;
-    const int TargetMsaa = 4;
+    // Sizing math lives in PreviewRt so it can be tested outside the game.
+    const int TargetMsaa = PreviewRt.TargetMsaa;
 
     // saved originals so F10 can revert the RT back to vanilla size/aa
     internal static readonly Dictionary<RenderTexture, (int w, int h, int aa)> _rtOrig = new();
@@ -1023,19 +1018,10 @@ static class PlayerAvatarMenuAAPatch
         var rt = cam.targetTexture;
         if (rt != null)
         {
-            int longDim = Mathf.Max(rt.width, rt.height);
-            bool needsUpscale = longDim < TargetLongDim;
-            bool needsMsaa = rt.antiAliasing < TargetMsaa;
-            if ((needsUpscale || needsMsaa) && !_rtOrig.ContainsKey(rt))
+            if (PreviewRt.NeedsBump(rt.width, rt.height, rt.antiAliasing) && !_rtOrig.ContainsKey(rt))
             {
                 _rtOrig[rt] = (rt.width, rt.height, rt.antiAliasing);
-
-                // preserve the original aspect: take the long edge to TargetLongDim
-                // and scale the short one by the same factor.
-                float scale = longDim > 0 && longDim < TargetLongDim
-                    ? (float)TargetLongDim / longDim : 1f;
-                int newW = Mathf.Max(1, Mathf.RoundToInt(rt.width * scale));
-                int newH = Mathf.Max(1, Mathf.RoundToInt(rt.height * scale));
+                var (newW, newH) = PreviewRt.Target(rt.width, rt.height);
 
                 ResizeBoundRt(cam, rt, newW, newH, TargetMsaa);
 
