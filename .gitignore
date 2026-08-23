@@ -38,3 +38,6 @@ Thumbs.db
 # Affinity source / lock files
 *.afphoto
 *~lock~*
+
+# Knowledge graph output (4 MB, rebuilt from source)
+graphify-out/
