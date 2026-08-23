@@ -54,8 +54,25 @@ static class SpectateShadowPatch
 static class SceneOptimizer
 {
 
+    // PlayerAvatar.Start fires once per avatar, and a lobby fills in one frame, so
+    // every joiner used to trigger its own scene-wide sweep back to back. Apply()
+    // is ten FindObjectsOfType passes plus a watchlist rebuild that hit 5250
+    // renderers on Museum in the #14 log, and six of those in a frame is six times
+    // the native scan churn for one result. Callers that fire per object queue
+    // instead; Plugin.LateUpdate drains the queue once.
+    static bool _applyQueued;
+
+    internal static void ApplyDeferred() => _applyQueued = true;
+
+    internal static void TickDeferredApply()
+    {
+        if (!_applyQueued) return;
+        Apply();
+    }
+
     internal static void Apply()
     {
+        _applyQueued = false;
         long _ftm = FrameTimeMeter.Begin();
 
         _shadowStrengths.Clear();
@@ -63,10 +80,11 @@ static class SceneOptimizer
         ApplyZeroIntensityShadows(Settings.OptimizationsActive);
         ApplyParticleAutoCull(Settings.OptimizationsActive && Diagnostics.ParticleAutoCull.Value);
 
-        // diagnostic gate skips the pass entirely so particle renderers keep whatever
-        // shadow state the prefab shipped
-        if (Diagnostics.ParticleShadows.Value)
-            ApplyParticleShadowCull(Settings.ShouldOptimize(Settings.PerfOpt.ParticleShadows));
+        // Diagnostic gate rides the same argument as the auto-cull switch rather than
+        // skipping the call: off means the pass restores whatever it had already done
+        // and stops there, so flipping the switch mid-session actually lets go.
+        ApplyParticleShadowCull(Diagnostics.ParticleShadows.Value
+            && Settings.ShouldOptimize(Settings.PerfOpt.ParticleShadows));
         ApplyTinyRendererCull(Settings.ShouldOptimize(Settings.PerfOpt.TinyRendererCulling));
         ApplyAnimatedLightCull(Settings.ShouldOptimize(Settings.PerfOpt.AnimatedLightShadows));
 
@@ -889,7 +907,7 @@ static class LevelOptimizationPatch
 [HarmonyPatch(typeof(PlayerAvatar), "Start")]
 static class PlayerAvatarStartPatch
 {
-    static void Postfix() => SceneOptimizer.Apply();
+    static void Postfix() => SceneOptimizer.ApplyDeferred();
 }
 
 // vanilla renders the avatar preview to a tiny RT (e.g. 209x418) with no AA, so

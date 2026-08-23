@@ -23,22 +23,7 @@ public class Plugin : BaseUnityPlugin
         Bootstrap.WarnIfRepoHd();
 
         bool menuLib = Bootstrap.HasPlugin("nickklmao.menulib");
-        // The HideFromREPOConfig marker is presence-based: REPOConfig hides the mod
-        // whenever the tag exists, regardless of the bound value. So bind it only when
-        // MenuLib is the settings surface; without MenuLib, skip it so REPOConfig shows
-        // the entries as the only in-game config surface.
-        if (menuLib)
-            Config.Bind("_", "Hidden", true,
-                new BepInEx.Configuration.ConfigDescription("", null, "HideFromREPOConfig"));
-        Config.SaveOnConfigSet = true;
-
-        Settings.Init();
-        GPUDetector.Detect();
-        Settings.ResolveAutoDefaults();
-        // Bind settings to ConfigEntries after defaults resolve so the getters
-        // return real values. Visibility is conditional; the binding is not.
-        ConfigIntegration.Initialize(Config);
-        Diagnostics.Init(Config);
+        Bootstrap.InitSettings(Config, menuLib);
 
         _harmony = new Harmony(PluginGuid);
         Bootstrap.PatchEachClass(_harmony);
@@ -49,6 +34,7 @@ public class Plugin : BaseUnityPlugin
     private void LateUpdate()
     {
         Settings.UpdateCpuGate();
+        Patches.SceneOptimizer.TickDeferredApply();
         Overlay.UpdateLines();
     }
 

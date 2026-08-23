@@ -1,15 +1,36 @@
 using System.Reflection;
 using BepInEx.Bootstrap;
+using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 
 namespace REPOFidelity;
 
 // The parts of Plugin.Awake that are not wiring: the REPO_HD notice, the
-// per-class Harmony pass, and the hardware banner.
+// settings bring-up, the per-class Harmony pass, and the hardware banner.
 internal static class Bootstrap
 {
     internal static bool HasPlugin(string guid) => Chainloader.PluginInfos.ContainsKey(guid);
+
+    internal static void InitSettings(ConfigFile config, bool menuLib)
+    {
+        // The HideFromREPOConfig marker is presence-based: REPOConfig hides the mod
+        // whenever the tag exists, regardless of the bound value. So bind it only when
+        // MenuLib is the settings surface; without MenuLib, skip it so REPOConfig shows
+        // the entries as the only in-game config surface.
+        if (menuLib)
+            config.Bind("_", "Hidden", true,
+                new ConfigDescription("", null, "HideFromREPOConfig"));
+        config.SaveOnConfigSet = true;
+
+        Settings.Init();
+        GPUDetector.Detect();
+        Settings.ResolveAutoDefaults();
+        // Bind settings to ConfigEntries after defaults resolve so the getters
+        // return real values. Visibility is conditional; the binding is not.
+        ConfigIntegration.Initialize(config);
+        Diagnostics.Init(config);
+    }
 
     internal static void WarnIfRepoHd()
     {
