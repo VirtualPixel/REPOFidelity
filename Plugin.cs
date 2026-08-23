@@ -46,6 +46,7 @@ public class Plugin : BaseUnityPlugin
         // Bind settings to ConfigEntries after defaults resolve so the getters
         // return real values. Visibility is conditional; the binding is not.
         ConfigIntegration.Initialize(Config);
+        Diagnostics.Init(Config);
 
         _harmony = new Harmony(PluginGuid);
         // Patch each class individually so one bad HarmonyPatch annotation

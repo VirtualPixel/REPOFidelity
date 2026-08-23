@@ -61,9 +61,12 @@ static class SceneOptimizer
         _shadowStrengths.Clear();
         ApplyGpuInstancing(Settings.OptimizationsActive);
         ApplyZeroIntensityShadows(Settings.OptimizationsActive);
-        ApplyParticleAutoCull(Settings.OptimizationsActive);
+        ApplyParticleAutoCull(Settings.OptimizationsActive && Diagnostics.ParticleAutoCull.Value);
 
-        SetParticleShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ParticleShadows));
+        // diagnostic gate skips the call entirely so particle renderers keep their
+        // vanilla shadow state instead of being force-set either way
+        if (Diagnostics.ParticleShadows.Value)
+            SetParticleShadows(!Settings.ShouldOptimize(Settings.PerfOpt.ParticleShadows));
         ApplyTinyRendererCull(Settings.ShouldOptimize(Settings.PerfOpt.TinyRendererCulling));
         ApplyAnimatedLightCull(Settings.ShouldOptimize(Settings.PerfOpt.AnimatedLightShadows));
 
@@ -862,6 +865,8 @@ static class PlayerAvatarMenuAAPatch
     // called from Start postfix and from F10 re-enable (where Start won't fire again)
     internal static void ApplyToMenu(PlayerAvatarMenu __instance)
     {
+        if (!Diagnostics.AvatarPreviewUpgrade.Value) return;
+
         // only the pause-menu preview gets the bump. expressionAvatar variants exist
         // during gameplay (one per player) and must keep vanilla behaviour; an
         // 8-player lobby would otherwise eat real ms on menu-style rendering.
