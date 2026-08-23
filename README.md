@@ -147,22 +147,28 @@ Replaces the game's Graphics page. All vanilla display settings (window mode, VS
 | Preset | Auto-Custom | Auto | Quality level. Auto uses benchmarked profile |
 | Upscaler | DLSS / FSR / Off | Auto | DLSS on NVIDIA, FSR on AMD/Intel, Off if CPU-bound |
 | Resolution | Monitor-specific | Native | Output resolution. Filtered to your aspect ratio |
-| Render Scale | 33-100% | 100% | Internal resolution before upscaling to selected resolution |
-| Anti-Aliasing | SMAA / FXAA / Off | SMAA | Post-process AA (disabled when upscaler provides AA) |
-| Shadow Quality | Off / Low / Med / High / Ultra | Varies | Shadow map resolution |
+| Render Scale | 33-100% | Varies | Internal resolution before upscaling to selected resolution |
+| Anti-Aliasing | Auto / SMAA / FXAA / Off | Auto | Post-process AA. Auto picks SMAA, or nothing when a temporal upscaler already provides it |
+| Shadow Quality | Low / Medium / High / Ultra | Varies | Shadow map resolution |
 | Shadow Distance | 5-200m | Varies | Max shadow render distance |
 | Shadow Limit | 0-50 | Varies | Max nearby shadows. 0 = unlimited. Closest lights get priority |
 | Pixel Lights | 1-16 | Varies | Per-object dynamic lights |
 | LOD Bias | 0.5-4.0 | Varies | Level of detail distance |
 | Texture Quality | Full | Full | Locked to full; R.E.P.O.'s textures are too small for mip reduction to matter |
-| Anisotropic Filtering | Off / 4x / 8x / 16x | 8x | Texture sharpness at angles |
-| Light Distance | 10-100m | 50m | Max light render range |
+| Anisotropic Filtering | Off / 2x / 4x / 8x / 16x | Varies | Texture sharpness at angles |
+| Light Distance | 10-100m | Varies | Max light render range |
 | Fog Distance | 0.3-1.1x | 1.0x | Fog end distance multiplier. Below 1.0x pulls the fog wall in for extra savings |
-| Vertical FOV | 0-110° | 0 (auto) | Camera FOV. 0 picks an aspect-aware default (vanilla on 16:9, ~80° on 21:9, 90° on 32:9). Any non-zero value overrides |
-| Ultra-Wide UI Fix | On / Off | On | Fills the screen with the world view on aspects above 16:9. Toggle off to keep vanilla 16:9 letterbox |
+| Vertical FOV | 0-110° | 0 (auto) | Camera FOV. 0 keeps the game's vertical FOV at every aspect, so a wider panel shows more world at the sides instead of zooming; only past about 32:9 does it trim vertical to hold horizontal FOV at 135°. Any non-zero value overrides |
+| Sharpening | 0-1 | Varies | CAS sharpening pass. 0 = off |
+| Draw Distance | 0-500m | 0 (auto) | Camera far clip. 0 follows the fog wall |
+| Ultra-Wide UI Fix | On / Off | On | Fills the screen with the world view on aspects other than 16:9. Toggle off to keep the vanilla letterbox |
+| Ultra-Wide HUD Unstretch | On / Off | On | Renders the HUD at the panel aspect instead of stretching the 16:9 overlay across it. Inert on 16:9 |
+| Sharp HUD | On / Off | On | Lifts the HUD overlay texture to your panel's pixel density so text and menus render crisp. Off is the vanilla soft look |
 | Mod Toggle Key | F5-F10 | F10 | Disables mod entirely for vanilla comparison |
 
 **F10** (configurable) toggles the entire mod off for vanilla comparison; everything reverts including performance optimizations.
+
+The post-processing toggles (motion blur, chromatic aberration, lens distortion, film grain, pixelation), the extraction-point flicker fix, and six per-optimization sliders (explosion, item light, animated light, particle, small object and point light shadows, each Auto / Keep / Disable) live on the same page. Without MenuLib all of it is in `BepInEx/config/Vippy.REPOFidelity.cfg` and REPOConfig instead.
 
 **F11** toggles the performance optimization layer on and off. Unlike F10, the visual layer (upscaler, AA, shadow quality) stays active; only the per-frame hacks (tiny renderer culls, shadow budget, CPU patches, etc.) revert to vanilla.
 
@@ -220,8 +226,12 @@ That's the biggest heading markdown has. Consider the invoice settled.
 
 | Purpose | Where |
 |---|---|
-| Bug reports & suggestions | [GitHub Issues](https://github.com/VirtualPixel/REPOFidelity/issues) |
-| R.E.P.O. Modding community | [Discord](https://discord.gg/9fDzZ9sk95) |
+| Bug reports and suggestions | [GitHub Issues](https://github.com/VirtualPixel/REPOFidelity/issues) |
+| Questions, test builds, or just hanging out | [Vippy's Discord](https://discord.gg/kKqhck2NrP) |
+| R.E.P.O. modding in general | [R.E.P.O. Modding Server](https://discord.gg/9fDzZ9sk95) |
+
+Everything I make stays free. If one of these mods made your runs better and you feel like
+saying thanks, there is a [Ko-fi](https://ko-fi.com/vippydev).
 
 <a href="https://ko-fi.com/vippydev" target="_blank">
 <img src="https://storage.ko-fi.com/cdn/brandasset/v2/support_me_on_kofi_dark.png" alt="Ko-Fi" width="200">

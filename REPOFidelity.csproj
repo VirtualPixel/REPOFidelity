@@ -177,7 +177,7 @@ namespace REPOFidelity
     <Copy SourceFiles="$(ShaderBundleSrc)" DestinationFolder="$(StageDir)" Condition="Exists('$(ShaderBundleSrc)')" />
     <Copy SourceFiles="$(NgxBridgeSrc)" DestinationFolder="$(StageDir)" Condition="Exists('$(NgxBridgeSrc)')" />
 
-    <Warning Text="nvngx_dlss.dll not found in output - DLSS will use fallback download"
+    <Warning Text="nvngx_dlss.dll not found in output - the packaged mod will run with DLSS and DLAA disabled"
              Condition="!Exists('$(DlssSrc)')" />
     <Warning Text="icon.png not found - add before uploading"
              Condition="!Exists('$(SourceIcon)')" />
