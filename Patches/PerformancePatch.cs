@@ -898,10 +898,12 @@ static class PlayerAvatarStartPatch
 [HarmonyPatch(typeof(PlayerAvatarMenu), "Start")]
 static class PlayerAvatarMenuAAPatch
 {
-    // 2048 was overkill for a ~400px UI display and cost ~0.7ms/frame; 1024 looks
-    // identical and costs a quarter as much. MSAA + SMAA handles the rest.
-    const int TargetRtSize = 1024;
-    const int MaxLongDim = 2048;
+    // Target is the LONG edge. Until 1.7.8 it was the short one, and since the
+    // aspect is preserved the vanilla 208x416 preview landed at 1024x2048 aa=4:
+    // four times the surface the constant claims, on a UI slot about 400px tall,
+    // reallocated on every pause-menu open. 1024 on the long edge is still 2.5x
+    // the displayed size, and MSAA + SMAA handles the rest.
+    const int TargetLongDim = 1024;
     const int TargetMsaa = 4;
 
     // saved originals so F10 can revert the RT back to vanilla size/aa
@@ -1003,26 +1005,19 @@ static class PlayerAvatarMenuAAPatch
         var rt = cam.targetTexture;
         if (rt != null)
         {
-            bool needsUpscale = rt.width < TargetRtSize && rt.height < TargetRtSize;
+            int longDim = Mathf.Max(rt.width, rt.height);
+            bool needsUpscale = longDim < TargetLongDim;
             bool needsMsaa = rt.antiAliasing < TargetMsaa;
             if ((needsUpscale || needsMsaa) && !_rtOrig.ContainsKey(rt))
             {
                 _rtOrig[rt] = (rt.width, rt.height, rt.antiAliasing);
 
-                // preserve original aspect ratio: scale shortest dimension up to
-                // TargetRtSize, apply same factor to the longer one. Cap longer dim
-                // at MaxLongDim so extreme aspect ratios don't blow up VRAM.
-                int shortDim = Mathf.Min(rt.width, rt.height);
-                float scale = shortDim < TargetRtSize ? (float)TargetRtSize / shortDim : 1f;
-                int newW = Mathf.RoundToInt(rt.width * scale);
-                int newH = Mathf.RoundToInt(rt.height * scale);
-                int longDim = Mathf.Max(newW, newH);
-                if (longDim > MaxLongDim)
-                {
-                    float shrink = (float)MaxLongDim / longDim;
-                    newW = Mathf.RoundToInt(newW * shrink);
-                    newH = Mathf.RoundToInt(newH * shrink);
-                }
+                // preserve the original aspect: take the long edge to TargetLongDim
+                // and scale the short one by the same factor.
+                float scale = longDim > 0 && longDim < TargetLongDim
+                    ? (float)TargetLongDim / longDim : 1f;
+                int newW = Mathf.Max(1, Mathf.RoundToInt(rt.width * scale));
+                int newH = Mathf.Max(1, Mathf.RoundToInt(rt.height * scale));
 
                 ResizeBoundRt(cam, rt, newW, newH, TargetMsaa);
 
@@ -1143,12 +1138,53 @@ static class PlayerAvatarMenuAAPatch
     internal static int AvatarRtOrigCount => _rtOrig.Count;
     internal static int AvatarPplCount => _pplState.Count;
 
+    // Hand one preview back to the game before it tears the preview down. The RT
+    // is not resized back: the game is about to Release and Destroy it anyway, and
+    // reallocating a surface during teardown is the thing we are trying to avoid.
+    // Everything the mod bolted on comes off while the camera is still valid.
+    internal static void ReleasePreview(RenderTexture? rt, Camera? cam)
+    {
+        if (rt != null) _rtOrig.Remove(rt);
+        if (cam == null) return;
+
+        if (_pplState.TryGetValue(cam, out var state))
+        {
+            _pplState.Remove(cam);
+            var ppl = cam.GetComponent<PostProcessLayer>();
+            if (ppl != null)
+            {
+                if (state.AttachedByUs) Object.Destroy(ppl);
+                else ppl.antialiasingMode = state.OriginalAa;
+            }
+        }
+
+        var gate = cam.GetComponent<AvatarCameraGate>();
+        if (gate != null) Object.Destroy(gate);
+    }
+
     // F10 re-enable: Start already fired, so scan + reapply manually
     internal static void ReapplyAll()
     {
         foreach (var menu in Object.FindObjectsOfType<PlayerAvatarMenu>())
             ApplyToMenu(menu);
     }
+}
+
+// PlayerAvatarMenuHover owns the preview render texture: Awake creates it, binds
+// it to the preview camera and the RawImage, and OnDestroy unbinds, releases and
+// destroys it. That runs when the menu page dies, one or more frames before
+// PlayerAvatarMenu.Update destroys the camera object, so this is the last moment
+// the camera is still alive and still pointing at a live surface. Take our
+// PostProcessLayer and gate off here rather than leaving them on a camera whose
+// target is about to be pulled out from under them, and drop the tracking entry
+// in the same breath so the dictionaries never carry a dead key across a scene
+// change. Before 1.7.8 both only got cleaned on the next menu open or on F10.
+[HarmonyPatch(typeof(PlayerAvatarMenuHover), "OnDestroy")]
+static class PlayerAvatarMenuHoverTeardownPatch
+{
+    static void Prefix(PlayerAvatarMenuHover __instance)
+        => PlayerAvatarMenuAAPatch.ReleasePreview(
+            __instance.renderTextureInstance, __instance.previewCamera);
 }
 
 // Toggles camera.enabled based on whether the hosting MenuPage is in the
@@ -1163,10 +1199,13 @@ internal class AvatarCameraGate : MonoBehaviour
     {
         if (cam == null) { Destroy(this); return; }
 
-        // mod off: defer to vanilla behaviour (always enabled)
+        // mod off: defer to vanilla behaviour (always enabled). Never while the
+        // camera has no target texture though; the game clears it in
+        // PlayerAvatarMenuHover.OnDestroy and an enabled preview camera with no
+        // target draws the avatar over the whole screen.
         if (!Settings.ModEnabled)
         {
-            if (!cam.enabled) cam.enabled = true;
+            if (!cam.enabled && cam.targetTexture != null) cam.enabled = true;
             return;
         }
 
