@@ -4,6 +4,10 @@ Better than REPO HD. Graphics overhaul that goes both ways: **squeeze more FPS o
 
 **Replaces REPO HD.** Everything it does, plus DLSS, auto-benchmark, CPU/GPU-aware tuning, performance optimizations, ultrawide / aspect-ratio fixes, and way more control. If you have REPO HD installed, remove it.
 
+> **A note from Vippy**
+>
+> After way too long of a break, I'm finally back and working on these again :D Every one of my mods just got a full pass: bugs fixed, reports read, a few things I'd always meant to do. New builds and fixes land in [Vippy's Discord](https://discord.gg/kKqhck2NrP) before they hit Thunderstore, so come hang out. Thanks for sticking around.
+
 > **v1.7.0: experimental RepoXR (VR) support.** The HD upscaling pipeline used to break VR stereo rendering, each eye ended up looking the wrong way. REPOFidelity now detects a VR headset and stands its camera pipeline down (no upscaler, no FOV or ultrawide override). The performance optimizations keep running, so VR still gets the extra frames. Raise VR render resolution with RepoXR's own CameraResolution setting. This is new and only lightly tested; if something looks off in VR, open an issue.
 
 ## Vanilla vs REPO Fidelity
@@ -220,18 +224,26 @@ Endershade tested the aspect-ratio update on a 5:4 monitor like it was 2004 and 
 
 That's the biggest heading markdown has. Consider the invoice settled.
 
----
 
-## Contact
+## Come hang out
 
-| Purpose | Where |
+I'm Vippy. I make R.E.P.O. mods and I read every bug report.
+
+| | |
 |---|---|
-| Bug reports and suggestions | [GitHub Issues](https://github.com/VirtualPixel/REPOFidelity/issues) |
-| Questions, test builds, or just hanging out | [Vippy's Discord](https://discord.gg/kKqhck2NrP) |
-| R.E.P.O. modding in general | [R.E.P.O. Modding Server](https://discord.gg/9fDzZ9sk95) |
+| **[Vippy's Discord](https://discord.gg/kKqhck2NrP)** | Test builds land here before Thunderstore, you get a say in what comes next, and it's the fastest way to get a bug fixed. Come say hi. |
+| **[GitHub Issues](https://github.com/VirtualPixel/REPOFidelity/issues)** | Bug reports and ideas that deserve a paper trail. |
+| **[R.E.P.O. Modding Server](https://discord.gg/9fDzZ9sk95)** | The whole modding scene, not just me. |
+| **[More of my mods](https://thunderstore.io/c/repo/p/Vippy/)** | Everything else I've made for R.E.P.O. |
 
-Everything I make stays free. If one of these mods made your runs better and you feel like
-saying thanks, there is a [Ko-fi](https://ko-fi.com/vippydev).
+## Keep the mods coming
+
+Everything I make is free and stays free. Two ways to help if you feel like it, neither one expected:
+
+- **[Ko-fi](https://ko-fi.com/vippydev)**: buy me a coffee and your name goes on the supporters list in my Discord. Every coffee buys another evening on the next update.
+- **[BisectHosting](https://bisecthosting.com/vippy)**: hosting a server for Minecraft or anything else your crew plays? Code `vippy` takes 25% off, and I get a cut at no cost to you. It's where my own servers live.
+
+[![25% off BisectHosting servers with code vippy](https://www.bisecthosting.com/partners/custom-banners/71eecea6-f5bb-437d-ac56-f6fee4266193.png)](https://bisecthosting.com/vippy)
 
 <a href="https://ko-fi.com/vippydev" target="_blank">
 <img src="https://storage.ko-fi.com/cdn/brandasset/v2/support_me_on_kofi_dark.png" alt="Ko-Fi" width="200">
